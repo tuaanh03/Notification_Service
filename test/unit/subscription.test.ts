@@ -12,6 +12,7 @@ function subscription(): Subscription {
     channel: 'email',
     value: 'minh@example.com',
     manageToken: SubscriptionId.create(),
+    createdAt: AT,
   });
 }
 

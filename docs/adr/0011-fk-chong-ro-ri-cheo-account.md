@@ -35,7 +35,9 @@ test, FK chỉ là chốt cuối.
 - Ba unique index `uq_organizations_org_account`, `uq_admins_admin_account`, `uq_apps_app_account`
   là **bắt buộc**. InnoDB cho phép FK trỏ tới index không unique, nên xoá chúng thì ràng buộc
   âm thầm yếu đi mà không báo lỗi (xem ADR-0002 — Rủi ro còn lại).
-- `tenancy/infrastructure/db/schema.ts` và `apps/infrastructure/db/schema.ts` import vòng lẫn nhau.
-  An toàn vì Drizzle chỉ đọc tham chiếu FK một cách lazy; đã kiểm với cả hai thứ tự import.
+- **Sửa 2026-09-18:** bản đầu đặt `admin_app_roles` ở `tenancy`, khiến schema `tenancy` và `apps`
+  import vòng lẫn nhau. Bảng và entity `AdminAppRole` đã chuyển sang module **`apps`** — dòng grant
+  mô tả quyền TRÊN app — nên phụ thuộc chỉ còn một chiều `apps -> tenancy`. Tên bảng, FK và
+  migration không đổi. Luật "không có vòng phụ thuộc" trong `test/architecture/` chặn tái phát.
 - Cột mới là `NOT NULL` không default. Migration chạy được vì chưa có dữ liệu thật; nếu sau này
   cần áp lên DB đã có dữ liệu thì phải tách thành thêm cột nullable → backfill → đổi NOT NULL.

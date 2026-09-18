@@ -1,0 +1,12 @@
+# Chỉ gửi vào build context những gì image cần — nhỏ hơn, build nhanh hơn, không lộ secret.
+node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+test
+docs
+coverage
+*.log
+.claude

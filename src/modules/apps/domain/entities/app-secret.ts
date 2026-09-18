@@ -42,7 +42,7 @@ export class AppSecret extends BaseEntity<AppSecretId> {
     if (this.status === 'revoked') return;
     this.status = 'revoked';
     this.revokedAt = at;
-    this.touch();
+    this.touch(at);
   }
 
   /**

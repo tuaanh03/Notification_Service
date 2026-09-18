@@ -11,11 +11,18 @@ npm run dev         # tsx watch src/index.ts
 npm run typecheck   # tsc --noEmit
 npm run build       # tsc -> dist/
 npm start           # node dist/src/index.js  (chạy sau khi build)
-npm test            # vitest run
+npm test            # unit + luật kiến trúc — không cần Docker, < 3 giây
+npm run lint:arch   # chỉ luật kiến trúc (test/architecture/)
+npm run test:integration  # MySQL 8.4 thật qua testcontainers — CẦN Docker, ~1 phút
+npm run test:all    # tất cả
 npx vitest run test/unit/transitions.test.ts   # chạy một file test
 npx vitest -t "excluded THẮNG included"        # chạy một test theo tên
 npm run db:generate # drizzle-kit generate -> drizzle/*.sql
-npm run db:migrate  # cần DATABASE_URL trỏ tới MySQL đang chạy
+npm run db:migrate  # tsx src/entrypoints/migrate.ts — cần DATABASE_URL
+npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` trong compose
+
+docker compose up --build        # mysql + redis + migrate + app
+docker compose up -d mysql redis # chỉ hạ tầng, để chạy `npm run dev` trên máy
 ```
 
 Node 22 trên máy build hiện tại **không** có type stripping (`node file.ts` trả `ERR_NO_TYPESCRIPT`),
@@ -25,21 +32,27 @@ thật; `rewriteRelativeImportExtensions` đổi sang `.js` lúc emit — đừn
 ## Stack đã chốt
 
 TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `erasableSyntaxOnly`) ·
-**MySQL 8** · Drizzle ORM · vitest. Redis Streams, Fastify và zod thuộc phase 1, chưa có trong repo.
+**MySQL 8** · Drizzle ORM (driver `mysql2`) · zod (env) · pino · vitest + testcontainers ·
+Docker (`node:22-slim`, compose có MySQL 8.4 + Redis 7.4). Client Redis Streams và Fastify thuộc
+các lượt sau của phase 1, chưa có trong code.
 
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 0 đã xong, phase 1 chưa bắt đầu
+## Trạng thái: phase 1, xong lượt 1/4 + chuẩn hoá kiến trúc
 
-Có trong repo: **domain model đầy đủ 10 module + schema MySQL + 2 migration (`0000_init_model_b`, `0001_rbac_account_fk`) + 55 unit test**.
+Có trong repo: domain model 10 module · schema MySQL + 2 migration · `shared/config` · `shared/db`
+· port hạ tầng dùng chung + composition root (ADR-0012) · luật kiến trúc thành test · Docker.
+78 unit/architecture test, 31 integration test.
 
-Chưa có: HTTP server, DI container, repository, Redis, worker, scheduler, tầng `application/`
-và `interface/` của mọi module. `src/index.ts` mới chỉ log bootstrap.
+Chưa có: outbox relay, client Redis, HTTP server, repository, worker, scheduler, tầng
+`application/` và `interface/` của các module. `src/index.ts` mới dựng container, ping DB rồi thoát.
 
-Thứ tự phase 1 (đã thống nhất): `shared/config` → `shared/db` (client + unit of work + outbox relay)
-→ `shared/streams` → `entrypoints/{api,worker,scheduler}` → lát cắt dọc đầu tiên là module `apps`.
-Chọn `apps` vì mọi bảng khác đều có `app_id`, và nó là cổng xác thực của `/v1/*`.
+Phase 1 làm theo 4 lượt, mỗi lượt dừng để người dùng review:
+1. ~~`shared/config` + `shared/db` + test tích hợp~~ — xong (kèm chuẩn hoá DI + Docker)
+2. `shared/streams` + outbox relay
+3. `entrypoints/{api,worker,scheduler}` chạy lâu dài (compose tách `app` thành 3 service)
+4. lát cắt dọc đầu tiên: module `apps` (vì mọi bảng khác đều có `app_id`, và nó là cổng xác thực `/v1/*`)
 
 ## Tài liệu và quyết định
 
@@ -55,23 +68,50 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0008` | Chuẩn hoá email: không strip `+tag` |
 | `0009` | Ràng buộc nào MySQL không ép được, phải ép ở command |
 | `0010` | Ngoại lệ dependency rule cho `channelGate` và `effectiveOptIn` |
-| `0011` | Composite FK chống cấp quyền chéo account trên `admin_app_roles` |
+| `0011` | Composite FK chống cấp quyền chéo account trên `admin_app_roles` (bảng thuộc module `apps`) |
+| `0012` | DI theo port: transaction qua AsyncLocalStorage, composition root viết tay, luật kiến trúc thành test |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
 ## Cấu trúc
 
 ```
-src/shared/kernel/     ids (branded) · enums · errors · result · clock · email · base-entity
-src/shared/db/         columns dùng chung · outbox · processed_messages
-src/modules/<name>/
-  domain/              CẤM import Drizzle, MySQL, HTTP, application, infrastructure
-    entities/          class entity, mỗi file 1 entity + interface `XxxProps` của nó
-    rules/             hàm thuần: state machine, pipeline, gate, resolver — kèm kiểu I/O của hàm
-    types/             value object / kiểu dùng chung giữa nhiều file hoặc với infrastructure
-  application/         ports/ · commands/ · queries/ · dto.ts (phase 1)
-  infrastructure/db/   schema.ts — bảng mà module này sở hữu; adapters/ hiện thực port
-  interface/           http/ · consumers/ · jobs/ (phase 1)
+src/
+  index.ts                 bootstrap tạm: dựng container, ping DB, thoát (lượt 3 thay bằng entrypoints/)
+  entrypoints/             process chạy được: migrate.ts · load-env-or-exit.ts · (api/worker/scheduler — lượt 3)
+  composition/             COMPOSITION ROOT — nơi DUY NHẤT ghép hiện thực vào port. Chỉ entrypoint import.
+  shared/
+    kernel/                ids (branded) · enums · errors · result · clock · email · base-entity — thuần, không I/O
+    application/ports/     port hạ tầng dùng chung: UnitOfWork · EventOutbox — thuần interface
+    observability/         logger.ts (port Logger) · pino-logger.ts (hiện thực, chỉ composition dựng)
+    config/                loadEnv() — zod, fail-fast; không ai khác đọc process.env
+    db/                    client (pool + UTC) · TransactionContext (ALS) · DrizzleUnitOfWork ·
+                           DrizzleEventOutbox · ProcessedMessageStore · lockParentRow · errors · columns · schema
+  modules/<name>/
+    domain/                CẤM import Drizzle, MySQL, HTTP, application, infrastructure, global của Node
+      entities/            class entity, mỗi file 1 entity + interface `XxxProps` của nó
+      rules/               hàm thuần: state machine, pipeline, gate, resolver — kèm kiểu I/O của hàm
+      types/               value object / kiểu dùng chung giữa nhiều file hoặc với infrastructure
+    application/           ports/ · commands/ · queries/ · dto.ts — chỉ thấy domain + port
+    infrastructure/        db/schema.ts — bảng module này sở hữu; adapters/ hiện thực port
+    interface/             http/ · consumers/ · jobs/ — parse input -> gọi command/query -> map output
+test/
+  unit/                    domain thuần, không DB
+  architecture/            luật phụ thuộc (ADR-0012) — chạy cùng `npm test`
+  integration/             MySQL thật; support/: global-setup, createTestDatabase(), fixtures, race()
+Dockerfile · docker-compose.yml · .dockerignore
+```
+
+Chiều phụ thuộc (mũi tên = "được phép import"), ép bởi `test/architecture/dependency-rules.test.ts`:
+
+```
+entrypoints ─► composition ─► infrastructure (modules/*/infrastructure, shared/db, pino-logger)
+                                   │
+                                   ▼
+                    application (modules/*/application, shared/application/ports, Logger port)
+                                   │
+                                   ▼
+                    domain (modules/*/domain) ─► shared/kernel
 ```
 
 **Domain không khai port.** Rule nào cần dữ liệu từ DB thì nhận dữ liệu đã tra sẵn làm tham số;
@@ -85,8 +125,9 @@ Khác tài liệu A ba chỗ (ADR-0006): thêm `tenancy` (org/admin), thêm `seg
 người nhận), `topics` thu lại chỉ còn consent.
 
 **Dependency rule:** `domain` chỉ biết `shared/kernel`. `infrastructure` hiện thực port và là nơi
-duy nhất biết SQL. Module A cần module B thì đi qua port + adapter, không query bảng của B.
-Ngoại lệ duy nhất đã duyệt là ADR-0010.
+duy nhất biết SQL. Module A cần module B thì adapter của A gọi `application` của B, không query bảng
+của B. Import xuyên module ở `infrastructure` chỉ được `schema.ts -> schema.ts` (để khai FK).
+Ngoại lệ ở domain duy nhất đã duyệt là ADR-0010. Mọi luật này là test — vi phạm là `npm test` đỏ.
 
 ## Các hạt nhân nghiệp vụ
 
@@ -123,6 +164,10 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   chéo org. Chúng cần `uq_apps_app_org` và `uq_persons_person_org` làm đích. InnoDB **cho phép** FK trỏ
   tới index không unique, nên nếu ai xoá hai unique đó vì tưởng thừa thì ràng buộc âm thầm yếu đi mà
   không báo lỗi. Đừng xoá.
+- **Tên định danh ≤ 64 ký tự** (`ER_TOO_LONG_IDENT`). Tên FK Drizzle tự sinh
+  (`<bảng>_<cột>_<bảng đích>_<cột đích>_fk`) rất dễ vượt — FK nào tên tự sinh dài quá thì khai bằng
+  `foreignKey({ name: 'fk_...' })`. `test/integration/migrations.test.ts` chạy migration trên MySQL thật
+  nên sẽ bắt lỗi này; `db:generate` thì **không** bắt.
 - **Ba composite FK chống cấp quyền chéo account** (ADR-0011): `fk_apps_org_account`,
   `fk_admin_app_roles_admin_account`, `fk_admin_app_roles_app_account`. Đích bắt buộc:
   `uq_organizations_org_account`, `uq_admins_admin_account`, `uq_apps_app_account`. Cùng lý do — đừng xoá.
@@ -139,9 +184,24 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   `code`, **không bao giờ** so theo chữ của `message`.
 - **Cột nullable của DB mô hình bằng `null`**, không phải `undefined`. `exactOptionalPropertyTypes`
   đang bật nên props tuỳ chọn phải khai `?: T | undefined`.
-- **Entity nhận một object props**; service sẽ nhận một bag dependency. Đây là hình dạng DI container
-  phase 1 sẽ wire.
-- **Barrel `index.ts`** ở mọi thư mục; thêm file là thêm export.
+- **Entity nhận một object props; class hạ tầng nhận một bag dependency** (`constructor(deps: { … })`).
+  `erasableSyntaxOnly` cấm parameter property nên gán field tường minh trong constructor.
+- **DI theo port (ADR-0012).** Application chỉ thấy interface: `UnitOfWork`, `EventOutbox`, `Logger`,
+  `Clock`, và port của chính module. Hiện thực được ghép DUY NHẤT ở `src/composition/container.ts`
+  (`ports` cho application, `infra` cho adapter/consumer/entrypoint). Thêm port = interface ở
+  `application/ports/` + hiện thực ở `infrastructure/` + một dòng wiring.
+- **Thời gian là tham số.** Domain/kernel không gọi `new Date()`/`Date.now()`: `createdAt` bắt buộc,
+  mọi hàm đổi trạng thái nhận `at: Date`, application truyền `clock.now()`.
+- **Barrel `index.ts`** ở mọi thư mục; thêm file là thêm export. Hai ngoại lệ có chủ đích: không có
+  barrel gộp mọi module (`src/modules/index.ts` — mỗi bounded context vào qua barrel riêng), và
+  `src/shared/index.ts` chỉ gồm kernel + port Logger để không ai kéo hạ tầng vào qua barrel.
+- **Transaction: `await uow.run(async () => { … })`** — không có tham số `tx`. Mọi port gọi bên trong
+  dùng CHUNG một transaction (giữ trong `TransactionContext`, AsyncLocalStorage). Adapter lấy
+  executor bằng `transactions.executor()` (đọc) hoặc `transactions.require(op)` (bắt buộc trong tx:
+  outbox, processed_messages, khoá dòng — gọi ngoài `run` ném `TransactionRequiredError`).
+  `run` lồng nhau nhập vào transaction ngoài.
+- **Ràng buộc "tối đa N mỗi cha"**: `lockParentRow(transactions.require(...), bảng cha, PK, id)` rồi
+  mới đếm (ADR-0009). Phải có test `race()` trong `test/integration/` chứng minh.
 - **Domain không import Drizzle.** Entity và bảng là hai thứ khác nhau, nối bằng mapper ở
   `infrastructure` (mapper sẽ viết ở phase 1).
 

@@ -17,13 +17,13 @@ export class UserTopicPreference {
     topicId: TopicId;
     optedIn: boolean;
     source: PreferenceSource;
-    updatedAt?: Date | undefined;
+    updatedAt: Date;
   }) {
     this.userId = props.userId;
     this.topicId = props.topicId;
     this.optedIn = props.optedIn;
     this.source = props.source;
-    this.updatedAt = props.updatedAt ?? new Date();
+    this.updatedAt = props.updatedAt;
   }
 
   set(optedIn: boolean, source: PreferenceSource, at: Date): void {

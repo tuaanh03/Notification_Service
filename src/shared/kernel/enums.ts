@@ -33,6 +33,10 @@ export type TerminalStatus = (typeof TERMINAL_STATUSES)[number];
 export const NOTIFICATION_ORIGINS = ['api', 'dashboard'] as const;
 export type NotificationOrigin = (typeof NOTIFICATION_ORIGINS)[number];
 
+/** Duyệt gửi khi vượt ngưỡng (`pending_approval`) — Super Admin quyết. */
+export const SEND_APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export type SendApprovalStatus = (typeof SEND_APPROVAL_STATUSES)[number];
+
 export const APP_STATUSES = ['draft', 'pending_approval', 'active', 'suspended', 'revoked'] as const;
 export type AppStatus = (typeof APP_STATUSES)[number];
 
@@ -41,6 +45,10 @@ export type AppOrigin = (typeof APP_ORIGINS)[number];
 
 export const APP_SECRET_STATUSES = ['active', 'revoked'] as const;
 export type AppSecretStatus = (typeof APP_SECRET_STATUSES)[number];
+
+/** Allowlist của app: địa chỉ IP gọi `/v1/*` hoặc origin của trình duyệt. */
+export const NETWORK_RULE_KINDS = ['ip', 'origin'] as const;
+export type NetworkRuleKind = (typeof NETWORK_RULE_KINDS)[number];
 
 export const CHANNELS = ['email', 'sms', 'push', 'in_app'] as const;
 export type Channel = (typeof CHANNELS)[number];

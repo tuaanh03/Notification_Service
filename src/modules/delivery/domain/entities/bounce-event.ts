@@ -19,14 +19,14 @@ export class BounceEvent {
     address: string;
     kind: BounceKind;
     raw?: Record<string, unknown> | undefined;
-    at?: Date | undefined;
+    at: Date;
   }) {
     this.id = props.id;
     this.providerId = props.providerId;
     this.address = props.address;
     this.kind = props.kind;
     this.raw = props.raw ?? {};
-    this.at = props.at ?? new Date();
+    this.at = props.at;
   }
 
   get suppressesChannel(): boolean {

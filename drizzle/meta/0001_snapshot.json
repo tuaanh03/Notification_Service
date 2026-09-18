@@ -620,8 +620,8 @@
         }
       },
       "foreignKeys": {
-        "delivery_batches_notification_id_notifications_notification_id_fk": {
-          "name": "delivery_batches_notification_id_notifications_notification_id_fk",
+        "fk_delivery_batches_notification": {
+          "name": "fk_delivery_batches_notification",
           "tableFrom": "delivery_batches",
           "tableTo": "notifications",
           "columnsFrom": [
@@ -1250,8 +1250,8 @@
         }
       },
       "foreignKeys": {
-        "notification_recipients_notification_id_notifications_notification_id_fk": {
-          "name": "notification_recipients_notification_id_notifications_notification_id_fk",
+        "fk_notification_recipients_notification": {
+          "name": "fk_notification_recipients_notification",
           "tableFrom": "notification_recipients",
           "tableTo": "notifications",
           "columnsFrom": [
@@ -1369,8 +1369,8 @@
         }
       },
       "foreignKeys": {
-        "notification_transitions_notification_id_notifications_notification_id_fk": {
-          "name": "notification_transitions_notification_id_notifications_notification_id_fk",
+        "fk_notification_transitions_notification": {
+          "name": "fk_notification_transitions_notification",
           "tableFrom": "notification_transitions",
           "tableTo": "notifications",
           "columnsFrom": [
@@ -1634,8 +1634,8 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "notifications_template_version_id_template_versions_template_version_id_fk": {
-          "name": "notifications_template_version_id_template_versions_template_version_id_fk",
+        "fk_notifications_template_version": {
+          "name": "fk_notifications_template_version",
           "tableFrom": "notifications",
           "tableTo": "template_versions",
           "columnsFrom": [

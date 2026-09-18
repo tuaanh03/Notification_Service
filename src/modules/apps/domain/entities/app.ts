@@ -76,10 +76,10 @@ export class App extends BaseEntity<AppId> {
   }
 
   /** Mọi đổi trạng thái đi qua đây — không ai set `status` trực tiếp. */
-  apply(event: AppTransitionEvent): AppStatus {
+  apply(event: AppTransitionEvent, at: Date): AppStatus {
     const from = this.status;
     this.status = nextAppStatus(from, event);
-    this.touch();
+    this.touch(at);
     return this.status;
   }
 

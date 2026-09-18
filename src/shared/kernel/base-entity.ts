@@ -1,6 +1,11 @@
-/** Cột nullable của DB mô hình bằng `null`; `undefined` chỉ dùng cho tiện dụng lúc dựng. */
+/**
+ * Thời gian là DEPENDENCY, không phải thứ domain tự lấy (`new Date()` ngầm = không test cố định
+ * được và lệch giữa các bước của cùng một command). `createdAt` bắt buộc: entity mới thì
+ * application truyền `clock.now()`, entity nạp từ DB thì mapper truyền giá trị trong bảng.
+ */
 export interface TimestampInput {
-  createdAt?: Date | undefined;
+  createdAt: Date;
+  /** Bỏ trống = bằng `createdAt` (entity vừa tạo). */
   updatedAt?: Date | undefined;
 }
 
@@ -13,18 +18,19 @@ export abstract class BaseEntity<TId extends string> {
   readonly createdAt: Date;
   private mutableUpdatedAt: Date;
 
-  protected constructor(id: TId, timestamps?: TimestampInput) {
+  protected constructor(id: TId, timestamps: TimestampInput) {
     this.id = id;
-    this.createdAt = timestamps?.createdAt ?? new Date();
-    this.mutableUpdatedAt = timestamps?.updatedAt ?? this.createdAt;
+    this.createdAt = timestamps.createdAt;
+    this.mutableUpdatedAt = timestamps.updatedAt ?? timestamps.createdAt;
   }
 
   get updatedAt(): Date {
     return this.mutableUpdatedAt;
   }
 
-  protected touch(at?: Date): void {
-    this.mutableUpdatedAt = at ?? new Date();
+  /** Mọi thay đổi trạng thái gọi hàm này với thời điểm do caller truyền vào. */
+  protected touch(at: Date): void {
+    this.mutableUpdatedAt = at;
   }
 
   equals(other: BaseEntity<TId> | null | undefined): boolean {

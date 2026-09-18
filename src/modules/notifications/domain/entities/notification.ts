@@ -147,9 +147,9 @@ export class Notification extends BaseEntity<NotificationId> {
     this.touch(at);
   }
 
-  markStaleDirectory(): void {
+  markStaleDirectory(at: Date): void {
     this.staleDirectory = true;
-    this.touch();
+    this.touch(at);
   }
 
   /** UC-005 A6: tin lặp trong cửa sổ gộp -> không sinh bản ghi mới. */
@@ -196,8 +196,11 @@ export class Notification extends BaseEntity<NotificationId> {
   }
 }
 
+const UTF8 = new TextEncoder();
+
 function assertPayloadSize(payload: Record<string, unknown>): void {
-  const bytes = Buffer.byteLength(JSON.stringify(payload), 'utf8');
+  // TextEncoder là API chuẩn, không phải của Node — domain không phụ thuộc runtime.
+  const bytes = UTF8.encode(JSON.stringify(payload)).length;
   if (bytes > MAX_PAYLOAD_BYTES) {
     throw ValidationError.of(
       'PAYLOAD_TOO_LARGE',

@@ -17,6 +17,7 @@ Dùng MySQL 8 (InnoDB, utf8mb4) làm nguồn sự thật.
 | partial unique index | không có | generated column trả NULL khi không khớp + unique index (xem `template_versions.published_marker`) |
 | partial index thường | không có | index đầy đủ, query phải kèm điều kiện (`idx_notifications_scheduled`) |
 | DDL trong transaction | DDL tự commit | migration hỏng giữa chừng để lại trạng thái dở — mỗi migration phải chạy lại được |
+| tên định danh 63 byte, tự cắt khi dài quá | **báo lỗi** `ER_TOO_LONG_IDENT` khi tên > 64 ký tự | FK có tên tự sinh dài quá thì khai tên tay `fk_...` (sửa 2026-09-18: 4 FK của `0000` từng vượt giới hạn, migration không chạy được trên MySQL thật cho tới khi có test tích hợp) |
 
 ## Hai thứ MySQL vẫn làm được, kiến trúc không phải đổi
 - `SELECT ... FOR UPDATE SKIP LOCKED` (MySQL 8.0+) — outbox relay và scheduler giữ nguyên thiết kế.

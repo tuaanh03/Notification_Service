@@ -20,6 +20,7 @@ Bản thân file schema B cũng tự ghi chú là mất phần định nghĩa `o
 | Thay đổi | Lý do |
 | --- | --- |
 | Thêm `tenancy` | A không có tầng org; không module nào của A sở hữu `accounts`/`organizations`/`admins` |
+| `admin_app_roles` thuộc `apps`, không thuộc `tenancy` | Dòng grant mô tả quyền trên app; đặt ở `apps` giữ phụ thuộc một chiều `apps -> tenancy` (sửa 2026-09-18, xem ADR-0011) |
 | Thêm `segments`, giữ pipeline giải người nhận ở đó | B nhắm tin bằng `segments.filters`, không bằng `topic_bindings` của A |
 | `topics` thu lại còn consent | B tách ba kho: tag = targeting, topic = consent, subscription = compliance |
 | `directory` nhận thêm `persons` + `person_merge_log` | Identity Resolver sống ở đây; thay `user_merges` của A |

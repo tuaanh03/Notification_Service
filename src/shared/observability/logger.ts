@@ -1,38 +1,23 @@
-const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 } as const;
-export type LogLevel = keyof typeof LEVELS;
+/**
+ * PORT của logging — thuần interface, không biết pino tồn tại.
+ * Mọi tầng (application, adapter, consumer) phụ thuộc vào file này; chỉ composition root
+ * import `pino-logger.ts` để dựng bản hiện thực.
+ */
 
+/** Nguồn duy nhất cho danh sách level — `shared/config` validate LOG_LEVEL theo mảng này. */
+export const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
+/**
+ * `meta` được trộn thẳng vào dòng log (không lồng), để `notification_id` nằm ở top-level
+ * và truy vết được xuyên api -> worker.
+ */
 export interface Logger {
+  trace(msg: string, meta?: Record<string, unknown>): void;
   debug(msg: string, meta?: Record<string, unknown>): void;
   info(msg: string, meta?: Record<string, unknown>): void;
   warn(msg: string, meta?: Record<string, unknown>): void;
   error(msg: string, meta?: Record<string, unknown>): void;
+  fatal(msg: string, meta?: Record<string, unknown>): void;
   child(context: string): Logger;
-}
-
-/** Logger JSON-line tối giản. Thay bằng pino ở phase 1, giữ nguyên interface. */
-export function createLogger(options: { level?: LogLevel; context?: string } = {}): Logger {
-  const level = options.level ?? ((process.env['LOG_LEVEL'] as LogLevel | undefined) ?? 'info');
-  const context = options.context ?? 'app';
-  const threshold = LEVELS[level] ?? LEVELS.info;
-
-  const write = (lvl: LogLevel, msg: string, meta?: Record<string, unknown>): void => {
-    if (LEVELS[lvl] < threshold) return;
-    const line = JSON.stringify({
-      ts: new Date().toISOString(),
-      level: lvl,
-      context,
-      msg,
-      ...(meta ? { meta } : {}),
-    });
-    if (lvl === 'error' || lvl === 'warn') console.error(line);
-    else console.log(line);
-  };
-
-  return {
-    debug: (msg, meta) => write('debug', msg, meta),
-    info: (msg, meta) => write('info', msg, meta),
-    warn: (msg, meta) => write('warn', msg, meta),
-    error: (msg, meta) => write('error', msg, meta),
-    child: (childContext) => createLogger({ level, context: `${context}:${childContext}` }),
-  };
 }

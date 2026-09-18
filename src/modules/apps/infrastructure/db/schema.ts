@@ -9,9 +9,15 @@ import {
   uniqueIndex,
   varchar,
 } from 'drizzle-orm/mysql-core';
-import { APP_ORIGINS, APP_SECRET_STATUSES, APP_STATUSES } from '../../../../shared/kernel/enums.ts';
+import {
+  ADMIN_ROLES,
+  APP_ORIGINS,
+  APP_SECRET_STATUSES,
+  APP_STATUSES,
+  NETWORK_RULE_KINDS,
+} from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
-import { organizations } from '../../../tenancy/infrastructure/db/schema.ts';
+import { admins, organizations } from '../../../tenancy/infrastructure/db/schema.ts';
 
 /**
  * App = ranh giới cô lập messaging.
@@ -84,9 +90,49 @@ export const appNetworkRules = mysqlTable(
     appId: uuid('app_id')
       .notNull()
       .references(() => apps.appId),
-    kind: mysqlEnum('kind', ['ip', 'origin']).notNull(),
+    kind: mysqlEnum('kind', NETWORK_RULE_KINDS).notNull(),
     value: varchar('value', { length: 255 }).notNull(),
     createdAt: tsNow('created_at'),
   },
   (t) => [primaryKey({ columns: [t.appId, t.kind, t.value] })],
+);
+
+/**
+ * Admin chỉ chạm được app được cấp. Đây là RBAC thật —
+ * Bảng thuộc module `apps` (không phải `tenancy`): dòng grant mô tả quyền TRÊN app, và đặt ở đây
+ * giữ phụ thuộc một chiều apps -> tenancy (ADR-0011).
+ * tag `role:*` trên user không bao giờ thay thế được bảng này.
+ *
+ * Hai composite FK dưới đây là lớp chống rò rỉ chéo ACCOUNT ở tầng quyền: admin và app phải
+ * cùng một account, nếu không INSERT bị từ chối ngay ở DB. Cùng cơ chế với fk_users_app_org
+ * (ADR-0011). InnoDB cho phép FK trỏ tới index KHÔNG unique, nên các unique đích
+ * (uq_admins_admin_account, uq_apps_app_account) không được xoá.
+ */
+export const adminAppRoles = mysqlTable(
+  'admin_app_roles',
+  {
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => admins.adminId),
+    appId: uuid('app_id').notNull(),
+    /** Denormalize để ép được hai composite FK bên dưới. */
+    accountId: uuid('account_id').notNull(),
+    role: mysqlEnum('role', ADMIN_ROLES).notNull(),
+    grantedAt: tsNow('granted_at'),
+    revokedAt: ts('revoked_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.adminId, t.appId] }),
+    foreignKey({
+      name: 'fk_admin_app_roles_admin_account',
+      columns: [t.adminId, t.accountId],
+      foreignColumns: [admins.adminId, admins.accountId],
+    }),
+    // Kiêm luôn FK app_id -> apps: không có app thì không có cặp (app_id, account_id) nào khớp.
+    foreignKey({
+      name: 'fk_admin_app_roles_app_account',
+      columns: [t.appId, t.accountId],
+      foreignColumns: [apps.appId, apps.accountId],
+    }),
+  ],
 );

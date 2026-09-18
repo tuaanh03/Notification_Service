@@ -19,13 +19,13 @@ export class PersonMergeLog {
     userId: UserId;
     matchedOn: MatchedOn;
     matchedValue: string;
-    createdAt?: Date | undefined;
+    createdAt: Date;
   }) {
     this.id = props.id;
     this.personId = props.personId;
     this.userId = props.userId;
     this.matchedOn = props.matchedOn;
     this.matchedValue = props.matchedValue;
-    this.createdAt = props.createdAt ?? new Date();
+    this.createdAt = props.createdAt;
   }
 }

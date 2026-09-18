@@ -11,10 +11,11 @@ import {
 } from '../../src/shared/kernel/index.ts';
 import { Person } from '../../src/modules/directory/domain/entities/person.ts';
 import { User } from '../../src/modules/directory/domain/entities/user.ts';
-import { AdminAppRole } from '../../src/modules/tenancy/domain/entities/admin-app-role.ts';
+import { AdminAppRole } from '../../src/modules/apps/domain/entities/admin-app-role.ts';
 
 const ORG_A = OrgId.create();
 const ORG_B = OrgId.create();
+const AT = new Date('2026-09-18T00:00:00.000Z');
 
 function user(orgId = ORG_A): User {
   return new User({
@@ -22,18 +23,19 @@ function user(orgId = ORG_A): User {
     appId: AppId.create(),
     orgId,
     externalId: 'user_001',
+    createdAt: AT,
   });
 }
 
 function person(orgId = ORG_A): Person {
-  return new Person({ id: PersonId.create(), orgId, primaryEmail: 'minh@example.com' });
+  return new Person({ id: PersonId.create(), orgId, primaryEmail: 'minh@example.com', createdAt: AT });
 }
 
 describe('org là ranh giới sở hữu — chống rò rỉ chéo org', () => {
   it('nối user vào person CÙNG org thì được', () => {
     const u = user();
     const p = person();
-    u.linkToPerson(p);
+    u.linkToPerson(p, AT);
     expect(u.personId).toBe(p.id);
   });
 
@@ -41,7 +43,7 @@ describe('org là ranh giới sở hữu — chống rò rỉ chéo org', () => 
   it('nối user vào person KHÁC org thì bị chặn ngay ở domain', () => {
     const u = user(ORG_A);
     const p = person(ORG_B);
-    expect(() => u.linkToPerson(p)).toThrow(CrossOrgViolationError);
+    expect(() => u.linkToPerson(p, AT)).toThrow(CrossOrgViolationError);
     expect(u.personId).toBeNull();
   });
 
@@ -50,6 +52,7 @@ describe('org là ranh giới sở hữu — chống rò rỉ chéo org', () => 
       id: PersonId.create(),
       orgId: ORG_A,
       primaryEmail: '  Minh@Example.COM  ',
+      createdAt: AT,
     });
     expect(p.primaryEmail).toBe('minh@example.com');
   });
@@ -59,7 +62,6 @@ describe('org là ranh giới sở hữu — chống rò rỉ chéo org', () => 
 describe('account là ranh giới của RBAC — chống cấp quyền chéo account', () => {
   const ACCOUNT_X = AccountId.create();
   const ACCOUNT_Y = AccountId.create();
-  const AT = new Date('2026-09-18T00:00:00.000Z');
 
   it('admin và app cùng account thì cấp quyền được', () => {
     const role = AdminAppRole.grant(

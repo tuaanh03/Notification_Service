@@ -15,13 +15,13 @@ export class UserTag {
   value: string;
   updatedAt: Date;
 
-  constructor(props: { userId: UserId; key: string; value: string; updatedAt?: Date | undefined }) {
+  constructor(props: { userId: UserId; key: string; value: string; updatedAt: Date }) {
     const key = props.key.trim();
     if (!key) throw ValidationError.of('TAG_KEY_REQUIRED', 'tag key must not be empty', 'key');
     this.userId = props.userId;
     this.key = key;
     this.value = props.value;
-    this.updatedAt = props.updatedAt ?? new Date();
+    this.updatedAt = props.updatedAt;
   }
 
   overwrite(value: string, at: Date): void {

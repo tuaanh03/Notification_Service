@@ -47,21 +47,21 @@ export class User extends BaseEntity<UserId> {
    * Nối user vào một person. Đây là chỗ mô hình B chống rò rỉ dữ liệu giữa các org:
    * domain chặn trước, composite FK trong MySQL chặn lần cuối.
    */
-  linkToPerson(person: Person): void {
+  linkToPerson(person: Person, at: Date): void {
     if (person.orgId !== this.orgId) {
       throw new CrossOrgViolationError('person', this.orgId, person.orgId);
     }
     this.personId = person.id;
-    this.touch();
+    this.touch(at);
   }
 
-  unlinkPerson(): void {
+  unlinkPerson(at: Date): void {
     this.personId = null;
-    this.touch();
+    this.touch(at);
   }
 
   seenAt(at: Date): void {
     this.lastSeen = at;
-    this.touch();
+    this.touch(at);
   }
 }

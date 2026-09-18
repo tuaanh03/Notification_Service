@@ -8,20 +8,27 @@
     "start": "node dist/src/index.js",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
+    "lint:arch": "vitest run --project unit test/architecture",
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:all": "vitest run",
+    "test:watch": "vitest --project unit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "tsx src/entrypoints/migrate.ts",
+    "db:migrate:prod": "node dist/src/entrypoints/migrate.js"
   },
   "engines": {
     "node": ">=22.18"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "mysql2": "^3.24.4"
+    "mysql2": "^3.24.4",
+    "pino": "^10.3.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@testcontainers/mysql": "^12.1.0",
     "@types/node": "^22.20.3",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.13",

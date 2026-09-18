@@ -1,4 +1,4 @@
-import { index, int, json, mysqlEnum, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { foreignKey, index, int, json, mysqlEnum, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 import { BOUNCE_KINDS, CHANNELS, DELIVERY_BATCH_STATUSES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 import { notifications } from '../../../notifications/infrastructure/db/schema.ts';
@@ -7,9 +7,7 @@ export const deliveryBatches = mysqlTable(
   'delivery_batches',
   {
     deliveryBatchId: uuidPk('delivery_batch_id'),
-    notificationId: uuid('notification_id')
-      .notNull()
-      .references(() => notifications.notificationId),
+    notificationId: uuid('notification_id').notNull(),
     batchNo: int('batch_no').notNull(),
     channel: mysqlEnum('channel', CHANNELS).notNull(),
     size: int('size').notNull(),
@@ -20,7 +18,15 @@ export const deliveryBatches = mysqlTable(
     createdAt: tsNow('created_at'),
   },
   // Khoá idempotent thứ hai của delivery consumer, cạnh processed_messages.
-  (t) => [uniqueIndex('uq_delivery_batches_notification_batch').on(t.notificationId, t.batchNo)],
+  (t) => [
+    uniqueIndex('uq_delivery_batches_notification_batch').on(t.notificationId, t.batchNo),
+    // Tên FK đặt tay: tên tự sinh dài 65 ký tự, MySQL giới hạn 64.
+    foreignKey({
+      name: 'fk_delivery_batches_notification',
+      columns: [t.notificationId],
+      foreignColumns: [notifications.notificationId],
+    }),
+  ],
 );
 
 export const bounceEvents = mysqlTable(

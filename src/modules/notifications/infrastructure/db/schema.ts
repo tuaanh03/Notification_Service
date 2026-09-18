@@ -1,4 +1,15 @@
-import { boolean, index, int, json, mysqlEnum, mysqlTable, primaryKey, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import {
+  boolean,
+  foreignKey,
+  index,
+  int,
+  json,
+  mysqlEnum,
+  mysqlTable,
+  primaryKey,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/mysql-core';
 import {
   ACTOR_TYPES,
   CHANNELS,
@@ -6,6 +17,7 @@ import {
   NOTIFICATION_ORIGINS,
   NOTIFICATION_STATUSES,
   RECIPIENT_STATUSES,
+  SEND_APPROVAL_STATUSES,
 } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 import { apps } from '../../../apps/infrastructure/db/schema.ts';
@@ -28,9 +40,7 @@ export const notifications = mysqlTable(
     origin: mysqlEnum('origin', NOTIFICATION_ORIGINS).notNull(),
     status: mysqlEnum('status', NOTIFICATION_STATUSES).notNull(),
     isTest: boolean('is_test').notNull().default(false),
-    templateVersionId: uuid('template_version_id').references(
-      () => templateVersions.templateVersionId,
-    ),
+    templateVersionId: uuid('template_version_id'),
     /** Dữ liệu của MỘT lần gửi. Giới hạn 2 KB ép ở domain (413 nếu vượt). */
     payload: json('payload').$type<Record<string, unknown>>().notNull().default({}),
     includedSegments: json('included_segments').$type<string[]>().notNull().default([]),
@@ -58,6 +68,12 @@ export const notifications = mysqlTable(
      * chặn trùng khi có key, không cản gì khi key NULL. Đây là chốt cuối của idempotency.
      */
     uniqueIndex('uq_notifications_app_idempotency').on(t.appId, t.idempotencyKey),
+    // Tên FK đặt tay: tên Drizzle tự sinh ở đây dài 74 ký tự, MySQL giới hạn 64 (ER_TOO_LONG_IDENT).
+    foreignKey({
+      name: 'fk_notifications_template_version',
+      columns: [t.templateVersionId],
+      foreignColumns: [templateVersions.templateVersionId],
+    }),
     index('idx_notifications_app_created').on(t.appId, t.createdAt),
     // MySQL không có partial index -> index thường, query phải kèm status='scheduled'.
     index('idx_notifications_scheduled').on(t.status, t.scheduledAt),
@@ -74,9 +90,7 @@ export const notificationTransitions = mysqlTable(
   'notification_transitions',
   {
     transitionId: uuidPk('transition_id'),
-    notificationId: uuid('notification_id')
-      .notNull()
-      .references(() => notifications.notificationId),
+    notificationId: uuid('notification_id').notNull(),
     fromStatus: mysqlEnum('from_status', NOTIFICATION_STATUSES).notNull(),
     toStatus: mysqlEnum('to_status', NOTIFICATION_STATUSES).notNull(),
     event: varchar('event', { length: 64 }).notNull(),
@@ -85,7 +99,14 @@ export const notificationTransitions = mysqlTable(
     reason: varchar('reason', { length: 500 }),
     at: tsNow('at'),
   },
-  (t) => [index('idx_notification_transitions_notification').on(t.notificationId, t.at)],
+  (t) => [
+    index('idx_notification_transitions_notification').on(t.notificationId, t.at),
+    foreignKey({
+      name: 'fk_notification_transitions_notification',
+      columns: [t.notificationId],
+      foreignColumns: [notifications.notificationId],
+    }),
+  ],
 );
 
 /**
@@ -98,9 +119,7 @@ export const notificationTransitions = mysqlTable(
 export const notificationRecipients = mysqlTable(
   'notification_recipients',
   {
-    notificationId: uuid('notification_id')
-      .notNull()
-      .references(() => notifications.notificationId),
+    notificationId: uuid('notification_id').notNull(),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.userId),
@@ -122,6 +141,11 @@ export const notificationRecipients = mysqlTable(
     primaryKey({ columns: [t.notificationId, t.userId, t.channel] }),
     index('idx_notification_recipients_subscription').on(t.subscriptionId),
     index('idx_notification_recipients_batch').on(t.notificationId, t.batchNo),
+    foreignKey({
+      name: 'fk_notification_recipients_notification',
+      columns: [t.notificationId],
+      foreignColumns: [notifications.notificationId],
+    }),
   ],
 );
 
@@ -135,7 +159,7 @@ export const sendApprovals = mysqlTable(
     estimate: int('estimate').notNull(),
     author: varchar('author', { length: 64 }).notNull(),
     reviewer: varchar('reviewer', { length: 64 }),
-    status: mysqlEnum('status', ['pending', 'approved', 'rejected']).notNull().default('pending'),
+    status: mysqlEnum('status', SEND_APPROVAL_STATUSES).notNull().default('pending'),
     reason: varchar('reason', { length: 500 }),
     decidedAt: ts('decided_at'),
     createdAt: tsNow('created_at'),

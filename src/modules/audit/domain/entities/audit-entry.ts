@@ -26,7 +26,7 @@ export class AuditEntry {
     before?: Record<string, unknown> | null | undefined;
     after?: Record<string, unknown> | null | undefined;
     source: string;
-    at?: Date | undefined;
+    at: Date;
   }) {
     this.id = props.id;
     this.actor = props.actor;
@@ -37,6 +37,6 @@ export class AuditEntry {
     this.before = props.before ?? null;
     this.after = props.after ?? null;
     this.source = props.source;
-    this.at = props.at ?? new Date();
+    this.at = props.at;
   }
 }
