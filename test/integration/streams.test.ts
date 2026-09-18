@@ -5,7 +5,7 @@ import { createContainer, type Container } from '../../src/composition/index.ts'
 import { accounts } from '../../src/modules/tenancy/infrastructure/db/schema.ts';
 import type { IntegrationEvent } from '../../src/shared/application/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
-import { outbox } from '../../src/shared/db/index.ts';
+import { outbox, processedMessages } from '../../src/shared/db/index.ts';
 import { AccountId, ValidationError } from '../../src/shared/kernel/index.ts';
 import {
   decodeMessage,
@@ -297,6 +297,104 @@ describe('stream consumer', () => {
     controller.abort();
     await running;
     expect(received.find((m) => m.aggregateId === 'agg-99')).toMatchObject({ eventType: 'WorkRequested' });
+  });
+});
+
+// ADR-0016: handler gọi dịch vụ ngoài (gửi email) cần commit "đã nhận việc" TRƯỚC khi gọi ra ngoài.
+describe("stream consumer — idempotency: 'handler'", () => {
+  let outboxSeq = 2_000_000;
+  const publish = (stream: string, n: number, outboxId = String(outboxSeq++)) =>
+    c.infra.streams.add(
+      stream,
+      encodeOutboxRecord({
+        outboxId,
+        stream,
+        eventType: 'Work',
+        aggregateType: 'Test',
+        aggregateId: `h-${n}`,
+        payload: { n },
+        createdAt: new Date(),
+      }),
+    );
+  const consumerFor = async (stream: string, handler: MessageHandler, spec: Partial<ConsumerSpec> = {}) => {
+    const consumer = c.infra.createConsumer({
+      stream,
+      group: `g-${stream}`,
+      consumer: 'c1',
+      handler,
+      claimIdleMs: 0,
+      idempotency: 'handler',
+      ...spec,
+    });
+    await consumer.ensureGroup();
+    return consumer;
+  };
+  const markers = (stream: string) =>
+    t.db.select().from(processedMessages).where(eq(processedMessages.consumerGroup, `g-${stream}`));
+  const insertAccount = (id: AccountId) =>
+    c.infra.transactions.require('handler').insert(accounts).values({ accountId: id, name: 'handler-mode' });
+  const accountExists = async (id: AccountId) =>
+    (await t.db.select().from(accounts).where(eq(accounts.accountId, id))).length === 1;
+
+  it('khung không mở transaction, không ghi processed_messages; handler tự commit được', async () => {
+    const stream = uniqueStream('hm-ok');
+    const id = AccountId.create();
+    const consumer = await consumerFor(stream, async () => {
+      // Không có transaction bao ngoài: uow.run này COMMIT ngay khi xong, độc lập với khung.
+      await c.ports.uow.run(() => insertAccount(id));
+    });
+    await publish(stream, 1);
+
+    expect(await consumer.pollOnce(0)).toMatchObject({ processed: 1 });
+    expect(await accountExists(id)).toBe(true);
+    expect(await markers(stream)).toHaveLength(0);
+  });
+
+  it('handler commit "đã nhận việc" rồi mới lỗi: phần đã commit GIỮ NGUYÊN, message vẫn được giao lại', async () => {
+    const stream = uniqueStream('hm-claim');
+    const claimed = AccountId.create();
+    let calls = 0;
+    const consumer = await consumerFor(stream, async () => {
+      calls += 1;
+      if (calls === 1) {
+        await c.ports.uow.run(() => insertAccount(claimed)); // tx1: "nhận việc", commit
+        throw new Boom('provider timed out'); // gọi ra ngoài thất bại SAU khi đã commit
+      }
+    });
+    await publish(stream, 1);
+
+    expect(await consumer.pollOnce(0)).toMatchObject({ retried: 1 });
+    expect(await accountExists(claimed)).toBe(true); // khác chế độ framework: không bị rollback
+    expect(await consumer.reclaimOnce()).toMatchObject({ processed: 1 });
+    expect(calls).toBe(2);
+  });
+
+  // Khung không khử trùng ở chế độ này — handler PHẢI tự lo (ví dụ conditional update trên status).
+  it('cùng event tới hai lần -> handler được gọi hai lần; handler tự nhận ra lần hai', async () => {
+    const stream = uniqueStream('hm-dup');
+    const done = new Set<string>();
+    let sideEffects = 0;
+    const consumer = await consumerFor(stream, async (m) => {
+      if (done.has(m.dedupKey)) return; // giả lập "status không còn queued"
+      done.add(m.dedupKey);
+      sideEffects += 1;
+    });
+    await publish(stream, 1, 'same-outbox');
+    await publish(stream, 1, 'same-outbox');
+
+    expect(await consumer.pollOnce(0)).toMatchObject({ processed: 2, duplicates: 0 });
+    expect(sideEffects).toBe(1);
+  });
+
+  it('lỗi vĩnh viễn vẫn vào DLQ như chế độ mặc định', async () => {
+    const stream = uniqueStream('hm-perm');
+    const consumer = await consumerFor(stream, async () => {
+      throw new PermanentMessageError('rejected by provider');
+    });
+    await publish(stream, 1);
+
+    expect(await consumer.pollOnce(0)).toMatchObject({ deadLettered: 1 });
+    expect(await c.infra.streams.length(dlqOf(stream))).toBe(1);
   });
 });
 

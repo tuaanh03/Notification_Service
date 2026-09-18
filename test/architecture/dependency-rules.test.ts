@@ -67,11 +67,21 @@ function externalViolations(check: (from: SourceFile, pkg: string) => boolean): 
   return files.flatMap((f) => f.external.filter((pkg) => check(f, pkg)).map((pkg): Edge => `${f.path} -> ${pkg}`));
 }
 
-/** ADR-0010: hai import xuyên module DUY NHẤT được phép ở tầng domain. */
-const ADR_0010: ReadonlySet<Edge> = new Set<Edge>([
-  'src/modules/segments/domain/rules/resolution-pipeline.ts -> src/modules/subscriptions/domain/rules/subscription-gate.ts',
-  'src/modules/segments/domain/rules/resolution-pipeline.ts -> src/modules/topics/domain/rules/topic-consent.ts',
-]);
+/**
+ * ADR-0010: các import xuyên module DUY NHẤT được phép ở tầng domain — hai rule consent thuần,
+ * gọi từ pipeline segment và từ email-gate (gửi trực tiếp, ADR-0016).
+ */
+const CONSENT_RULES = [
+  'src/modules/subscriptions/domain/rules/subscription-gate.ts',
+  'src/modules/topics/domain/rules/topic-consent.ts',
+];
+const CONSENT_CALLERS = [
+  'src/modules/segments/domain/rules/resolution-pipeline.ts',
+  'src/modules/notifications/domain/rules/email-gate.ts',
+];
+const ADR_0010: ReadonlySet<Edge> = new Set<Edge>(
+  CONSENT_CALLERS.flatMap((from) => CONSENT_RULES.map((to): Edge => `${from} -> ${to}`)),
+);
 
 describe('luật phụ thuộc', () => {
   it('parser thấy được mã nguồn (chặn trường hợp test pass vì đọc rỗng)', () => {

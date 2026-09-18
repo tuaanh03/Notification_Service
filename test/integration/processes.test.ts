@@ -13,6 +13,7 @@ import { startApi, startScheduler, startWorker } from '../../src/entrypoints/ind
 import type { IntegrationEvent } from '../../src/shared/application/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
 import { outbox, processedMessages } from '../../src/shared/db/index.ts';
+import { DEFAULT_BODY_LIMIT_BYTES, LARGE_BODY_LIMIT_BYTES } from '../../src/shared/http/index.ts';
 import { ValidationError } from '../../src/shared/kernel/index.ts';
 import { createRedis, type StreamMessage } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
@@ -103,6 +104,32 @@ describe('process api', () => {
       const broken = await fetch(`${api.url}/test/echo`, { method: 'POST', headers: json, body: '{oops' });
       expect(broken.status).toBe(400);
       expect(await broken.json()).toMatchObject({ code: 'MALFORMED_JSON' });
+    } finally {
+      await api.stop();
+    }
+  });
+
+  it('giới hạn body: mặc định 64 KB; route khai LARGE_BODY_LIMIT_BYTES nhận được email 300 KB', async () => {
+    const api = await startApi(c, buildApplication(c), {
+      extraSurfaces: {
+        public: [
+          (app) => {
+            app.post('/test/small', async () => ({ ok: true }));
+            app.post('/test/large', { bodyLimit: LARGE_BODY_LIMIT_BYTES }, async () => ({ ok: true }));
+          },
+        ],
+      },
+    });
+    try {
+      const body = JSON.stringify({ html: 'x'.repeat(300 * 1024) });
+      const post = (path: string) =>
+        fetch(`${api.url}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+
+      const small = await post('/test/small');
+      expect(small.status).toBe(413);
+      expect(await small.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+      expect((await post('/test/large')).status).toBe(200);
+      expect(LARGE_BODY_LIMIT_BYTES).toBeGreaterThan(DEFAULT_BODY_LIMIT_BYTES);
     } finally {
       await api.stop();
     }

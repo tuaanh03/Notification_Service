@@ -4,6 +4,7 @@ import {
   index,
   int,
   json,
+  mediumtext,
   mysqlEnum,
   mysqlTable,
   primaryKey,
@@ -60,6 +61,12 @@ export const notifications = mysqlTable(
     queuedAt: ts('queued_at'),
     sendingAt: ts('sending_at'),
     finishedAt: ts('finished_at'),
+    // --- Gửi email trực tiếp một người (MVP — ADR-0016). NULL với gửi theo segment / template. ---
+    targetUserId: uuid('target_user_id'),
+    /** 998 = giới hạn dòng header RFC 5322. */
+    subject: varchar('subject', { length: 998 }),
+    bodyHtml: mediumtext('body_html'),
+    bodyText: mediumtext('body_text'),
   },
   (t) => [
     /**
@@ -73,6 +80,11 @@ export const notifications = mysqlTable(
       name: 'fk_notifications_template_version',
       columns: [t.templateVersionId],
       foreignColumns: [templateVersions.templateVersionId],
+    }),
+    foreignKey({
+      name: 'fk_notifications_target_user',
+      columns: [t.targetUserId],
+      foreignColumns: [users.userId],
     }),
     index('idx_notifications_app_created').on(t.appId, t.createdAt),
     // MySQL không có partial index -> index thường, query phải kèm status='scheduled'.

@@ -46,7 +46,7 @@ describe('lỗi -> problem+json', () => {
   it('lỗi 4xx của Fastify (JSON hỏng, body quá lớn) giữ status của nó', () => {
     expect(toProblem(Object.assign(new Error('Body is too large'), { statusCode: 413 }))).toMatchObject({
       status: 413,
-      code: 'HTTP_413',
+      code: 'PAYLOAD_TOO_LARGE',
     });
   });
 

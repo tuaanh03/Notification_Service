@@ -23,8 +23,9 @@ export interface StreamMessage {
 }
 
 /**
- * Handler chạy BÊN TRONG transaction của khung consumer (cùng với dấu processed_messages):
- * command gọi `uow.run` sẽ nhập vào transaction đó. Handler throw -> rollback cả hai.
+ * Chế độ mặc định (`idempotency: 'framework'`): handler chạy BÊN TRONG transaction của khung consumer
+ * (cùng dấu processed_messages) — command gọi `uow.run` sẽ nhập vào đó; handler throw -> rollback cả hai.
+ * Chế độ `'handler'`: không có transaction bao ngoài, handler tự chia transaction và tự khử trùng.
  */
 export type MessageHandler = (message: StreamMessage) => Promise<void>;
 

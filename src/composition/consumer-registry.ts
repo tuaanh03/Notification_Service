@@ -8,7 +8,9 @@ export interface ConsumerRegistration {
   group: string;
   stream: string;
   handler: MessageHandler;
-  options?: Pick<ConsumerSpec, 'batchSize' | 'blockMs' | 'claimIdleMs' | 'maxDeliveries' | 'reclaimEveryMs'> | undefined;
+  options?:
+    | Pick<ConsumerSpec, 'batchSize' | 'blockMs' | 'claimIdleMs' | 'maxDeliveries' | 'reclaimEveryMs' | 'idempotency'>
+    | undefined;
 }
 
 /**

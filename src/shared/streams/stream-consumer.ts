@@ -3,9 +3,19 @@ import type { ProcessedMessageStore } from '../db/index.ts';
 import { DomainError } from '../kernel/errors.ts';
 import type { Logger } from '../observability/logger.ts';
 import { decodeMessage } from './codec.ts';
-import { PermanentMessageError, type MessageHandler } from './contracts.ts';
+import { PermanentMessageError, type MessageHandler, type StreamMessage } from './contracts.ts';
 import { dlqOf } from './names.ts';
 import type { StreamClient, StreamEntry } from './stream-client.ts';
+
+/**
+ * Ai chịu trách nhiệm "không xử lý một message hai lần" (ADR-0016):
+ *   framework — khung bọc handler trong MỘT transaction cùng dấu `processed_messages`. Handler chỉ ghi DB
+ *               -> dùng cái này (mặc định).
+ *   handler   — khung KHÔNG mở transaction, KHÔNG ghi `processed_messages`; handler tự khử trùng (thường
+ *               bằng conditional update trên status) và tự chia transaction. Dành cho handler gọi dịch vụ
+ *               ngoài (gửi email) — cần commit "đã nhận việc" TRƯỚC khi gọi ra ngoài.
+ */
+export type IdempotencyMode = 'framework' | 'handler';
 
 export interface ConsumerSpec {
   stream: string;
@@ -22,6 +32,7 @@ export interface ConsumerSpec {
   maxDeliveries?: number | undefined;
   /** Nhịp quét message treo trong `run` (tài liệu §8.3: 30 s). */
   reclaimEveryMs?: number | undefined;
+  idempotency?: IdempotencyMode | undefined;
 }
 
 export interface ConsumeStats {
@@ -44,6 +55,7 @@ const emptyStats = (): ConsumeStats => ({ processed: 0, duplicates: 0, retried: 
  *              handler(message)                -> command nhập vào CÙNG transaction  }
  *   COMMIT rồi mới XACK.
  * Chết giữa COMMIT và XACK -> message được giao lại, dấu processed_messages chặn xử lý lần hai.
+ * Đó là chế độ mặc định `idempotency: 'framework'`; chế độ `'handler'` bỏ bước bọc — xem IdempotencyMode.
  *
  * Phân loại lỗi:
  *   - PermanentMessageError, DomainError, message hỏng -> DLQ ngay, ACK bản gốc.
@@ -79,6 +91,7 @@ export class StreamConsumer {
       claimIdleMs: spec.claimIdleMs ?? 60_000,
       maxDeliveries: spec.maxDeliveries ?? 5,
       reclaimEveryMs: spec.reclaimEveryMs ?? 30_000,
+      idempotency: spec.idempotency ?? 'framework',
     };
     this.logger = deps.logger.child(`consumer:${this.spec.group}`);
   }
@@ -146,11 +159,7 @@ export class StreamConsumer {
     const { stream, group } = this.spec;
     try {
       const message = decodeMessage(stream, entry.id, entry.fields, deliveryCount);
-      const fresh = await this.uow.run(async () => {
-        if (!(await this.processedMessages.markProcessed(group, message.dedupKey))) return false;
-        await this.spec.handler(message);
-        return true;
-      });
+      const fresh = await this.handle(message);
       await this.streams.ack(stream, group, [entry.id]);
       if (fresh) stats.processed += 1;
       else stats.duplicates += 1;
@@ -169,6 +178,19 @@ export class StreamConsumer {
       });
       stats.retried += 1;
     }
+  }
+
+  /** Trả false nếu khung nhận ra message đã xử lý (chỉ chế độ `framework` biết được điều này). */
+  private async handle(message: StreamMessage): Promise<boolean> {
+    if (this.spec.idempotency === 'handler') {
+      await this.spec.handler(message);
+      return true;
+    }
+    return this.uow.run(async () => {
+      if (!(await this.processedMessages.markProcessed(this.spec.group, message.dedupKey))) return false;
+      await this.spec.handler(message);
+      return true;
+    });
   }
 
   private async deadLetter(entry: StreamEntry, deliveries: number, reason: string, error: string): Promise<void> {

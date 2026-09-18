@@ -41,9 +41,14 @@ TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 1 xong (4/4 lượt)
+## Trạng thái: phase 1 xong · MVP email: xong GĐ 0/4
 
-Có trong repo: domain model 10 module · schema MySQL + 3 migration · hạ tầng dùng chung (config, db,
+**Đang làm MVP gửi email trực tiếp qua Microsoft Graph — đọc `implementation_plan.md` và ADR-0016
+trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng người theo `external_id`, at-most-once,
+nội dung trực tiếp (chưa template), consent kiểm ở worker. GĐ 0 (nền) xong; tiếp theo GĐ 1
+(`directory` + `subscriptions`).
+
+Có trong repo: domain model 10 module · schema MySQL + 4 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
@@ -81,6 +86,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0013` | Redis Streams: outbox relay, khung consumer, DLQ, khử trùng theo outbox id, ghim RESP2 |
 | `0014` | Ba process api / worker / scheduler: vòng đời, health, problem+json, điểm mở rộng |
 | `0015` | Lát cắt apps: `ModuleDefinition` cắm module vào process, 3 bề mặt HTTP, API key SHA-256, admin token tạm |
+| `0016` | **MVP email trực tiếp**: Graph + Mock, at-most-once, `EmailContent`, consumer `idempotency: 'handler'`, bodyLimit theo route |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
@@ -229,6 +235,9 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   `modules/<x>/interface/consumers/`, chỉ import `shared/streams/contracts.ts`. Khung `StreamConsumer`
   lo idempotency (`dedupKey = outbox:<id>`, không phải message id Redis), transaction, ACK, retry, DLQ.
   Lỗi không thể khỏi khi thử lại -> ném `PermanentMessageError` (hoặc `DomainError`) để vào DLQ ngay.
+  **Handler gọi dịch vụ ngoài** (gửi email) khai `idempotency: 'handler'`: khung không bọc transaction,
+  không ghi `processed_messages`; handler tự chia transaction (commit "đã nhận việc" TRƯỚC khi gọi ra
+  ngoài) và tự khử trùng bằng conditional update trên status (ADR-0016).
 - **Thêm một lát cắt module** (ADR-0015), theo mẫu `apps`:
   1. `application/`: `ports/` (interface repository/lookup) · `commands/` (1 use case 1 class,
      `execute(input, ctx: CommandContext)`, bọc `uow.run`, ghi `outbox.append` với `audited(ctx, …)`)
@@ -241,6 +250,8 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   4. `composition/modules/<x>.module.ts` trả `ModuleDefinition { http: { admin, v1, public }, consumers, jobs }`
      + một dòng trong `buildApplication`. Process api/worker/scheduler tự nhận, không sửa entrypoint.
 - **Route/handler không bao giờ nhận `infra`** — chỉ use case (mà use case chỉ thấy port).
+- **Giới hạn body mặc định 64 KB.** Route cần body lớn khai riêng `{ bodyLimit: LARGE_BODY_LIMIT_BYTES }`
+  (512 KB — gửi email kèm HTML); không nới giới hạn cho toàn API.
 - **Lỗi HTTP luôn là `application/problem+json`** qua `toProblem`. Route không tự `reply.status(4xx)`
   cho lỗi nghiệp vụ — ném `DomainError` / `ValidationError` và để error handler map.
 - **Ràng buộc "tối đa N mỗi cha"**: `lockParentRow(transactions.require(...), bảng cha, PK, id)` rồi

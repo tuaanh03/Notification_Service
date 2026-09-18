@@ -43,6 +43,12 @@ const HTTP_TITLES: Readonly<Record<number, string>> = {
   503: 'Service Unavailable',
 };
 
+/** Mã ổn định cho lỗi 4xx do tầng HTTP sinh ra (không phải do nghiệp vụ). */
+const HTTP_CODES: Readonly<Record<number, string>> = {
+  413: 'PAYLOAD_TOO_LARGE',
+  415: 'UNSUPPORTED_MEDIA_TYPE',
+};
+
 /** Lỗi của domain -> HTTP status. Thứ tự quan trọng: lớp con trước lớp cha. */
 function statusOfDomainError(err: DomainError): number {
   if (err instanceof InvalidIdError) return 400;
@@ -90,7 +96,7 @@ export function toProblem(err: unknown, instance?: string): ProblemDetails {
     const detail = err instanceof Error ? err.message : 'invalid request';
     // Mã riêng của ta (MALFORMED_JSON) giữ nguyên; mã nội bộ của Fastify (FST_ERR_...) không lộ ra.
     const own = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : '';
-    const code = /^[A-Z][A-Z_]+$/.test(own) && !own.startsWith('FST_') ? own : `HTTP_${httpStatus}`;
+    const code = /^[A-Z][A-Z_]+$/.test(own) && !own.startsWith('FST_') ? own : (HTTP_CODES[httpStatus] ?? `HTTP_${httpStatus}`);
     return problem(httpStatus, code, detail, at);
   }
   return problem(500, 'INTERNAL', 'internal server error', at);

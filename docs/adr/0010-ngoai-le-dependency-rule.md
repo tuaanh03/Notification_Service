@@ -3,7 +3,9 @@
 **Trạng thái:** chấp nhận — 2026-09-17.
 
 ## Bối cảnh
-`src/modules/segments/domain/rules/resolution-pipeline.ts` import hai hàm từ domain của module khác:
+Hai file domain import hai hàm từ domain của module khác:
+`src/modules/segments/domain/rules/resolution-pipeline.ts` (pipeline giải người nhận) và
+`src/modules/notifications/domain/rules/email-gate.ts` (gửi email trực tiếp — MVP, ADR-0016):
 
 | Hàm | Từ | Lớp lọc |
 | --- | --- | --- |
@@ -30,7 +32,11 @@ mandatory, `L1` và `L3` thì có). Viết nó hai lần nguy hiểm hơn nhiề
 nhận `ConsentTopic` (`mandatory` + `defaultOptedIn`) thay vì cả entity `Topic`. Test
 `L3 của pipeline khớp effectiveOptIn trên mọi tổ hợp` giữ cho hai nơi không lệch nhau.
 
+**Bổ sung 2026-09-19 (ADR-0016):** gửi email trực tiếp một người không đi qua pipeline segment, nên
+`notifications/domain/rules/email-gate.ts` ghép thẳng hai hàm này cho một người nhận. Chỉ GHÉP — không
+viết lại điều kiện nào của L0/L1/L3.
+
 ## Giới hạn
-Ngoại lệ chỉ áp cho **hai hàm liệt kê ở trên**, và chỉ vì chúng là hàm thuần trong `domain`.
+Ngoại lệ chỉ áp cho **hai hàm liệt kê ở trên**, gọi từ **hai file liệt kê ở trên**, và chỉ vì chúng là hàm thuần trong `domain`.
 Thêm hàm thứ ba = sửa ADR này, không import lặng lẽ. Import `modules/*/infrastructure` hoặc
 `modules/*/application` từ module khác vẫn bị cấm tuyệt đối.

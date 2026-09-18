@@ -11,8 +11,10 @@ import {
   type TemplateVersionId,
   type TimestampInput,
   type TopicId,
+  type UserId,
 } from '../../../../shared/kernel/index.ts';
 import { EMPTY_COUNTERS, type Counters } from '../types/counters.ts';
+import type { EmailContent } from '../types/email-content.ts';
 import type { Actor, TransitionRecord } from '../types/transition-record.ts';
 import { isTerminal, nextStatus, type TransitionEvent } from '../rules/transitions.ts';
 
@@ -40,6 +42,10 @@ export interface NotificationProps extends TimestampInput {
   approvedBy?: string | null | undefined;
   previewRenderedAt?: Date | null | undefined;
   counters?: Counters | undefined;
+  /** Gửi trực tiếp một người (MVP — ADR-0016). NULL khi gửi theo segment. */
+  targetUserId?: UserId | null | undefined;
+  /** Nội dung email trực tiếp. NULL khi dùng template. Tạo bằng `emailContent()`. */
+  content?: EmailContent | null | undefined;
 }
 
 /**
@@ -60,6 +66,8 @@ export class Notification extends BaseEntity<NotificationId> {
   readonly collapseKey: string | null;
   readonly parentNotificationId: NotificationId | null;
   readonly createdBy: string | null;
+  readonly targetUserId: UserId | null;
+  readonly content: EmailContent | null;
 
   status: NotificationStatus;
   templateVersionId: TemplateVersionId | null;
@@ -87,6 +95,8 @@ export class Notification extends BaseEntity<NotificationId> {
     this.collapseKey = props.collapseKey ?? null;
     this.parentNotificationId = props.parentNotificationId ?? null;
     this.createdBy = props.createdBy ?? null;
+    this.targetUserId = props.targetUserId ?? null;
+    this.content = props.content ?? null;
 
     this.status = props.status ?? (props.origin === 'api' ? 'queued' : 'draft');
     this.loadedStatus = this.status;

@@ -41,8 +41,15 @@ class MalformedJsonError extends Error {
   }
 }
 
-/** Body tối đa: payload notification ≤ 2 KB (ép ở domain) + vỏ JSON — 64 KB là dư dả. */
-const BODY_LIMIT_BYTES = 64 * 1024;
+/**
+ * Giới hạn body MẶC ĐỊNH cho mọi route: đủ cho mọi request quản trị / đồng bộ user.
+ * Route cần body lớn (gửi email kèm HTML — ADR-0016) khai riêng:
+ *   app.post('/notifications', { bodyLimit: LARGE_BODY_LIMIT_BYTES }, handler)
+ * Không nới giới hạn cho toàn API — mỗi route lớn là một quyết định có chủ đích.
+ */
+export const DEFAULT_BODY_LIMIT_BYTES = 64 * 1024;
+/** Email: html + text mỗi phần ≤ 256 KB (EmailContent) + vỏ JSON. */
+export const LARGE_BODY_LIMIT_BYTES = 512 * 1024;
 
 /**
  * Dựng Fastify dùng chung cho process `api`. Không nghiệp vụ ở đây: chỉ health check,
@@ -62,7 +69,7 @@ export async function buildHttpServer(options: {
   const app = Fastify({
     // Log truy cập đi qua port Logger bên dưới, không qua pino riêng của Fastify.
     logger: false,
-    bodyLimit: BODY_LIMIT_BYTES,
+    bodyLimit: DEFAULT_BODY_LIMIT_BYTES,
     trustProxy: options.trustProxy ?? false,
     genReqId: (req) => {
       const incoming = req.headers['x-request-id'];
