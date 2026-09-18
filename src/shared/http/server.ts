@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from '../observability/logger.ts';
+import { bearerToken, type AdminAuthenticator, type ApiKeyAuthenticator } from './auth.ts';
 import { PROBLEM_CONTENT_TYPE, problem, toProblem } from './problem.ts';
 
 /** Một phụ thuộc mà `/health/ready` phải kiểm (MySQL, Redis...). Ném lỗi = chưa sẵn sàng. */
@@ -9,13 +10,35 @@ export interface ReadinessCheck {
   check(): Promise<void>;
 }
 
-/** Route của một module (`modules/<x>/interface/http/`) — lượt 4 trở đi đăng ký qua đây. */
+/** Route của một module (`modules/<x>/interface/http/`). Path viết TƯƠNG ĐỐI với bề mặt của nó. */
 export type HttpRoutes = (app: FastifyInstance) => Promise<void> | void;
+
+/**
+ * Ba bề mặt HTTP, mỗi bề mặt một cách xác thực (tài liệu kiến trúc §11). Module KHÔNG tự gắn hook
+ * xác thực — chỉ khai route vào đúng bề mặt, server lo phần còn lại:
+ *   public — không xác thực (health; sau này trang /u/:token tự xác thực bằng token ký).
+ *   admin  — prefix `/admin`, console quản trị.
+ *   v1     — prefix `/v1`, app service gọi bằng API key.
+ */
+export interface HttpSurfaces {
+  public?: readonly HttpRoutes[] | undefined;
+  admin?: readonly HttpRoutes[] | undefined;
+  v1?: readonly HttpRoutes[] | undefined;
+}
 
 export interface HttpServer {
   readonly app: FastifyInstance;
   /** Bật khi nhận SIGTERM: `/health/ready` trả 503 để load balancer ngừng dồn request mới. */
   startDraining(): void;
+}
+
+class MalformedJsonError extends Error {
+  readonly statusCode = 400;
+  readonly code = 'MALFORMED_JSON';
+
+  constructor() {
+    super('request body is not valid JSON');
+  }
 }
 
 /** Body tối đa: payload notification ≤ 2 KB (ép ở domain) + vỏ JSON — 64 KB là dư dả. */
@@ -28,7 +51,10 @@ const BODY_LIMIT_BYTES = 64 * 1024;
 export async function buildHttpServer(options: {
   logger: Logger;
   readiness: readonly ReadinessCheck[];
-  routes?: readonly HttpRoutes[] | undefined;
+  authenticators: { apiKey: ApiKeyAuthenticator; admin: AdminAuthenticator };
+  surfaces?: HttpSurfaces | undefined;
+  /** Sau load balancer / reverse proxy: lấy IP thật từ X-Forwarded-For (cho allowlist IP). */
+  trustProxy?: boolean | undefined;
 }): Promise<HttpServer> {
   const log = options.logger.child('http');
   let draining = false;
@@ -37,10 +63,25 @@ export async function buildHttpServer(options: {
     // Log truy cập đi qua port Logger bên dưới, không qua pino riêng của Fastify.
     logger: false,
     bodyLimit: BODY_LIMIT_BYTES,
+    trustProxy: options.trustProxy ?? false,
     genReqId: (req) => {
       const incoming = req.headers['x-request-id'];
       return typeof incoming === 'string' && incoming.length > 0 && incoming.length <= 128 ? incoming : randomUUID();
     },
+  });
+
+  // Body rỗng kèm `Content-Type: application/json` là chuyện thường (fetch/axios gắn header mặc định cho
+  // POST không body, ví dụ `/apps/:id/submit`). Parser mặc định của Fastify trả 400 cho trường hợp đó;
+  // ở đây body rỗng = "không có body", còn JSON hỏng thì vẫn 400 với mã riêng.
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
+    const text = typeof body === 'string' ? body : body.toString('utf8');
+    if (text.trim() === '') return done(null, undefined);
+    try {
+      done(null, JSON.parse(text));
+    } catch {
+      done(new MalformedJsonError(), undefined);
+    }
   });
 
   app.addHook('onRequest', async (request, reply) => {
@@ -105,7 +146,37 @@ export async function buildHttpServer(options: {
     return reply.status(ok ? 200 : 503).send({ status: ok ? 'ok' : 'unavailable', checks });
   });
 
-  for (const register of options.routes ?? []) await app.register(async (scope) => register(scope));
+  app.decorateRequest('caller', null);
+  const { apiKey, admin } = options.authenticators;
+  const surfaces = options.surfaces ?? {};
+
+  for (const register of surfaces.public ?? []) await app.register(async (scope) => register(scope));
+
+  // Mỗi bề mặt là một scope riêng: hook xác thực chỉ áp cho route BÊN TRONG scope đó.
+  // Xác thực chạy ở onRequest — trước khi body được parse, request không có credential bị chặn sớm.
+  await app.register(
+    async (scope) => {
+      scope.addHook('onRequest', async (request) => {
+        request.caller = await admin.authenticate({ bearerToken: bearerToken(request) });
+      });
+      for (const register of surfaces.admin ?? []) await register(scope);
+    },
+    { prefix: '/admin' },
+  );
+  await app.register(
+    async (scope) => {
+      scope.addHook('onRequest', async (request) => {
+        const origin = request.headers.origin;
+        request.caller = await apiKey.authenticate({
+          apiKey: bearerToken(request),
+          ip: request.ip,
+          origin: typeof origin === 'string' ? origin : null,
+        });
+      });
+      for (const register of surfaces.v1 ?? []) await register(scope);
+    },
+    { prefix: '/v1' },
+  );
 
   return {
     app,

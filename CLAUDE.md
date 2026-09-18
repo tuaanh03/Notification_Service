@@ -23,7 +23,7 @@ npm run db:generate # drizzle-kit generate -> drizzle/*.sql
 npm run db:migrate  # tsx src/entrypoints/migrate.ts — cần DATABASE_URL
 npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` trong compose
 
-docker compose up --build        # mysql + redis + migrate + api (host :4002) + worker + scheduler
+ADMIN_TOKEN=$(openssl rand -hex 32) docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
 docker compose up -d --scale worker=3   # thêm worker
 docker compose up -d mysql redis # chỉ hạ tầng, để chạy `npm run dev` trên máy
 ```
@@ -41,21 +41,26 @@ TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 1, xong lượt 3/4
+## Trạng thái: phase 1 xong (4/4 lượt)
 
-Có trong repo: domain model 10 module · schema MySQL + 3 migration · `shared/config` · `shared/db`
-· `shared/streams` (ADR-0013) · `shared/http` (Fastify + problem+json) · `shared/jobs` · 3 process
-`api` / `worker` / `scheduler` chạy lâu dài, tắt gọn (ADR-0014) · port hạ tầng + composition root
-(ADR-0012) · luật kiến trúc thành test · Docker. 103 unit/architecture test, 56 integration test.
+Có trong repo: domain model 10 module · schema MySQL + 3 migration · hạ tầng dùng chung (config, db,
+streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
+**Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
-Chưa có: route nghiệp vụ, consumer nghiệp vụ, repository, tầng `application/` và `interface/` của
-các module. `api` mới có health check; registry consumer của `worker` còn trống.
+| Module | Có gì |
+| --- | --- |
+| `tenancy` | tạo account / organization; query `FindOrganization` cho module khác |
+| `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
+| `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
+
+7 module còn lại (`directory`, `subscriptions`, `topics`, `segments`, `templates`, `notifications`,
+`delivery`) mới có domain + schema. `/admin/*` đang dùng bootstrap token tạm thời (ADR-0015 §4).
 
 Phase 1 làm theo 4 lượt, mỗi lượt dừng để người dùng review:
 1. ~~`shared/config` + `shared/db` + test tích hợp~~ — xong (kèm chuẩn hoá DI + Docker)
 2. ~~`shared/streams` + outbox relay~~ — xong
 3. ~~`entrypoints/{api,worker,scheduler}` chạy lâu dài~~ — xong
-4. lát cắt dọc đầu tiên: module `apps` (vì mọi bảng khác đều có `app_id`, và nó là cổng xác thực `/v1/*`)
+4. ~~lát cắt dọc `apps` (+ tenancy tối thiểu, audit consumer)~~ — xong
 
 ## Tài liệu và quyết định
 
@@ -75,6 +80,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0012` | DI theo port: transaction qua AsyncLocalStorage, composition root viết tay, luật kiến trúc thành test |
 | `0013` | Redis Streams: outbox relay, khung consumer, DLQ, khử trùng theo outbox id, ghim RESP2 |
 | `0014` | Ba process api / worker / scheduler: vòng đời, health, problem+json, điểm mở rộng |
+| `0015` | Lát cắt apps: `ModuleDefinition` cắm module vào process, 3 bề mặt HTTP, API key SHA-256, admin token tạm |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
@@ -85,7 +91,8 @@ src/
   entrypoints/             api.ts · worker.ts · scheduler.ts · migrate.ts (file chạy, 3 dòng mỗi file)
                            · *-process.ts (startApi/startWorker/startScheduler — test gọi trực tiếp) · lifecycle
   composition/             COMPOSITION ROOT — nơi DUY NHẤT ghép hiện thực vào port. Chỉ entrypoint import.
-                           container · consumer-registry (mọi consumer group) · scheduler-jobs (mọi job định kỳ)
+                           container · module-definition · application (buildApplication = DANH SÁCH MODULE)
+                           · modules/<x>.module.ts (ghép 1 module) · consumer-registry · scheduler-jobs
   shared/
     kernel/                ids (branded) · enums · errors · result · clock · email · base-entity — thuần, không I/O
     application/ports/     port hạ tầng dùng chung: UnitOfWork · EventOutbox — thuần interface
@@ -95,7 +102,8 @@ src/
                            DrizzleEventOutbox · ProcessedMessageStore · lockParentRow · errors · columns · schema
     streams/               names (stream + routeEvent) · contracts (StreamMessage, MessageHandler — thuần kiểu)
                            · codec · client (ioredis) · StreamClient · OutboxRelay · StreamConsumer
-    http/                  buildHttpServer (health, request id, access log) · toProblem (lỗi -> problem+json)
+    http/                  buildHttpServer (3 bề mặt public/admin/v1, health, request id) · toProblem
+                           · auth (AppCaller, AdminCaller, 2 interface authenticator) · parseInput (zod)
     jobs/                  JobRunner — job định kỳ không chồng lần, stop() chờ lần đang chạy
   modules/<name>/
     domain/                CẤM import Drizzle, MySQL, HTTP, application, infrastructure, global của Node
@@ -217,9 +225,18 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   `modules/<x>/interface/consumers/`, chỉ import `shared/streams/contracts.ts`. Khung `StreamConsumer`
   lo idempotency (`dedupKey = outbox:<id>`, không phải message id Redis), transaction, ACK, retry, DLQ.
   Lỗi không thể khỏi khi thử lại -> ném `PermanentMessageError` (hoặc `DomainError`) để vào DLQ ngay.
-- **Ba điểm cắm của module vào process** (ADR-0014): route `HttpRoutes` từ `interface/http/` truyền vào
-  `startApi`; consumer = một dòng trong `composition/consumer-registry.ts`; job định kỳ = một phần tử
-  trong `composition/scheduler-jobs.ts`. Handler/route không bao giờ nhận `infra` — chỉ `ports`.
+- **Thêm một lát cắt module** (ADR-0015), theo mẫu `apps`:
+  1. `application/`: `ports/` (interface repository/lookup) · `commands/` (1 use case 1 class,
+     `execute(input, ctx: CommandContext)`, bọc `uow.run`, ghi `outbox.append` với `audited(ctx, …)`)
+     · `queries/` · `dto.ts` · `events.ts`.
+  2. `infrastructure/adapters/`: repository Drizzle nhận `{ transactions }`, dùng `transactions.executor()`;
+     mapper entity <-> dòng; cần module khác thì adapter gọi `application` của module đó.
+  3. `interface/http/`: `xxxRoutes(useCases): HttpRoutes` — parse bằng `parseInput(zodSchema, …)`, dựng
+     `CommandContext` từ `adminCaller`/`appCaller`, gọi use case, trả DTO. Path tương đối với bề mặt.
+     `interface/consumers/`: `xxxHandler(useCases): MessageHandler`.
+  4. `composition/modules/<x>.module.ts` trả `ModuleDefinition { http: { admin, v1, public }, consumers, jobs }`
+     + một dòng trong `buildApplication`. Process api/worker/scheduler tự nhận, không sửa entrypoint.
+- **Route/handler không bao giờ nhận `infra`** — chỉ use case (mà use case chỉ thấy port).
 - **Lỗi HTTP luôn là `application/problem+json`** qua `toProblem`. Route không tự `reply.status(4xx)`
   cho lỗi nghiệp vụ — ném `DomainError` / `ValidationError` và để error handler map.
 - **Ràng buộc "tối đa N mỗi cha"**: `lockParentRow(transactions.require(...), bảng cha, PK, id)` rồi

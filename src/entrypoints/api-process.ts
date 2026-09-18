@@ -1,6 +1,6 @@
-import type { Container } from '../composition/index.ts';
+import { httpSurfaces, type Application, type Container } from '../composition/index.ts';
 import { pingDatabase } from '../shared/db/index.ts';
-import { buildHttpServer, type HttpRoutes } from '../shared/http/index.ts';
+import { BootstrapAdminAuthenticator, buildHttpServer, type HttpSurfaces } from '../shared/http/index.ts';
 import { pingRedis } from '../shared/streams/index.ts';
 import type { RunningProcess } from './lifecycle.ts';
 
@@ -12,20 +12,37 @@ export interface RunningApi extends RunningProcess {
 /**
  * Process `api`: nhận HTTP, gọi command, ghi DB + outbox, trả response. KHÔNG tự gửi mail,
  * KHÔNG XADD thẳng — việc nặng đi qua outbox sang worker.
+ *
+ * Route lấy từ `ModuleDefinition.http` của mọi module (`httpSurfaces`), xác thực lấy từ
+ * `application.authenticators`. Process này không biết module nào tồn tại.
  */
 export async function startApi(
   container: Container,
-  options: { routes?: readonly HttpRoutes[] | undefined } = {},
+  application: Application,
+  options: { extraSurfaces?: HttpSurfaces | undefined } = {},
 ): Promise<RunningApi> {
   const { database, redis } = container.infra;
+  const log = container.ports.logger.child('api');
+  const surfaces = httpSurfaces(application);
+  const extra = options.extraSurfaces ?? {};
+
+  if (application.authenticators.admin instanceof BootstrapAdminAuthenticator && !application.authenticators.admin.enabled) {
+    log.warn('ADMIN_TOKEN is not set — every /admin/* request will be rejected');
+  }
+
   const server = await buildHttpServer({
     logger: container.ports.logger,
+    trustProxy: container.env.TRUST_PROXY,
     readiness: [
       { name: 'mysql', check: () => pingDatabase(database.db) },
       { name: 'redis', check: () => pingRedis(redis) },
     ],
-    // Route nghiệp vụ của các module đăng ký ở đây từ lượt 4.
-    routes: options.routes,
+    authenticators: application.authenticators,
+    surfaces: {
+      public: [...surfaces.public, ...(extra.public ?? [])],
+      admin: [...surfaces.admin, ...(extra.admin ?? [])],
+      v1: [...surfaces.v1, ...(extra.v1 ?? [])],
+    },
   });
   const url = await server.app.listen({ host: container.env.HOST, port: container.env.PORT });
 

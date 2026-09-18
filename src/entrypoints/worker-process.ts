@@ -1,16 +1,17 @@
 import { hostname } from 'node:os';
-import { CONSUMER_REGISTRY, selectConsumers, type ConsumerRegistration, type Container } from '../composition/index.ts';
+import { selectConsumers, type ConsumerRegistration, type Container } from '../composition/index.ts';
 import type { RunningProcess } from './lifecycle.ts';
 
 /**
- * Process `worker`: chạy các consumer group theo `WORKER_GROUPS`. Mỗi group một `StreamConsumer.run`
+ * Process `worker`: chạy các consumer group theo `WORKER_GROUPS`. `registry` = consumer của mọi
+ * module (`consumerRegistry(application)`) — process này không biết module nào tồn tại. Mỗi group một `StreamConsumer.run`
  * — đọc stream, xử lý trong transaction, ACK, tự nhận lại message treo (XPENDING + XCLAIM) và đẩy
  * message hỏng vào DLQ. Chạy N bản song song an toàn: consumer group chia message, processed_messages
  * chặn xử lý trùng.
  */
 export async function startWorker(
   container: Container,
-  registry: readonly ConsumerRegistration[] = CONSUMER_REGISTRY,
+  registry: readonly ConsumerRegistration[],
 ): Promise<RunningProcess> {
   const log = container.ports.logger.child('worker');
   const selected = selectConsumers(registry, container.env.WORKER_GROUPS);
@@ -21,7 +22,7 @@ export async function startWorker(
       stream: registration.stream,
       group: registration.group,
       consumer: `${registration.group}-${hostname()}-${process.pid}`,
-      handler: registration.handler(container.ports),
+      handler: registration.handler,
       ...registration.options,
     }),
   );

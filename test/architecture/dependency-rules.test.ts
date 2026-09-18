@@ -111,6 +111,8 @@ describe('luật phụ thuộc', () => {
 
   it('xuyên module ở infrastructure chỉ được schema.ts -> schema.ts (khai FK), không query bảng module khác', () => {
     const bad = violations((f, to) => {
+      // Chỉ xét file BÊN TRONG một module — composition root được import mọi module, ghép là việc của nó.
+      if (moduleOf(f.path) === undefined) return false;
       const other = moduleOf(to) !== undefined && moduleOf(to) !== moduleOf(f.path);
       if (!other || layerOf(f.path) === 'domain') return false; // domain đã có luật riêng
       if (layerOf(to) === 'infrastructure') return !(isSchema(f.path) && isSchema(to));
@@ -124,6 +126,10 @@ describe('luật phụ thuộc', () => {
     expect(
       violations((f, to) => f.path.startsWith('src/shared/') && to.startsWith('src/modules/')),
     ).toEqual([]);
+  });
+
+  it('entrypoint không import thẳng module — mọi module đi qua composition root', () => {
+    expect(violations((f, to) => isEntrypoint(f.path) && to.startsWith('src/modules/'))).toEqual([]);
   });
 
   it('chỉ entrypoint được import composition root', () => {
@@ -153,16 +159,18 @@ describe('luật phụ thuộc', () => {
       mysql2: ['src/shared/db/'],
       pino: ['src/shared/observability/pino-logger.ts'],
       fastify: ['src/shared/http/', 'src/modules/'],
-      zod: ['src/shared/config/'],
+      // Validate ở BIÊN: env (config) và input HTTP (shared/http + route của module).
+      zod: ['src/shared/config/', 'src/shared/http/', 'src/modules/'],
     };
     const root = (pkg: string) => pkg.split('/')[0]!; // 'drizzle-orm/mysql-core' -> 'drizzle-orm'
     const bad = externalViolations((f, pkg) => {
       const allowed = HOME[root(pkg)];
       if (!allowed) return false;
       if (!allowed.some((prefix) => f.path.startsWith(prefix))) return true;
-      // Trong modules/: HTTP chỉ ở tầng interface (route), không lọt vào infrastructure.
+      // Trong modules/: HTTP và validate biên chỉ ở tầng interface, không lọt vào infrastructure.
       // (domain/application đã bị luật riêng cấm mọi package ngoài.)
-      return root(pkg) === 'fastify' && moduleOf(f.path) !== undefined && layerOf(f.path) !== 'interface';
+      const boundaryOnly = root(pkg) === 'fastify' || root(pkg) === 'zod';
+      return boundaryOnly && moduleOf(f.path) !== undefined && layerOf(f.path) !== 'interface';
     });
     expect(bad).toEqual([]);
   });

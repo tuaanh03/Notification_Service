@@ -1,7 +1,5 @@
-# syntax=docker/dockerfile:1
-
 # MỘT image cho mọi process (api / worker / scheduler / migrate) — chỉ khác lệnh chạy.
-# node:22-slim (glibc) thay vì alpine (musl): native module như argon2 (lượt 4) build ổn định hơn.
+# node:22-slim (glibc) thay vì alpine (musl): native module (nếu sau này cần) build ổn định hơn trên glibc.
 ARG NODE_IMAGE=node:22-slim
 
 # --- deps: đủ devDependencies để biên dịch -------------------------------------

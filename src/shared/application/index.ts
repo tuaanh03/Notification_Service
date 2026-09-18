@@ -1,2 +1,3 @@
-// Port dùng chung giữa các module. Thuần interface — không import hạ tầng.
+// Port và kiểu dùng chung giữa các module ở tầng application. Thuần — không import hạ tầng.
+export * from './command-context.ts';
 export * from './ports/index.ts';

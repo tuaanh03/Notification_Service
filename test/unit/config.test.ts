@@ -11,6 +11,7 @@ describe('loadEnv — fail-fast', () => {
       NODE_ENV: 'development',
       HOST: '0.0.0.0',
       PORT: 3000,
+      TRUST_PROXY: false,
       LOG_LEVEL: 'info',
       DATABASE_URL: URL,
       DB_POOL_SIZE: 10,
@@ -51,6 +52,12 @@ describe('loadEnv — fail-fast', () => {
       const fields = (err as ConfigError).issues.map((i) => i.split(':')[0]);
       expect(fields).toEqual(expect.arrayContaining(['DATABASE_URL', 'REDIS_URL', 'PORT', 'LOG_LEVEL']));
     }
+  });
+
+  it('ADMIN_TOKEN rỗng = không cấu hình; có đặt thì phải đủ 32 ký tự', () => {
+    expect(loadEnv({ ...REQUIRED, ADMIN_TOKEN: '' }).ADMIN_TOKEN).toBeUndefined();
+    expect(() => loadEnv({ ...REQUIRED, ADMIN_TOKEN: 'short' })).toThrow(ConfigError);
+    expect(loadEnv({ ...REQUIRED, ADMIN_TOKEN: 'a'.repeat(32) }).ADMIN_TOKEN).toBe('a'.repeat(32));
   });
 
   it('kết quả bị freeze — không ai sửa cấu hình lúc đang chạy', () => {

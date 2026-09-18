@@ -114,7 +114,7 @@ describe('JobRunner', () => {
 });
 
 describe('chọn consumer group theo WORKER_GROUPS', () => {
-  const reg = (group: string): ConsumerRegistration => ({ group, stream: `s.${group}`, handler: () => async () => undefined });
+  const reg = (group: string): ConsumerRegistration => ({ group, stream: `s.${group}`, handler: async () => undefined });
   const registry = [reg('resolver'), reg('delivery-email'), reg('accounting')];
 
   it('all -> mọi group', () => {

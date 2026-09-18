@@ -10,6 +10,8 @@ x-app-env: &app-env
   DATABASE_URL: mysql://${MYSQL_USER:-ews}:${MYSQL_PASSWORD:-ews}@mysql:3306/${MYSQL_DATABASE:-ews_astrolink}
   DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
   REDIS_URL: redis://redis:6379
+  # TẠM THỜI cho /admin/* (ADR-0015). Không đặt = /admin đóng hoàn toàn. Sinh: openssl rand -hex 32
+  ADMIN_TOKEN: ${ADMIN_TOKEN:-}
 
 # Cùng một image cho mọi process; `pull_policy: build` để compose dựng tại chỗ thay vì đi pull
 # một image không có trên registry.

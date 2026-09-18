@@ -1,10 +1,14 @@
 import {
+  AuthenticationError,
   ConcurrentTransitionError,
+  ConflictError,
   CrossAccountViolationError,
   CrossOrgViolationError,
   DomainError,
   InvalidIdError,
   InvalidTransitionError,
+  NotFoundError,
+  PermissionDeniedError,
   ValidationError,
   type Issue,
 } from '../kernel/errors.ts';
@@ -27,6 +31,7 @@ export const PROBLEM_CONTENT_TYPE = 'application/problem+json; charset=utf-8';
 
 const HTTP_TITLES: Readonly<Record<number, string>> = {
   400: 'Bad Request',
+  401: 'Unauthorized',
   403: 'Forbidden',
   404: 'Not Found',
   409: 'Conflict',
@@ -41,7 +46,11 @@ const HTTP_TITLES: Readonly<Record<number, string>> = {
 /** Lỗi của domain -> HTTP status. Thứ tự quan trọng: lớp con trước lớp cha. */
 function statusOfDomainError(err: DomainError): number {
   if (err instanceof InvalidIdError) return 400;
+  if (err instanceof AuthenticationError) return 401;
+  if (err instanceof PermissionDeniedError) return 403;
   if (err instanceof CrossOrgViolationError || err instanceof CrossAccountViolationError) return 403;
+  if (err instanceof NotFoundError) return 404;
+  if (err instanceof ConflictError) return 409;
   if (err instanceof InvalidTransitionError || err instanceof ConcurrentTransitionError) return 409;
   return 422; // ValidationError và mọi invariant khác: request đúng cú pháp nhưng vi phạm nghiệp vụ
 }
@@ -79,7 +88,10 @@ export function toProblem(err: unknown, instance?: string): ProblemDetails {
   const httpStatus = httpStatusOf(err);
   if (httpStatus !== null) {
     const detail = err instanceof Error ? err.message : 'invalid request';
-    return problem(httpStatus, `HTTP_${httpStatus}`, detail, at);
+    // Mã riêng của ta (MALFORMED_JSON) giữ nguyên; mã nội bộ của Fastify (FST_ERR_...) không lộ ra.
+    const own = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : '';
+    const code = /^[A-Z][A-Z_]+$/.test(own) && !own.startsWith('FST_') ? own : `HTTP_${httpStatus}`;
+    return problem(httpStatus, code, detail, at);
   }
   return problem(500, 'INTERNAL', 'internal server error', at);
 }

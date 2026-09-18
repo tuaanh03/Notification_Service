@@ -2,7 +2,13 @@ import { spawn } from 'node:child_process';
 import { lt, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inject } from 'vitest';
-import { createContainer, schedulerJobs, type ConsumerRegistration, type Container } from '../../src/composition/index.ts';
+import {
+  buildApplication,
+  createContainer,
+  schedulerJobs,
+  type ConsumerRegistration,
+  type Container,
+} from '../../src/composition/index.ts';
 import { startApi, startScheduler, startWorker } from '../../src/entrypoints/index.ts';
 import type { IntegrationEvent } from '../../src/shared/application/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
@@ -32,7 +38,7 @@ const event = (n: number): IntegrationEvent => ({ aggregateType: 'Test', aggrega
 
 describe('process api', () => {
   it('health: live luôn 200; ready kiểm MySQL + Redis', async () => {
-    const api = await startApi(c);
+    const api = await startApi(c, buildApplication(c));
     try {
       expect((await fetch(`${api.url}/health/live`)).status).toBe(200);
       const ready = await fetch(`${api.url}/health/ready`);
@@ -48,7 +54,7 @@ describe('process api', () => {
     dead.client.options.maxRetriesPerRequest = 0;
     dead.client.options.retryStrategy = () => null;
     const broken = createContainer(envFor(), { database: t, redis: dead });
-    const api = await startApi(broken);
+    const api = await startApi(broken, buildApplication(broken));
     try {
       const ready = await fetch(`${api.url}/health/ready`);
       expect(ready.status).toBe(503);
@@ -60,14 +66,14 @@ describe('process api', () => {
   });
 
   it('mọi lỗi thành problem+json: route không có -> 404, vi phạm domain -> 422 kèm issues', async () => {
-    const api = await startApi(c, {
-      routes: [
+    const api = await startApi(c, buildApplication(c), {
+      extraSurfaces: { public: [
         (app) => {
           app.post('/test/fail', async () => {
             throw ValidationError.of('APP_NAME_REQUIRED', 'app name must not be empty', 'name');
           });
         },
-      ],
+      ] },
     });
     try {
       const missing = await fetch(`${api.url}/nope`);
@@ -84,10 +90,28 @@ describe('process api', () => {
     }
   });
 
+  it('POST không body nhưng có Content-Type: application/json -> vẫn tới route; JSON hỏng -> 400 MALFORMED_JSON', async () => {
+    const api = await startApi(c, buildApplication(c), {
+      extraSurfaces: { public: [(app) => void app.post('/test/echo', async (request) => ({ body: request.body ?? null }))] },
+    });
+    try {
+      const json = { 'content-type': 'application/json' };
+      const empty = await fetch(`${api.url}/test/echo`, { method: 'POST', headers: json });
+      expect(empty.status).toBe(200);
+      expect(await empty.json()).toEqual({ body: null });
+
+      const broken = await fetch(`${api.url}/test/echo`, { method: 'POST', headers: json, body: '{oops' });
+      expect(broken.status).toBe(400);
+      expect(await broken.json()).toMatchObject({ code: 'MALFORMED_JSON' });
+    } finally {
+      await api.stop();
+    }
+  });
+
   it('stop(): đợi request đang chạy xong rồi mới đóng — không cắt ngang', async () => {
     let finished = false;
-    const api = await startApi(c, {
-      routes: [
+    const api = await startApi(c, buildApplication(c), {
+      extraSurfaces: { public: [
         (app) => {
           app.get('/test/slow', async () => {
             await new Promise((r) => setTimeout(r, 300));
@@ -95,7 +119,7 @@ describe('process api', () => {
             return { ok: true };
           });
         },
-      ],
+      ] },
     });
     const inFlight = fetch(`${api.url}/test/slow`);
     await new Promise((r) => setTimeout(r, 50));
@@ -109,7 +133,7 @@ describe('process worker', () => {
   it('chạy consumer đã đăng ký: event từ outbox tới được handler; stop() dừng gọn', async () => {
     const received: StreamMessage[] = [];
     const registry: ConsumerRegistration[] = [
-      { group: 'test-group', stream: STREAM, handler: () => async (m) => void received.push(m), options: { blockMs: 100 } },
+      { group: 'test-group', stream: STREAM, handler: async (m) => void received.push(m), options: { blockMs: 100 } },
     ];
     const worker = await startWorker(c, registry);
     try {
@@ -133,7 +157,7 @@ describe('process worker', () => {
 
 describe('process scheduler', () => {
   it('relay outbox theo nhịp: event đã commit tự lên stream, không ai phải gọi relay', async () => {
-    const scheduler = await startScheduler(c, { relayEveryMs: 50, cleanupEveryMs: 60_000 });
+    const scheduler = await startScheduler(c, [], { relayEveryMs: 50, cleanupEveryMs: 60_000 });
     try {
       await emit(event(2));
       await eventually(async () => (await c.infra.streams.range(STREAM)).some((e) => e.fields.includes('p-2')));

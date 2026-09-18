@@ -30,3 +30,20 @@ export function isMysqlError(err: unknown, code: MysqlErrorCode): boolean {
 export function isDuplicateKeyError(err: unknown): boolean {
   return isMysqlError(err, MYSQL_ERRORS.DUPLICATE_ENTRY);
 }
+
+/**
+ * Tên unique index gây lỗi trùng khoá — để adapter đổi thành lỗi nghiệp vụ đúng nghĩa
+ * (`uq_apps_org_slug` -> "slug đã dùng"). MySQL báo: "Duplicate entry 'x' for key 'apps.uq_apps_org_slug'".
+ */
+export function duplicateKeyName(err: unknown): string | null {
+  let current: unknown = err;
+  for (let depth = 0; current && depth < 5; depth += 1) {
+    if (typeof current === 'object' && 'code' in current && current.code === MYSQL_ERRORS.DUPLICATE_ENTRY) {
+      const message = 'sqlMessage' in current ? String(current.sqlMessage) : 'message' in current ? String(current.message) : '';
+      const match = /for key '(?:[^.']+\.)?([^']+)'/.exec(message);
+      return match?.[1] ?? null;
+    }
+    current = typeof current === 'object' && 'cause' in current ? current.cause : null;
+  }
+  return null;
+}

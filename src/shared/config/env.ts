@@ -13,6 +13,17 @@ const EnvSchema = z.object({
   /** Process `api`: địa chỉ lắng nghe. 0.0.0.0 để nhận kết nối từ ngoài container. */
   HOST: z.string().min(1).default('0.0.0.0'),
   PORT: z.coerce.number().int().min(0).max(65535).default(3000),
+  /** Sau load balancer: lấy IP thật từ X-Forwarded-For — cần cho allowlist IP của app. */
+  TRUST_PROXY: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  /**
+   * TẠM THỜI: token quản trị cho `/admin/*` tới khi có đăng nhập admin + RBAC. Không đặt = tắt
+   * toàn bộ `/admin/*` (đóng mặc định). Tối thiểu 32 ký tự — sinh bằng `openssl rand -hex 32`.
+   */
+  // Chuỗi rỗng (`ADMIN_TOKEN=` trong .env, hoặc `${ADMIN_TOKEN:-}` của compose) = không cấu hình.
+  ADMIN_TOKEN: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(32, 'must be at least 32 characters').optional(),
+  ),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
   DATABASE_URL: z
     .string()

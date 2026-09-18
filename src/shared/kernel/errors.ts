@@ -63,6 +63,34 @@ export class CrossAccountViolationError extends DomainError {
   }
 }
 
+/** Tài nguyên không tồn tại (hoặc caller không được biết là nó tồn tại). HTTP 404. */
+export class NotFoundError extends DomainError {
+  constructor(resource: string, id: string) {
+    super('NOT_FOUND', `${resource} ${id} not found`);
+  }
+}
+
+/** Chưa xác thực được caller (thiếu / sai / hết hạn credential). HTTP 401. */
+export class AuthenticationError extends DomainError {
+  constructor(code: string, message: string) {
+    super(code, message);
+  }
+}
+
+/** Đã biết caller là ai nhưng không được phép làm việc này. HTTP 403. */
+export class PermissionDeniedError extends DomainError {
+  constructor(code: string, message: string) {
+    super(code, message);
+  }
+}
+
+/** Trùng khoá nghiệp vụ (slug, namespace, email...). HTTP 409. */
+export class ConflictError extends DomainError {
+  constructor(code: string, message: string) {
+    super(code, message);
+  }
+}
+
 /** Chuyển trạng thái không có trong bảng transitions. */
 export class InvalidTransitionError extends DomainError {
   constructor(aggregate: string, from: string, event: string) {

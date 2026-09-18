@@ -32,6 +32,13 @@ export interface AppProps extends TimestampInput {
   isSystem?: boolean | undefined;
 }
 
+/** Quyền cấp cho app lúc duyệt. */
+export interface AppGrant {
+  grantedChannels: readonly Channel[];
+  rateLimitPerMinute: number;
+  maxRecipientsPerEvent: number;
+}
+
 /**
  * App là ranh giới CÔ LẬP MESSAGING: hai app không chia sẻ segment/template/notification.
  * `external_id` chỉ unique trong phạm vi một app, không toàn cục.
@@ -75,12 +82,45 @@ export class App extends BaseEntity<AppId> {
     this.isSystem = props.isSystem ?? false;
   }
 
+  /**
+   * Duyệt app kèm QUYỀN ĐƯỢC CẤP (UC-001): kênh được gửi, hạn mức. App chỉ gửi được trên kênh đã
+   * cấp — duyệt mà không cấp kênh nào là tạo ra app không làm được gì, nên chặn ở đây.
+   */
+  approve(grant: AppGrant, at: Date): void {
+    const issues: Issue[] = [];
+    const channels = [...new Set(grant.grantedChannels)];
+    if (channels.length === 0) {
+      issues.push(issue('GRANT_CHANNELS_REQUIRED', 'at least one channel must be granted', 'grantedChannels'));
+    }
+    if (!Number.isInteger(grant.rateLimitPerMinute) || grant.rateLimitPerMinute <= 0) {
+      issues.push(issue('GRANT_RATE_LIMIT_INVALID', 'rateLimitPerMinute must be a positive integer', 'rateLimitPerMinute'));
+    }
+    if (!Number.isInteger(grant.maxRecipientsPerEvent) || grant.maxRecipientsPerEvent <= 0) {
+      issues.push(
+        issue('GRANT_MAX_RECIPIENTS_INVALID', 'maxRecipientsPerEvent must be a positive integer', 'maxRecipientsPerEvent'),
+      );
+    }
+    if (issues.length) throw new ValidationError(issues);
+
+    this.apply('approve', at);
+    this.grantedChannels = channels;
+    this.rateLimitPerMinute = grant.rateLimitPerMinute;
+    this.maxRecipientsPerEvent = grant.maxRecipientsPerEvent;
+  }
+
   /** Mọi đổi trạng thái đi qua đây — không ai set `status` trực tiếp. */
   apply(event: AppTransitionEvent, at: Date): AppStatus {
     const from = this.status;
     this.status = nextAppStatus(from, event);
     this.touch(at);
     return this.status;
+  }
+
+  /** App đã thu hồi là trạng thái kết thúc: không cấp thêm credential nào nữa. */
+  assertAcceptsNewSecret(): void {
+    if (this.status === 'revoked') {
+      throw ValidationError.of('APP_REVOKED', `app ${this.slug} is revoked and cannot receive new secrets`);
+    }
   }
 
   get canSend(): boolean {
