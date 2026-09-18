@@ -58,6 +58,30 @@ describe('Subscription — unsubscribed ≠ invalid (BR-9)', () => {
 });
 
 describe('Subscription — tắt tin không bắt buộc tách khỏi kênh chết', () => {
+  it('unsubscribe KHÔNG hạ địa chỉ invalid thành unsubscribed; gọi lại là no-op', () => {
+    const bounced = subscription();
+    bounced.markInvalid('hard_bounce', AT);
+    expect(bounced.unsubscribe(AT)).toBe(false);
+    expect(bounced.status).toBe('invalid');
+    expect(bounced.suppressedReason).toBe('hard_bounce');
+
+    const active = subscription();
+    expect(active.unsubscribe(AT)).toBe(true);
+    expect(active.unsubscribe(AT)).toBe(false);
+  });
+
+  it('changeAddress: xoá invalid (địa chỉ mới chưa bounce) nhưng GIỮ unsubscribed (ý muốn của user)', () => {
+    const bounced = subscription();
+    bounced.markInvalid('hard_bounce', AT);
+    bounced.changeAddress('new@example.com', 'token-2', AT);
+    expect(bounced).toMatchObject({ value: 'new@example.com', status: 'active', suppressedReason: null, manageToken: 'token-2' });
+
+    const optedOut = subscription();
+    optedOut.unsubscribe(AT);
+    optedOut.changeAddress('other@example.com', 'token-3', AT);
+    expect(optedOut).toMatchObject({ value: 'other@example.com', status: 'unsubscribed', manageToken: 'token-3' });
+  });
+
   it('opted_out_optional chặn tin thường nhưng không chặn tin mandatory', () => {
     const sub = subscription();
     sub.optOutOptional(AT);

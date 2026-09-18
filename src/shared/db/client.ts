@@ -30,6 +30,7 @@ export interface DatabaseHandle {
  *  - `SET time_zone = '+00:00'` cho giá trị MySQL tự sinh: `DEFAULT CURRENT_TIMESTAMP(3)` tính theo
  *    timezone của SESSION. Thiếu dòng này, created_at lệch theo cấu hình của server MySQL.
  *    mysql2 xếp hàng lệnh trên từng connection nên SET luôn chạy trước query đầu tiên.
+ * Cùng hook đó đặt mức cô lập READ COMMITTED cho mọi transaction (ADR-0017).
  */
 export function createDatabase(options: DatabaseOptions): DatabaseHandle {
   const pool = createPool({
@@ -41,6 +42,10 @@ export function createDatabase(options: DatabaseOptions): DatabaseHandle {
   });
   pool.pool.on('connection', (connection) => {
     connection.query("SET time_zone = '+00:00'");
+    // READ COMMITTED, không phải REPEATABLE READ mặc định của MySQL (ADR-0017): ở RR, lệnh SELECT
+    // thường đầu tiên chốt snapshot — command "đọc -> khoá dòng cha -> đọc lại" vẫn thấy dữ liệu CŨ
+    // sau khi chờ khoá, và phá mẫu khoá của ADR-0009.
+    connection.query("SET SESSION transaction_isolation = 'READ-COMMITTED'");
   });
 
   const db = drizzle({ client: pool });

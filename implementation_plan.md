@@ -82,7 +82,7 @@ flowchart TD
 | `POST /admin/apps/:appId/topics/:key/activate` · `/suspend` | admin | Đổi trạng thái topic | 409 `INVALID_TRANSITION` |
 | `GET /admin/apps/:appId/topics` | admin | Danh sách topic | |
 | `GET /v1/topics` | v1 | Topic `active` của app đang gọi (chỉ đọc) | |
-| `PUT /v1/users/:externalId` | v1 | Upsert user + email `{ email }`. Trả 200 kèm trạng thái email | 409 `EMAIL_TAKEN` (email đã thuộc user khác trong app) |
+| `PUT /v1/users/:externalId` | v1 | Upsert user + email `{ email? }`. Tạo mới -> 201, đã có -> 200; kèm trạng thái email | 409 `EMAIL_TAKEN` (email đã thuộc user khác trong app) |
 | `GET /v1/users/:externalId` | v1 | User + email + `status` + `optedOutOptional` | 404 |
 | `DELETE /v1/users/:externalId/email` | v1 | User ngắt hẳn email (L0 `unsubscribed`) | 404 |
 | `GET /v1/users/:externalId/preferences` | v1 | Mọi topic active + `effectiveOptIn` + `mandatory` + `optedOutOptional` | 404 |
@@ -95,7 +95,9 @@ case -> trả DTO; mọi thay đổi ghi event qua outbox (audit tự nhận).
 
 **Luật email khi upsert user** (`PUT /v1/users/:externalId`):
 - Email mới -> tạo subscription `active`.
-- Đổi sang email khác -> `fixAddress` (địa chỉ mới, trạng thái sạch, xoay `manage_token`).
+- Đổi sang email khác -> `changeAddress`: địa chỉ mới, xoay `manage_token`; xoá `invalid` (địa chỉ
+  mới chưa bounce) nhưng **GIỮ `unsubscribed`** — user đã tự ngắt thì đổi địa chỉ không được bật lại
+  nhận thư. (Sửa 2026-09-19: bản đầu ghi `fixAddress` — hàm đó xoá luôn cả `unsubscribed`.)
 - Gửi lại đúng email đang `unsubscribed` do user tự ngắt -> bật lại (`resubscribe`, evidence = `app:<appId>`).
 - Gửi lại đúng email đang `invalid` (hard bounce / complaint) -> **giữ nguyên `invalid`**, trả trạng
   thái cho app biết. App service không được tự bật lại địa chỉ đã bounce (CLAUDE.md).
@@ -208,11 +210,13 @@ Thứ tự để có email chạy end-to-end (bằng Mock) sớm nhất. Mỗi g
 - `buildHttpServer`: cho phép route đặt `bodyLimit` riêng.
 - **Xong khi:** migration chạy trên MySQL thật; test consumer hai chế độ pass; luật kiến trúc pass.
 
-### GĐ 1 — `directory` + `subscriptions` tối thiểu
+### GĐ 1 — `directory` + `subscriptions` tối thiểu ✅ xong 2026-09-19
 - `directory`: `UpsertUser` (theo `app_id` + `external_id`), `FindUserByExternalId`; route
   `PUT /v1/users/:externalId`, `GET /v1/users/:externalId`.
-- `subscriptions`: `SetUserEmail` (luật email ở mục 5), `UnsubscribeEmail`, `SetOptedOutOptional`,
-  query `EmailGateState` cho module khác.
+- `subscriptions`: `SetUserEmail` (luật email ở mục 5), `UnsubscribeEmail`, query `FindUserEmail` cho
+  module khác. (`SetOptedOutOptional` chuyển sang GĐ 2 — đi cùng route preferences, tránh viết use case
+  chưa ai gọi.)
+- Mức cô lập chuyển sang READ COMMITTED (ADR-0017) — test race của GĐ 1 lộ lỗi snapshot của RR.
 - Upsert user + email trong CÙNG một `uow.run` (directory gọi subscriptions qua port).
 - **Test:** email trùng user khác -> 409; email `invalid` không bật lại được; `unsubscribed` bật lại được;
   đổi email -> `manage_token` đổi; chuẩn hoá email (hoa thường, khoảng trắng, giữ `+tag`).

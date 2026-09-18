@@ -35,6 +35,14 @@ describe('UTC ở mọi tầng', () => {
     expect(rows[0]?.tz).toBe('+00:00');
   });
 
+  // ADR-0017: ở REPEATABLE READ, "đọc -> khoá -> đọc lại" thấy snapshot cũ và phá mẫu khoá ADR-0009.
+  it('mọi connection chạy READ COMMITTED', async () => {
+    const [rows] = (await t.db.execute(sql`SELECT @@session.transaction_isolation AS iso`)) as unknown as [
+      Array<{ iso: string }>,
+    ];
+    expect(rows[0]?.iso).toBe('READ-COMMITTED');
+  });
+
   it('created_at do MySQL tự sinh khớp giờ UTC của application', async () => {
     const accountId = AccountId.create();
     const before = Date.now();

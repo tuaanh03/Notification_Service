@@ -41,12 +41,13 @@ TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 1 xong · MVP email: xong GĐ 0/4
+## Trạng thái: phase 1 xong · MVP email: xong GĐ 1/4
 
 **Đang làm MVP gửi email trực tiếp qua Microsoft Graph — đọc `implementation_plan.md` và ADR-0016
 trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng người theo `external_id`, at-most-once,
-nội dung trực tiếp (chưa template), consent kiểm ở worker. GĐ 0 (nền) xong; tiếp theo GĐ 1
-(`directory` + `subscriptions`).
+nội dung trực tiếp (chưa template), consent kiểm ở worker. GĐ 0 (nền) và GĐ 1 (`directory` +
+`subscriptions`: `PUT/GET /v1/users/:externalId`, `DELETE .../email`) xong; tiếp theo GĐ 2 (`topics`
++ preferences).
 
 Có trong repo: domain model 10 module · schema MySQL + 4 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
@@ -55,6 +56,8 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | Module | Có gì |
 | --- | --- |
 | `tenancy` | tạo account / organization; query `FindOrganization` cho module khác |
+| `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác |
+| `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5); `FindUserEmail` cho module khác — chưa có route riêng |
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
 
@@ -87,6 +90,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0014` | Ba process api / worker / scheduler: vòng đời, health, problem+json, điểm mở rộng |
 | `0015` | Lát cắt apps: `ModuleDefinition` cắm module vào process, 3 bề mặt HTTP, API key SHA-256, admin token tạm |
 | `0016` | **MVP email trực tiếp**: Graph + Mock, at-most-once, `EmailContent`, consumer `idempotency: 'handler'`, bodyLimit theo route |
+| `0017` | **READ COMMITTED** cho mọi connection — REPEATABLE READ phá mẫu "khoá rồi mới đọc" của ADR-0009 |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
@@ -196,6 +200,9 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   (`<bảng>_<cột>_<bảng đích>_<cột đích>_fk`) rất dễ vượt — FK nào tên tự sinh dài quá thì khai bằng
   `foreignKey({ name: 'fk_...' })`. `test/integration/migrations.test.ts` chạy migration trên MySQL thật
   nên sẽ bắt lỗi này; `db:generate` thì **không** bắt.
+- **Mức cô lập READ COMMITTED** (ADR-0017), đặt ở `shared/db/client.ts`. Đừng đổi về REPEATABLE READ
+  mặc định: ở đó lệnh `SELECT` đầu tiên chốt snapshot, khoá xong vẫn đọc dữ liệu cũ — test race của
+  `users-api.test.ts` sẽ đỏ. Cần giá trị không đổi giữa hai lần đọc thì khoá (`FOR UPDATE`).
 - **Ba composite FK chống cấp quyền chéo account** (ADR-0011): `fk_apps_org_account`,
   `fk_admin_app_roles_admin_account`, `fk_admin_app_roles_app_account`. Đích bắt buộc:
   `uq_organizations_org_account`, `uq_admins_admin_account`, `uq_apps_app_account`. Cùng lý do — đừng xoá.

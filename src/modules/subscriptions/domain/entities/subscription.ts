@@ -77,12 +77,18 @@ export class Subscription extends BaseEntity<SubscriptionId> {
     return channelGate(this.gateState, opts);
   }
 
-  /** User chủ động ngắt hẳn kênh. Khác với tắt tin không bắt buộc. */
-  unsubscribe(at: Date): void {
+  /**
+   * User chủ động ngắt hẳn kênh. Khác với tắt tin không bắt buộc.
+   * Chỉ tác động lên kênh đang `active`: gọi lại là no-op, và địa chỉ `invalid` giữ nguyên `invalid` —
+   * hard bounce không bao giờ bị "hạ" thành `unsubscribed` (BR-9). Trả true nếu trạng thái thật sự đổi.
+   */
+  unsubscribe(at: Date): boolean {
+    if (this.status !== 'active') return false;
     this.status = 'unsubscribed';
     this.suppressedReason = 'user_unsubscribe';
     this.suppressedAt = at;
     this.touch(at);
+    return true;
   }
 
   /**
@@ -129,6 +135,25 @@ export class Subscription extends BaseEntity<SubscriptionId> {
     this.suppressedReason = null;
     this.suppressedAt = null;
     // Địa chỉ đổi -> link quản lý cũ phải chết theo.
+    this.rotateManageToken(newManageToken, at);
+  }
+
+  /**
+   * App service đổi địa chỉ của user (MVP — ADR-0016). Khác `fixAddress` ở MỘT điểm quan trọng:
+   *   - `invalid` (địa chỉ cũ hỏng) -> xoá: địa chỉ mới chưa hề bounce.
+   *   - `unsubscribed` (USER tự ngắt) -> GIỮ: đó là ý muốn của người, không phải lỗi của địa chỉ.
+   *     Đổi địa chỉ mà bật lại nhận thư là gửi cho người đã từ chối.
+   * Link quản lý cũ luôn chết theo địa chỉ cũ.
+   */
+  changeAddress(newValue: string, newManageToken: string, at: Date): void {
+    const value = newValue.trim();
+    if (!value) throw ValidationError.of('ADDRESS_REQUIRED', 'new address must not be empty', 'value');
+    this.value = value;
+    if (this.status === 'invalid') {
+      this.status = 'active';
+      this.suppressedReason = null;
+      this.suppressedAt = null;
+    }
     this.rotateManageToken(newManageToken, at);
   }
 

@@ -35,6 +35,10 @@ SELECT COUNT(*) FROM app_secrets WHERE app_id = ? AND status = 'active';
 ```
 
 Mọi command thay đổi secret của một app (tạo, xoay, thu hồi) đều phải khoá dòng `apps` trước.
+
+**Bổ sung 2026-09-19 (ADR-0017):** mẫu này cần mức cô lập READ COMMITTED. Ở REPEATABLE READ, nếu
+command đã có một lệnh `SELECT` thường TRƯỚC lệnh khoá thì snapshot bị chốt trước lúc chờ khoá, và
+các lần đọc sau khoá vẫn thấy dữ liệu cũ.
 Mẫu này áp cho mọi ràng buộc dạng "tối đa N dòng mỗi cha" về sau.
 
 Luật chung: ràng buộc nào không ép được ở DB thì phải có test tích hợp chạy hai lệnh song song
