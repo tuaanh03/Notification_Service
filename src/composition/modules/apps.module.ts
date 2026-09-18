@@ -29,7 +29,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
 export function appsModule(
   container: Container,
   dependencies: { findOrganization: FindOrganization },
-): { definition: ModuleDefinition; apiKeyAuthenticator: ApiKeyAuthenticator } {
+): { definition: ModuleDefinition; apiKeyAuthenticator: ApiKeyAuthenticator; appQueries: AppQueries } {
   const { uow, outbox, clock } = container.ports;
   const { transactions } = container.infra;
 
@@ -41,6 +41,7 @@ export function appsModule(
   const queries = new AppQueries({ apps, secrets, networkRules });
 
   return {
+    appQueries: queries,
     apiKeyAuthenticator: new AppsApiKeyAuthenticator({
       authenticateApiKey: new AuthenticateApiKey({ apps, secrets, networkRules, apiKeys }),
     }),

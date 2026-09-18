@@ -41,13 +41,12 @@ TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 1 xong · MVP email: xong GĐ 1/4
+## Trạng thái: phase 1 xong · MVP email: xong GĐ 2/4
 
 **Đang làm MVP gửi email trực tiếp qua Microsoft Graph — đọc `implementation_plan.md` và ADR-0016
 trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng người theo `external_id`, at-most-once,
-nội dung trực tiếp (chưa template), consent kiểm ở worker. GĐ 0 (nền) và GĐ 1 (`directory` +
-`subscriptions`: `PUT/GET /v1/users/:externalId`, `DELETE .../email`) xong; tiếp theo GĐ 2 (`topics`
-+ preferences).
+nội dung trực tiếp (chưa template), consent kiểm ở worker. Xong GĐ 0 (nền), GĐ 1 (user + email),
+GĐ 2 (topic + preference); tiếp theo GĐ 3 (`notifications` + worker gửi bằng Mock).
 
 Có trong repo: domain model 10 module · schema MySQL + 4 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
@@ -57,7 +56,8 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | --- | --- |
 | `tenancy` | tạo account / organization; query `FindOrganization` cho module khác |
 | `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác |
-| `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5); `FindUserEmail` cho module khác — chưa có route riêng |
+| `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
+| `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi) |
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
 

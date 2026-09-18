@@ -5,4 +5,5 @@ export const SUBSCRIPTION_EVENTS = {
   addressChanged: 'SubscriptionAddressChanged',
   resubscribed: 'SubscriptionResubscribed',
   unsubscribed: 'SubscriptionUnsubscribed',
+  optedOutOptionalChanged: 'SubscriptionOptedOutOptionalChanged',
 } as const;

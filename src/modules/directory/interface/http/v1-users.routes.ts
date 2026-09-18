@@ -1,13 +1,9 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { appCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { appCaller, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import type { FindUserByExternalId, UnsubscribeUserEmail, UpsertUser } from '../../application/index.ts';
 
-/**
- * external_id do app service tự đặt: cho phép ký tự thường gặp của id (chữ, số, . _ - : @ |), cấm
- * khoảng trắng và ký tự điều khiển. Giới hạn 255 = độ dài cột.
- */
-const params = z.object({ externalId: z.string().min(1).max(255).regex(/^[A-Za-z0-9._\-:@|]+$/, 'invalid external id') });
+const params = z.object({ externalId: EXTERNAL_ID });
 // Email đúng định dạng do domain kiểm (normalizeEmail -> EMAIL_INVALID); ở đây chỉ giới hạn độ dài.
 const upsertBody = z.object({ email: z.string().max(320).optional() }).strict();
 

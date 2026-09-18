@@ -221,9 +221,13 @@ Thứ tự để có email chạy end-to-end (bằng Mock) sớm nhất. Mỗi g
 - **Test:** email trùng user khác -> 409; email `invalid` không bật lại được; `unsubscribed` bật lại được;
   đổi email -> `manage_token` đổi; chuẩn hoá email (hoa thường, khoảng trắng, giữ `+tag`).
 
-### GĐ 2 — `topics` + preferences
+### GĐ 2 — `topics` + preferences ✅ xong 2026-09-19
 - Admin: tạo / kích hoạt / đình chỉ topic. `GET /v1/topics`.
 - `SetUserPreferences` (topic thường + `optedOutOptional`), `GetUserPreferences` (trả `effectiveOptIn`).
+- Route preferences thuộc module `topics` (dù path nằm dưới `/v1/users`); topics hỏi directory (tra user)
+  và subscriptions (cờ L1) qua port — phụ thuộc một chiều `topics -> directory -> subscriptions`.
+- `PUT` preferences kiểm TẤT CẢ trước khi ghi: một topic sai thì không lưu gì. `effectiveOptIn` chỉ là
+  lớp L3; L0/L1 trả riêng ở `email` và xét lúc gửi.
 - **Test:** tắt topic mandatory -> 422 `TOPIC_MANDATORY`; topic `opt_in` chưa có preference -> không
   nhận; topic của app khác -> 404.
 

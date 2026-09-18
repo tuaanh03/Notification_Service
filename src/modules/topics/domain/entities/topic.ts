@@ -8,6 +8,7 @@ import {
   type TopicId,
   type TopicStatus,
 } from '../../../../shared/kernel/index.ts';
+import { nextTopicStatus, type TopicTransitionEvent } from '../rules/topic-transitions.ts';
 
 export interface TopicProps extends TimestampInput {
   id: TopicId;
@@ -45,7 +46,9 @@ export class Topic extends BaseEntity<TopicId> {
     if (!key) throw ValidationError.of('TOPIC_KEY_REQUIRED', 'topic key must not be empty', 'key');
     this.appId = props.appId;
     this.key = key;
-    this.name = props.name.trim();
+    const name = props.name.trim();
+    if (!name) throw ValidationError.of('TOPIC_NAME_REQUIRED', 'topic name must not be empty', 'name');
+    this.name = name;
     this.status = props.status ?? 'draft';
     this.defaultMode = props.defaultMode ?? 'opt_out';
     this.mandatory = props.mandatory ?? false;
@@ -63,6 +66,12 @@ export class Topic extends BaseEntity<TopicId> {
   /** Topic mandatory thì bỏ qua lớp preference — nhưng KHÔNG BAO GIỜ bỏ qua lớp kênh chết. */
   get bypassesPreference(): boolean {
     return this.mandatory;
+  }
+
+  /** Mọi đổi trạng thái đi qua đây — không ai set `status` trực tiếp. */
+  apply(event: TopicTransitionEvent, at: Date): void {
+    this.status = nextTopicStatus(this.status, event);
+    this.touch(at);
   }
 
   get canSend(): boolean {
