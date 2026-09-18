@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "description": "EWS AstroLink API - clean architecture base",
   "type": "module",
-  "main": "dist/src/index.js",
+  "main": "dist/src/entrypoints/api.js",
   "scripts": {
-    "start": "node dist/src/index.js",
-    "dev": "tsx watch src/index.ts",
+    "start": "node dist/src/entrypoints/api.js",
+    "start:worker": "node dist/src/entrypoints/worker.js",
+    "start:scheduler": "node dist/src/entrypoints/scheduler.js",
+    "dev": "tsx watch src/entrypoints/api.ts",
+    "dev:worker": "tsx watch src/entrypoints/worker.ts",
+    "dev:scheduler": "tsx watch src/entrypoints/scheduler.ts",
     "typecheck": "tsc --noEmit",
     "lint:arch": "vitest run --project unit test/architecture",
     "build": "tsc -p tsconfig.build.json",
@@ -23,12 +27,15 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.5",
+    "ioredis": "^6.0.0",
     "mysql2": "^3.24.4",
     "pino": "^10.3.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@testcontainers/mysql": "^12.1.0",
+    "@testcontainers/redis": "^12.1.0",
     "@types/node": "^22.20.3",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.13",

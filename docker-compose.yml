@@ -1,5 +1,6 @@
-# Môi trường chạy đầy đủ: MySQL + Redis + migrate + app.
-#   docker compose up --build            # dựng image, migrate, chạy app
+# Môi trường chạy đầy đủ: MySQL + Redis + migrate + api + worker + scheduler.
+#   docker compose up --build            # dựng image, migrate, chạy 3 process
+#   docker compose up -d --scale worker=3   # thêm worker khi hàng đợi dồn
 #   docker compose up -d mysql redis     # chỉ hạ tầng, để chạy `npm run dev` trên máy
 # Biến ${...} lấy từ file .env cạnh file này nếu có, không thì dùng mặc định bên dưới (chỉ cho dev).
 
@@ -8,7 +9,6 @@ x-app-env: &app-env
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DATABASE_URL: mysql://${MYSQL_USER:-ews}:${MYSQL_PASSWORD:-ews}@mysql:3306/${MYSQL_DATABASE:-ews_astrolink}
   DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
-  # Chưa được đọc — shared/streams (lượt 2) sẽ khai biến này trong shared/config.
   REDIS_URL: redis://redis:6379
 
 # Cùng một image cho mọi process; `pull_policy: build` để compose dựng tại chỗ thay vì đi pull
@@ -67,17 +67,49 @@ services:
         condition: service_healthy
     restart: 'no'
 
-  app:
+  # Ba process chạy lâu dài, CÙNG một image, khác command (tài liệu kiến trúc §2).
+  api:
     <<: *app-image
-    environment: *app-env
-    depends_on:
+    command: ['node', 'dist/src/entrypoints/api.js']
+    environment:
+      <<: *app-env
+      PORT: 3000
+    ports:
+      # Cổng phía host theo tài liệu kiến trúc §2 (4002); trong container vẫn là 3000.
+      - ${API_PORT:-4002}:3000
+    depends_on: &after-migrate
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    # Hiện chỉ kiểm kết nối DB rồi thoát. Lượt 3 tách thành api / worker / scheduler chạy lâu dài
-    # (cùng image, khác command) và đổi sang restart: unless-stopped.
-    restart: 'no'
+    healthcheck:
+      # Image slim không có curl — dùng chính node để gọi readiness.
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  worker:
+    <<: *app-image
+    command: ['node', 'dist/src/entrypoints/worker.js']
+    environment:
+      <<: *app-env
+      # Scale riêng phần gửi mail: thêm một service worker khác với WORKER_GROUPS=delivery-email.
+      WORKER_GROUPS: ${WORKER_GROUPS:-all}
+    depends_on: *after-migrate
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  scheduler:
+    <<: *app-image
+    command: ['node', 'dist/src/entrypoints/scheduler.js']
+    environment: *app-env
+    depends_on: *after-migrate
+    stop_grace_period: 15s
+    restart: unless-stopped
 
 volumes:
   mysql-data:

@@ -145,6 +145,40 @@ describe('luật phụ thuộc', () => {
     ).toEqual([]);
   });
 
+  it('mỗi package hạ tầng chỉ được import ở đúng chỗ của nó', () => {
+    // pkg -> các tiền tố đường dẫn được phép. Thêm chỗ dùng mới = sửa bảng này, có chủ đích.
+    const HOME: Record<string, readonly string[]> = {
+      ioredis: ['src/shared/streams/'],
+      'drizzle-orm': ['src/shared/db/', 'src/shared/streams/outbox-relay.ts', 'src/modules/', 'src/entrypoints/migrate.ts'],
+      mysql2: ['src/shared/db/'],
+      pino: ['src/shared/observability/pino-logger.ts'],
+      fastify: ['src/shared/http/', 'src/modules/'],
+      zod: ['src/shared/config/'],
+    };
+    const root = (pkg: string) => pkg.split('/')[0]!; // 'drizzle-orm/mysql-core' -> 'drizzle-orm'
+    const bad = externalViolations((f, pkg) => {
+      const allowed = HOME[root(pkg)];
+      if (!allowed) return false;
+      if (!allowed.some((prefix) => f.path.startsWith(prefix))) return true;
+      // Trong modules/: HTTP chỉ ở tầng interface (route), không lọt vào infrastructure.
+      // (domain/application đã bị luật riêng cấm mọi package ngoài.)
+      return root(pkg) === 'fastify' && moduleOf(f.path) !== undefined && layerOf(f.path) !== 'interface';
+    });
+    expect(bad).toEqual([]);
+  });
+
+  it('module chỉ chạm hạ tầng dùng chung qua đúng cửa', () => {
+    const bad = violations((f, to) => {
+      if (moduleOf(f.path) === undefined) return false;
+      // shared/db: chỉ infrastructure của module (adapter, schema).
+      if (to.startsWith('src/shared/db/')) return layerOf(f.path) !== 'infrastructure';
+      // shared/streams: handler (interface) chỉ thấy hợp đồng message, không thấy client Redis.
+      if (to.startsWith('src/shared/streams/')) return to !== 'src/shared/streams/contracts.ts';
+      return false;
+    });
+    expect(bad).toEqual([]);
+  });
+
   it('không có vòng phụ thuộc giữa các file', () => {
     const graph = new Map(files.map((f) => [f.path, f.internal.filter((to) => to.startsWith('src/'))]));
     const cycles: string[] = [];

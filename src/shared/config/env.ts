@@ -5,17 +5,32 @@ import { LOG_LEVELS } from '../observability/logger.ts';
  * Cấu hình đọc MỘT LẦN lúc khởi động, validate xong mới chạy tiếp (fail-fast).
  * Không module nào đọc `process.env` trực tiếp — nhận `Env` đã validate qua dependency.
  *
- * Chỉ khai biến mà code hiện tại thật sự dùng. REDIS_URL, WORKER_GROUPS... thêm vào đúng
- * lúc bước dùng chúng xuất hiện, để không bắt môi trường dev phải khai biến chưa ai đọc.
+ * Chỉ khai biến mà code hiện tại thật sự dùng — thêm biến đúng lúc bước dùng nó xuất hiện,
+ * để không bắt môi trường dev phải khai biến chưa ai đọc.
  */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  /** Process `api`: địa chỉ lắng nghe. 0.0.0.0 để nhận kết nối từ ngoài container. */
+  HOST: z.string().min(1).default('0.0.0.0'),
+  PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
   DATABASE_URL: z
     .string()
     .regex(/^mysql:\/\/.+/, 'must be a mysql:// connection URL'),
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(200).default(10),
+  /** Redis Streams: hàng đợi công việc + event bus. KHÔNG phải nguồn sự thật — mất Redis thì relay lại từ outbox. */
+  REDIS_URL: z.string().regex(/^rediss?:\/\/.+/, 'must be a redis:// or rediss:// URL'),
+  /**
+   * Process `worker`: chạy consumer group nào. `all` = mọi group đã đăng ký; hoặc danh sách cách
+   * nhau bởi dấu phẩy, ví dụ `delivery-email` — để scale riêng phần gửi mail (tài liệu §12).
+   */
+  WORKER_GROUPS: z
+    .string()
+    .default('all')
+    .transform((raw): 'all' | readonly string[] => {
+      const groups = raw.split(',').map((g) => g.trim()).filter(Boolean);
+      return groups.length === 0 || groups.includes('all') ? 'all' : groups;
+    }),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

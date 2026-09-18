@@ -39,7 +39,11 @@ export const processedMessages = mysqlTable(
     messageId: varchar('message_id', { length: 64 }).notNull(),
     at: tsNow('at'),
   },
-  // PRIMARY KEY, không phải index: idempotency dựa vào việc INSERT trùng bị TỪ CHỐI.
-  // Index thường vẫn cho chèn trùng -> consumer sẽ xử lý hai lần.
-  (t) => [primaryKey({ columns: [t.consumerGroup, t.messageId] })],
+  (t) => [
+    // PRIMARY KEY, không phải index: idempotency dựa vào việc INSERT trùng bị TỪ CHỐI.
+    // Index thường vẫn cho chèn trùng -> consumer sẽ xử lý hai lần.
+    primaryKey({ columns: [t.consumerGroup, t.messageId] }),
+    // Job dọn dẹp của scheduler xoá theo `at` — thiếu index thì mỗi lần dọn là một lần quét cả bảng.
+    index('idx_processed_messages_at').on(t.at),
+  ],
 );

@@ -7,6 +7,8 @@ import { createDatabase, type DatabaseHandle } from '../../../src/shared/db/inde
 
 export interface TestDatabase extends DatabaseHandle {
   name: string;
+  /** Để spawn process thật (api/worker/scheduler) trỏ vào đúng database này. */
+  url: string;
 }
 
 /**
@@ -29,7 +31,7 @@ export async function createTestDatabase(options: { poolSize?: number } = {}): P
   url.pathname = `/${name}`;
   const handle = createDatabase({ url: url.toString(), poolSize: options.poolSize ?? 10 });
   await migrate(handle.db, { migrationsFolder: 'drizzle' });
-  return { ...handle, name };
+  return { ...handle, name, url: url.toString() };
 }
 
 export async function tableNames(db: TestDatabase['db']): Promise<string[]> {

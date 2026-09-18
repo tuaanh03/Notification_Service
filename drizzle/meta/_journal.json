@@ -15,6 +15,13 @@
       "when": 1789725287879,
       "tag": "0001_rbac_account_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1789741641375,
+      "tag": "0002_processed_messages_at_index",
+      "breakpoints": true
     }
   ]
 }

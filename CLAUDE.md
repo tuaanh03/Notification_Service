@@ -7,10 +7,12 @@ Trao đổi với người dùng bằng tiếng Việt. Giữ tiếng Anh cho đ
 ## Lệnh
 
 ```bash
-npm run dev         # tsx watch src/index.ts
+npm run dev         # tsx watch src/entrypoints/api.ts   (cần MySQL + Redis: `docker compose up -d mysql redis`)
+npm run dev:worker  # tsx watch src/entrypoints/worker.ts
+npm run dev:scheduler  # tsx watch src/entrypoints/scheduler.ts
 npm run typecheck   # tsc --noEmit
 npm run build       # tsc -> dist/
-npm start           # node dist/src/index.js  (chạy sau khi build)
+npm start           # node dist/src/entrypoints/api.js  (start:worker / start:scheduler tương tự)
 npm test            # unit + luật kiến trúc — không cần Docker, < 3 giây
 npm run lint:arch   # chỉ luật kiến trúc (test/architecture/)
 npm run test:integration  # MySQL 8.4 thật qua testcontainers — CẦN Docker, ~1 phút
@@ -21,7 +23,8 @@ npm run db:generate # drizzle-kit generate -> drizzle/*.sql
 npm run db:migrate  # tsx src/entrypoints/migrate.ts — cần DATABASE_URL
 npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` trong compose
 
-docker compose up --build        # mysql + redis + migrate + app
+docker compose up --build        # mysql + redis + migrate + api (host :4002) + worker + scheduler
+docker compose up -d --scale worker=3   # thêm worker
 docker compose up -d mysql redis # chỉ hạ tầng, để chạy `npm run dev` trên máy
 ```
 
@@ -32,26 +35,26 @@ thật; `rewriteRelativeImportExtensions` đổi sang `.js` lúc emit — đừn
 ## Stack đã chốt
 
 TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `erasableSyntaxOnly`) ·
-**MySQL 8** · Drizzle ORM (driver `mysql2`) · zod (env) · pino · vitest + testcontainers ·
-Docker (`node:22-slim`, compose có MySQL 8.4 + Redis 7.4). Client Redis Streams và Fastify thuộc
-các lượt sau của phase 1, chưa có trong code.
+**MySQL 8** · Drizzle ORM (driver `mysql2`) · **Redis 7 Streams** (ioredis 6, ghim RESP2) · zod (env)
+· Fastify 5 · pino · vitest + testcontainers · Docker (`node:22-slim`, compose có MySQL 8.4 + Redis 7.4).
 
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 1, xong lượt 1/4 + chuẩn hoá kiến trúc
+## Trạng thái: phase 1, xong lượt 3/4
 
-Có trong repo: domain model 10 module · schema MySQL + 2 migration · `shared/config` · `shared/db`
-· port hạ tầng dùng chung + composition root (ADR-0012) · luật kiến trúc thành test · Docker.
-78 unit/architecture test, 31 integration test.
+Có trong repo: domain model 10 module · schema MySQL + 3 migration · `shared/config` · `shared/db`
+· `shared/streams` (ADR-0013) · `shared/http` (Fastify + problem+json) · `shared/jobs` · 3 process
+`api` / `worker` / `scheduler` chạy lâu dài, tắt gọn (ADR-0014) · port hạ tầng + composition root
+(ADR-0012) · luật kiến trúc thành test · Docker. 103 unit/architecture test, 56 integration test.
 
-Chưa có: outbox relay, client Redis, HTTP server, repository, worker, scheduler, tầng
-`application/` và `interface/` của các module. `src/index.ts` mới dựng container, ping DB rồi thoát.
+Chưa có: route nghiệp vụ, consumer nghiệp vụ, repository, tầng `application/` và `interface/` của
+các module. `api` mới có health check; registry consumer của `worker` còn trống.
 
 Phase 1 làm theo 4 lượt, mỗi lượt dừng để người dùng review:
 1. ~~`shared/config` + `shared/db` + test tích hợp~~ — xong (kèm chuẩn hoá DI + Docker)
-2. `shared/streams` + outbox relay
-3. `entrypoints/{api,worker,scheduler}` chạy lâu dài (compose tách `app` thành 3 service)
+2. ~~`shared/streams` + outbox relay~~ — xong
+3. ~~`entrypoints/{api,worker,scheduler}` chạy lâu dài~~ — xong
 4. lát cắt dọc đầu tiên: module `apps` (vì mọi bảng khác đều có `app_id`, và nó là cổng xác thực `/v1/*`)
 
 ## Tài liệu và quyết định
@@ -70,6 +73,8 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0010` | Ngoại lệ dependency rule cho `channelGate` và `effectiveOptIn` |
 | `0011` | Composite FK chống cấp quyền chéo account trên `admin_app_roles` (bảng thuộc module `apps`) |
 | `0012` | DI theo port: transaction qua AsyncLocalStorage, composition root viết tay, luật kiến trúc thành test |
+| `0013` | Redis Streams: outbox relay, khung consumer, DLQ, khử trùng theo outbox id, ghim RESP2 |
+| `0014` | Ba process api / worker / scheduler: vòng đời, health, problem+json, điểm mở rộng |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
@@ -77,9 +82,10 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 
 ```
 src/
-  index.ts                 bootstrap tạm: dựng container, ping DB, thoát (lượt 3 thay bằng entrypoints/)
-  entrypoints/             process chạy được: migrate.ts · load-env-or-exit.ts · (api/worker/scheduler — lượt 3)
+  entrypoints/             api.ts · worker.ts · scheduler.ts · migrate.ts (file chạy, 3 dòng mỗi file)
+                           · *-process.ts (startApi/startWorker/startScheduler — test gọi trực tiếp) · lifecycle
   composition/             COMPOSITION ROOT — nơi DUY NHẤT ghép hiện thực vào port. Chỉ entrypoint import.
+                           container · consumer-registry (mọi consumer group) · scheduler-jobs (mọi job định kỳ)
   shared/
     kernel/                ids (branded) · enums · errors · result · clock · email · base-entity — thuần, không I/O
     application/ports/     port hạ tầng dùng chung: UnitOfWork · EventOutbox — thuần interface
@@ -87,6 +93,10 @@ src/
     config/                loadEnv() — zod, fail-fast; không ai khác đọc process.env
     db/                    client (pool + UTC) · TransactionContext (ALS) · DrizzleUnitOfWork ·
                            DrizzleEventOutbox · ProcessedMessageStore · lockParentRow · errors · columns · schema
+    streams/               names (stream + routeEvent) · contracts (StreamMessage, MessageHandler — thuần kiểu)
+                           · codec · client (ioredis) · StreamClient · OutboxRelay · StreamConsumer
+    http/                  buildHttpServer (health, request id, access log) · toProblem (lỗi -> problem+json)
+    jobs/                  JobRunner — job định kỳ không chồng lần, stop() chờ lần đang chạy
   modules/<name>/
     domain/                CẤM import Drizzle, MySQL, HTTP, application, infrastructure, global của Node
       entities/            class entity, mỗi file 1 entity + interface `XxxProps` của nó
@@ -200,6 +210,18 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   executor bằng `transactions.executor()` (đọc) hoặc `transactions.require(op)` (bắt buộc trong tx:
   outbox, processed_messages, khoá dòng — gọi ngoài `run` ném `TransactionRequiredError`).
   `run` lồng nhau nhập vào transaction ngoài.
+- **Event ra ngoài module luôn qua `EventOutbox.append` trong `uow.run`** — không XADD thẳng. Event
+  cần worker xử lý thì thêm một dòng vào `EVENT_ROUTES` (`shared/streams/names.ts`); mọi event đã tự
+  vào `audit.events`.
+- **Consumer = handler thuần `(message: StreamMessage) => Promise<void>`** đặt ở
+  `modules/<x>/interface/consumers/`, chỉ import `shared/streams/contracts.ts`. Khung `StreamConsumer`
+  lo idempotency (`dedupKey = outbox:<id>`, không phải message id Redis), transaction, ACK, retry, DLQ.
+  Lỗi không thể khỏi khi thử lại -> ném `PermanentMessageError` (hoặc `DomainError`) để vào DLQ ngay.
+- **Ba điểm cắm của module vào process** (ADR-0014): route `HttpRoutes` từ `interface/http/` truyền vào
+  `startApi`; consumer = một dòng trong `composition/consumer-registry.ts`; job định kỳ = một phần tử
+  trong `composition/scheduler-jobs.ts`. Handler/route không bao giờ nhận `infra` — chỉ `ports`.
+- **Lỗi HTTP luôn là `application/problem+json`** qua `toProblem`. Route không tự `reply.status(4xx)`
+  cho lỗi nghiệp vụ — ném `DomainError` / `ValidationError` và để error handler map.
 - **Ràng buộc "tối đa N mỗi cha"**: `lockParentRow(transactions.require(...), bảng cha, PK, id)` rồi
   mới đếm (ADR-0009). Phải có test `race()` trong `test/integration/` chứng minh.
 - **Domain không import Drizzle.** Entity và bảng là hai thứ khác nhau, nối bằng mapper ở

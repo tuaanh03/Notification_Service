@@ -4,6 +4,7 @@ export * from './drizzle-event-outbox.ts';
 export * from './drizzle-unit-of-work.ts';
 export * from './errors.ts';
 export * from './locks.ts';
+export * from './maintenance.ts';
 export * from './processed-messages.ts';
 export * from './schema.ts';
 export * from './transaction-context.ts';

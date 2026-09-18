@@ -23,7 +23,7 @@ let c: Container;
 beforeAll(async () => {
   // Pool >= số lệnh song song, nếu không các lệnh xếp hàng chờ connection và race không còn là race.
   t = await createTestDatabase({ poolSize: PARALLEL + 2 });
-  c = createContainer(loadEnv({ DATABASE_URL: 'mysql://unused/in-test', LOG_LEVEL: 'fatal' }), {
+  c = createContainer(loadEnv({ DATABASE_URL: 'mysql://unused/in-test', REDIS_URL: 'redis://unused', LOG_LEVEL: 'fatal' }), {
     database: t,
   });
 });

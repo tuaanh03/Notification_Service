@@ -32,4 +32,6 @@ COPY --chown=node:node package.json ./
 # Migration đi cùng image: job `migrate` chạy từ chính image này (dist/src/entrypoints/migrate.js).
 COPY --chown=node:node drizzle ./drizzle
 USER node
-CMD ["node", "dist/src/index.js"]
+# Mặc định chạy api; compose đổi command cho worker / scheduler / migrate.
+EXPOSE 3000
+CMD ["node", "dist/src/entrypoints/api.js"]

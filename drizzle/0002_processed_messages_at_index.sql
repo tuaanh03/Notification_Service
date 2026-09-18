@@ -1,0 +1,1 @@
+CREATE INDEX `idx_processed_messages_at` ON `processed_messages` (`at`);
