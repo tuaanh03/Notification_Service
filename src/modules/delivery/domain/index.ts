@@ -1,2 +1,2 @@
-export * from './delivery-batch.ts';
-export * from './bounce-event.ts';
+export * from './entities/index.ts';
+export * from './rules/index.ts';

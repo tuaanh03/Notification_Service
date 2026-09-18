@@ -1,4 +1,14 @@
-import { boolean, int, json, mysqlEnum, mysqlTable, primaryKey, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import {
+  boolean,
+  foreignKey,
+  int,
+  json,
+  mysqlEnum,
+  mysqlTable,
+  primaryKey,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/mysql-core';
 import { APP_ORIGINS, APP_SECRET_STATUSES, APP_STATUSES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 import { organizations } from '../../../tenancy/infrastructure/db/schema.ts';
@@ -14,6 +24,8 @@ export const apps = mysqlTable(
     orgId: uuid('org_id')
       .notNull()
       .references(() => organizations.orgId),
+    /** Denormalize để ép được composite FK (org_id, account_id) — xem ADR-0011. */
+    accountId: uuid('account_id').notNull(),
     slug: varchar('slug', { length: 120 }).notNull(),
     name: varchar('name', { length: 200 }).notNull(),
     namespace: varchar('namespace', { length: 120 }).notNull(),
@@ -35,6 +47,14 @@ export const apps = mysqlTable(
     // BẮT BUỘC: đích của composite FK (app_id, org_id) trên bảng users.
     // Bỏ dòng này thì FK không tạo được, và bỏ FK thì mất lớp chống rò rỉ chéo org.
     uniqueIndex('uq_apps_app_org').on(t.appId, t.orgId),
+    // BẮT BUỘC: đích của composite FK (app_id, account_id) trên admin_app_roles (ADR-0011).
+    uniqueIndex('uq_apps_app_account').on(t.appId, t.accountId),
+    // account_id của app phải đúng là account sở hữu org của app.
+    foreignKey({
+      name: 'fk_apps_org_account',
+      columns: [t.orgId, t.accountId],
+      foreignColumns: [organizations.orgId, organizations.accountId],
+    }),
   ],
 );
 

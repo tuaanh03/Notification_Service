@@ -3,7 +3,7 @@ import { boolean, int, json, mysqlEnum, mysqlTable, text, uniqueIndex, varchar }
 import { CHANNELS, TEMPLATE_STATUSES, TEMPLATE_VERSION_STATUSES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 import { apps } from '../../../apps/infrastructure/db/schema.ts';
-import type { VariableSpec } from '../../domain/template-variables.ts';
+import type { VariableSpec } from '../../domain/types/template-variable.ts';
 
 export const templates = mysqlTable(
   'templates',

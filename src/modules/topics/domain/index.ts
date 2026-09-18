@@ -1,2 +1,2 @@
-export * from './topic.ts';
-export * from './user-topic-preference.ts';
+export * from './entities/index.ts';
+export * from './rules/index.ts';

@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AccountId,
+  AdminId,
   AppId,
+  CrossAccountViolationError,
   CrossOrgViolationError,
   OrgId,
   PersonId,
   UserId,
 } from '../../src/shared/kernel/index.ts';
-import { Person } from '../../src/modules/directory/domain/person.ts';
-import { User } from '../../src/modules/directory/domain/user.ts';
+import { Person } from '../../src/modules/directory/domain/entities/person.ts';
+import { User } from '../../src/modules/directory/domain/entities/user.ts';
+import { AdminAppRole } from '../../src/modules/tenancy/domain/entities/admin-app-role.ts';
 
 const ORG_A = OrgId.create();
 const ORG_B = OrgId.create();
@@ -48,5 +52,33 @@ describe('org là ranh giới sở hữu — chống rò rỉ chéo org', () => 
       primaryEmail: '  Minh@Example.COM  ',
     });
     expect(p.primaryEmail).toBe('minh@example.com');
+  });
+});
+
+// Cùng loại lỗ với chéo org, nhưng ở tầng quyền. Composite FK chặn lần cuối (ADR-0011).
+describe('account là ranh giới của RBAC — chống cấp quyền chéo account', () => {
+  const ACCOUNT_X = AccountId.create();
+  const ACCOUNT_Y = AccountId.create();
+  const AT = new Date('2026-09-18T00:00:00.000Z');
+
+  it('admin và app cùng account thì cấp quyền được', () => {
+    const role = AdminAppRole.grant(
+      { id: AdminId.create(), accountId: ACCOUNT_X },
+      { id: AppId.create(), accountId: ACCOUNT_X },
+      'app_admin',
+      AT,
+    );
+    expect(role.accountId).toBe(ACCOUNT_X);
+  });
+
+  it('admin của account X không được cấp quyền vào app của account Y', () => {
+    expect(() =>
+      AdminAppRole.grant(
+        { id: AdminId.create(), accountId: ACCOUNT_X },
+        { id: AppId.create(), accountId: ACCOUNT_Y },
+        'app_admin',
+        AT,
+      ),
+    ).toThrow(CrossAccountViolationError);
   });
 });

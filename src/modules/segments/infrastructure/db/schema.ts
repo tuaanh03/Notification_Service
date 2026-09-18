@@ -1,7 +1,7 @@
 import { json, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 import { tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 import { apps } from '../../../apps/infrastructure/db/schema.ts';
-import type { SegmentFilter } from '../../domain/segment.ts';
+import type { SegmentFilter } from '../../domain/types/segment-filter.ts';
 
 /**
  * Segment = kho TARGETING. `filters` là bộ lọc động, đánh giá lại lúc gửi.

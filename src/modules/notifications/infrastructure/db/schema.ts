@@ -12,7 +12,7 @@ import { apps } from '../../../apps/infrastructure/db/schema.ts';
 import { topics } from '../../../topics/infrastructure/db/schema.ts';
 import { templateVersions } from '../../../templates/infrastructure/db/schema.ts';
 import { users } from '../../../directory/infrastructure/db/schema.ts';
-import type { Counters } from '../../domain/counters.ts';
+import type { Counters } from '../../domain/types/counters.ts';
 
 /** Một dòng = một lần gửi, bất kể đến từ API hay người soạn. */
 export const notifications = mysqlTable(

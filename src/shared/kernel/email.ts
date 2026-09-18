@@ -17,7 +17,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function normalizeEmail(raw: string): NormalizedEmail {
   const value = raw.trim().toLowerCase();
   if (!EMAIL_RE.test(value)) {
-    throw new ValidationError([`email không hợp lệ: ${raw}`]);
+    throw ValidationError.of('EMAIL_INVALID', `invalid email: ${raw}`, 'email');
   }
   return value as NormalizedEmail;
 }
@@ -37,7 +37,7 @@ export function normalizePhone(raw: string): NormalizedPhone {
   const plus = trimmed.startsWith('+') ? '+' : '';
   const digits = trimmed.replace(/\D/g, '');
   if (digits.length < 8 || digits.length > 15) {
-    throw new ValidationError([`số điện thoại không hợp lệ: ${raw}`]);
+    throw ValidationError.of('PHONE_INVALID', `invalid phone number: ${raw}`, 'phone');
   }
   return `${plus}${digits}` as NormalizedPhone;
 }

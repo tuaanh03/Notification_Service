@@ -10,7 +10,7 @@ import {
   isTerminal,
   nextStatus,
   TRANSITIONS,
-} from '../../src/modules/notifications/domain/transitions.ts';
+} from '../../src/modules/notifications/domain/rules/transitions.ts';
 
 describe('bảng chuyển trạng thái notification', () => {
   it('có đúng 11 trạng thái', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AppId, SubscriptionId, UserId, ValidationError } from '../../src/shared/kernel/index.ts';
-import { Subscription } from '../../src/modules/subscriptions/domain/subscription.ts';
+import { Subscription } from '../../src/modules/subscriptions/domain/entities/subscription.ts';
 
 const AT = new Date('2026-09-17T10:00:00.000Z');
 

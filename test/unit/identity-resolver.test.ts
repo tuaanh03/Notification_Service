@@ -1,23 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { PersonId, normalizeEmail, normalizePhone } from '../../src/shared/kernel/index.ts';
 import {
+  identityKeys,
   resolveIdentity,
-  type PersonLookup,
-} from '../../src/modules/directory/domain/identity-resolver.ts';
+  type IdentityMatches,
+} from '../../src/modules/directory/domain/rules/identity-resolver.ts';
 
 const EXISTING = PersonId.create();
 
-function lookup(overrides: Partial<PersonLookup> = {}): PersonLookup {
-  return { byEmail: () => null, byPhone: () => null, ...overrides };
+function matches(overrides: Partial<IdentityMatches> = {}): IdentityMatches {
+  return { byEmail: null, byPhone: null, ...overrides };
 }
 
 describe('Identity Resolver', () => {
   it('khớp theo email đã chuẩn hoá', () => {
-    const result = resolveIdentity(
-      { email: '  Minh@Example.COM ' },
-      lookup({ byEmail: (email) => (email === 'minh@example.com' ? EXISTING : null) }),
-    );
-    expect(result).toEqual({
+    const keys = identityKeys({ email: '  Minh@Example.COM ' });
+    expect(keys.email).toBe('minh@example.com');
+    expect(resolveIdentity(keys, matches({ byEmail: EXISTING }))).toEqual({
       kind: 'matched',
       personId: EXISTING,
       matchedOn: 'email',
@@ -32,37 +31,35 @@ describe('Identity Resolver', () => {
   });
 
   it('không có khoá deterministic thì KHÔNG đoán', () => {
-    expect(resolveIdentity({ email: null, phone: null }, lookup())).toEqual({
+    const keys = identityKeys({ email: null, phone: null });
+    expect(resolveIdentity(keys, matches())).toEqual({
       kind: 'unresolvable',
       reason: 'no_deterministic_key',
     });
   });
 
   it('phone CHƯA xác thực OTP không được dùng làm khoá merge', () => {
-    const byPhone = () => EXISTING;
-    expect(resolveIdentity({ phone: '+84 901 234 567' }, lookup({ byPhone })).kind).toBe(
-      'unresolvable',
-    );
-    expect(
-      resolveIdentity({ phone: '+84 901 234 567', phoneVerified: true }, lookup({ byPhone })),
-    ).toMatchObject({ kind: 'matched', matchedOn: 'phone' });
+    const unverified = identityKeys({ phone: '+84 901 234 567' });
+    expect(unverified.phone).toBeNull();
+    // Kể cả khi application lỡ truyền match vào, khoá không hợp lệ thì không được dùng.
+    expect(resolveIdentity(unverified, matches({ byPhone: EXISTING })).kind).toBe('unresolvable');
+
+    const verified = identityKeys({ phone: '+84 901 234 567', phoneVerified: true });
+    expect(resolveIdentity(verified, matches({ byPhone: EXISTING }))).toMatchObject({
+      kind: 'matched',
+      matchedOn: 'phone',
+    });
   });
 
   it('email được ưu tiên hơn phone khi cả hai cùng khớp', () => {
-    const other = PersonId.create();
-    const result = resolveIdentity(
-      { email: 'minh@example.com', phone: '+84901234567', phoneVerified: true },
-      lookup({ byEmail: () => EXISTING, byPhone: () => other }),
-    );
+    const keys = identityKeys({ email: 'minh@example.com', phone: '+84901234567', phoneVerified: true });
+    const result = resolveIdentity(keys, matches({ byEmail: EXISTING, byPhone: PersonId.create() }));
     expect(result).toMatchObject({ kind: 'matched', personId: EXISTING, matchedOn: 'email' });
   });
 
   it('có email nhưng không khớp ai -> tạo person mới, không gộp bừa', () => {
-    const result = resolveIdentity(
-      { email: 'new@example.com', phone: '+84901234567', phoneVerified: true },
-      lookup(),
-    );
-    expect(result).toEqual({
+    const keys = identityKeys({ email: 'new@example.com', phone: '+84901234567', phoneVerified: true });
+    expect(resolveIdentity(keys, matches())).toEqual({
       kind: 'create',
       primaryEmail: normalizeEmail('new@example.com'),
       primaryPhone: normalizePhone('+84901234567'),

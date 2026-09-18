@@ -3,8 +3,8 @@ import {
   missingRequiredPayloadKeys,
   unresolvedVariables,
   validateBody,
-  type VariableSpec,
-} from '../../src/modules/templates/domain/template-variables.ts';
+} from '../../src/modules/templates/domain/rules/template-variables.ts';
+import type { VariableSpec } from '../../src/modules/templates/domain/types/template-variable.ts';
 
 const schema: VariableSpec[] = [
   { name: 'payload.order_number', source: 'payload', required: true },
@@ -21,22 +21,23 @@ describe('biến template — hai nguồn, một cú pháp', () => {
   it('từ chối cú pháp ngắn {{ order_number }}', () => {
     const issues = validateBody('Đơn {{ order_number }}', schema);
     expect(issues).toHaveLength(1);
-    expect(issues[0]).toContain('chưa khai nguồn');
+    expect(issues[0]?.code).toBe('VARIABLE_MISSING_SOURCE');
   });
 
   it('từ chối biến không có trong schema của version', () => {
     const issues = validateBody('{{ payload.secret_code }}', schema);
-    expect(issues[0]).toContain('không có trong schema');
+    expect(issues[0]?.code).toBe('VARIABLE_NOT_IN_SCHEMA');
   });
 
   it('biến không bắt buộc phải có | default:', () => {
     const issues = validateBody('{{ user.tags.first_name }}', schema);
-    expect(issues[0]).toContain('| default:');
+    expect(issues[0]?.code).toBe('OPTIONAL_VARIABLE_WITHOUT_DEFAULT');
   });
 
   it('template không được tự viết footer hay link unsubscribe', () => {
-    expect(validateBody('{{ footer }}', schema).join(' ')).toContain('footer');
-    expect(validateBody('<a href="/unsubscribe">Huỷ</a>', schema).join(' ')).toContain('unsubscribe');
+    const codes = (body: string) => validateBody(body, schema).map((i) => i.code);
+    expect(codes('{{ footer }}')).toContain('FOOTER_NOT_ALLOWED');
+    expect(codes('<a href="/unsubscribe">Huỷ</a>')).toContain('UNSUBSCRIBE_LINK_NOT_ALLOWED');
   });
 
   it('biến còn sót sau render bị bắt lại trước khi thư đi', () => {

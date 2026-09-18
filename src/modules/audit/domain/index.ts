@@ -1,1 +1,1 @@
-export * from './audit-entry.ts';
+export * from './entities/index.ts';
