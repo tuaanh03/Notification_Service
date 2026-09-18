@@ -6,14 +6,16 @@
 
 | Process | Entrypoint | Việc | Scale |
 | --- | --- | --- | --- |
-| `api` | `entrypoints/api.ts` | Fastify: nhận HTTP → command → DB + outbox → response. Không gửi mail, không XADD thẳng. | N bản sau load balancer |
-| `worker` | `entrypoints/worker.ts` | Chạy consumer group theo `WORKER_GROUPS` (`all` hoặc danh sách). Mỗi group một `StreamConsumer.run`. | N bản; tách riêng group nặng bằng `WORKER_GROUPS` |
-| `scheduler` | `entrypoints/scheduler.ts` | `JobRunner`: relay outbox (1 s), dọn outbox > 7 ngày và processed_messages > 14 ngày (1 giờ). | 1 bản là đủ; nhiều bản vẫn an toàn (SKIP LOCKED, DELETE idempotent) |
+| `api` | `entrypoints/api/` | Fastify: nhận HTTP → command → DB + outbox → response. Không gửi mail, không XADD thẳng. | N bản sau load balancer |
+| `worker` | `entrypoints/worker/` | Chạy consumer group theo `WORKER_GROUPS` (`all` hoặc danh sách). Mỗi group một `StreamConsumer.run`. | N bản; tách riêng group nặng bằng `WORKER_GROUPS` |
+| `scheduler` | `entrypoints/scheduler/` | `JobRunner`: relay outbox (1 s), dọn outbox > 7 ngày và processed_messages > 14 ngày (1 giờ). | 1 bản là đủ; nhiều bản vẫn an toàn (SKIP LOCKED, DELETE idempotent) |
 
-Cùng một image, khác `command`. Mỗi file entrypoint chỉ 3 dòng: dựng container → `runProcess` → `startXxx`.
-Phần logic (`startApi` / `startWorker` / `startScheduler`) tách riêng để test gọi trực tiếp.
+Cùng một image, khác `command`. **Mỗi process một folder** (sửa 2026-09-18, trước đó 10 file nằm phẳng):
+`<process>/main.ts` là file chạy — 3 dòng: dựng container → `runProcess` → `start<Process>`, không ai được
+import; `<process>/start-<process>.ts` là logic khởi động/tắt, test gọi trực tiếp; `runtime/` là vòng đời
+chung. Luật kiến trúc ép đúng khuôn này và cấm file nằm phẳng ở gốc `entrypoints/`.
 
-### Vòng đời chung (`entrypoints/lifecycle.ts`)
+### Vòng đời chung (`entrypoints/runtime/lifecycle.ts`)
 start → chạy → SIGTERM/SIGINT → `stop()` (việc dở chạy nốt) → `container.dispose()` → exit 0.
 Start lỗi → exit 1. Tắt quá 12 s → exit 1 (compose `stop_grace_period` 15 s). Lỗi không ai bắt →
 tắt có trật tự, exit 1. Process được giữ sống tới khi có tín hiệu tắt — test phát hiện worker chưa có

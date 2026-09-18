@@ -194,7 +194,7 @@ describe('process scheduler', () => {
 // Chạy process THẬT (tsx) như trong container: khởi động, nhận SIGTERM, thoát sạch với mã 0.
 describe.each(['api', 'worker', 'scheduler'])('process thật: %s', (name) => {
   it('khởi động, SIGTERM -> tắt gọn, exit code 0', async () => {
-    const child = spawn(process.execPath, ['--import', 'tsx', `src/entrypoints/${name}.ts`], {
+    const child = spawn(process.execPath, ['--import', 'tsx', `src/entrypoints/${name}/main.ts`], {
       env: {
         ...process.env,
         NODE_ENV: 'test',

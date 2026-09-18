@@ -55,7 +55,9 @@ const isApplication = (p: string) =>
   layerOf(p) === 'application' || p.startsWith('src/shared/application/');
 const isKernel = (p: string) => p.startsWith('src/shared/kernel/');
 const isSchema = (p: string) => /^src\/modules\/[^/]+\/infrastructure\/db\/schema\.ts$/.test(p);
-const isEntrypoint = (p: string) => p === 'src/index.ts' || p.startsWith('src/entrypoints/');
+const isEntrypoint = (p: string) => p.startsWith('src/entrypoints/');
+/** File chạy của một process — import vào là khởi động process. */
+const isProcessMain = (p: string) => /^src\/entrypoints\/[^/]+\/main\.ts$/.test(p);
 
 type Edge = `${string} -> ${string}`;
 function violations(check: (from: SourceFile, to: string) => boolean): Edge[] {
@@ -128,6 +130,23 @@ describe('luật phụ thuộc', () => {
     ).toEqual([]);
   });
 
+  it('không ai import `main.ts` của process — import nó là khởi động process', () => {
+    expect(violations((_f, to) => isProcessMain(to))).toEqual([]);
+  });
+
+  it('mỗi process một folder cùng khuôn: main.ts + start-<process>.ts + index.ts', () => {
+    const PROCESSES = ['api', 'worker', 'scheduler'];
+    const paths = new Set(files.map((f) => f.path));
+    const missing = PROCESSES.flatMap((p) =>
+      [`main.ts`, `start-${p}.ts`, `index.ts`].map((file) => `src/entrypoints/${p}/${file}`).filter((f) => !paths.has(f)),
+    );
+    expect(missing).toEqual([]);
+    // File nằm phẳng ở gốc entrypoints/ (ngoài index.ts) là dấu hiệu quay lại cấu trúc cũ.
+    expect(
+      [...paths].filter((p) => /^src\/entrypoints\/[^/]+\.ts$/.test(p) && p !== 'src/entrypoints/index.ts'),
+    ).toEqual([]);
+  });
+
   it('entrypoint không import thẳng module — mọi module đi qua composition root', () => {
     expect(violations((f, to) => isEntrypoint(f.path) && to.startsWith('src/modules/'))).toEqual([]);
   });
@@ -155,7 +174,7 @@ describe('luật phụ thuộc', () => {
     // pkg -> các tiền tố đường dẫn được phép. Thêm chỗ dùng mới = sửa bảng này, có chủ đích.
     const HOME: Record<string, readonly string[]> = {
       ioredis: ['src/shared/streams/'],
-      'drizzle-orm': ['src/shared/db/', 'src/shared/streams/outbox-relay.ts', 'src/modules/', 'src/entrypoints/migrate.ts'],
+      'drizzle-orm': ['src/shared/db/', 'src/shared/streams/outbox-relay.ts', 'src/modules/', 'src/entrypoints/migrate/'],
       mysql2: ['src/shared/db/'],
       pino: ['src/shared/observability/pino-logger.ts'],
       fastify: ['src/shared/http/', 'src/modules/'],

@@ -62,7 +62,7 @@ services:
 
   migrate:
     <<: *app-image
-    command: ['node', 'dist/src/entrypoints/migrate.js']
+    command: ['node', 'dist/src/entrypoints/migrate/main.js']
     environment: *app-env
     depends_on:
       mysql:
@@ -72,7 +72,7 @@ services:
   # Ba process chạy lâu dài, CÙNG một image, khác command (tài liệu kiến trúc §2).
   api:
     <<: *app-image
-    command: ['node', 'dist/src/entrypoints/api.js']
+    command: ['node', 'dist/src/entrypoints/api/main.js']
     environment:
       <<: *app-env
       PORT: 3000
@@ -96,7 +96,7 @@ services:
 
   worker:
     <<: *app-image
-    command: ['node', 'dist/src/entrypoints/worker.js']
+    command: ['node', 'dist/src/entrypoints/worker/main.js']
     environment:
       <<: *app-env
       # Scale riêng phần gửi mail: thêm một service worker khác với WORKER_GROUPS=delivery-email.
@@ -107,7 +107,7 @@ services:
 
   scheduler:
     <<: *app-image
-    command: ['node', 'dist/src/entrypoints/scheduler.js']
+    command: ['node', 'dist/src/entrypoints/scheduler/main.js']
     environment: *app-env
     depends_on: *after-migrate
     stop_grace_period: 15s

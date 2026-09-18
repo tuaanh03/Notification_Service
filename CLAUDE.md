@@ -7,12 +7,12 @@ Trao đổi với người dùng bằng tiếng Việt. Giữ tiếng Anh cho đ
 ## Lệnh
 
 ```bash
-npm run dev         # tsx watch src/entrypoints/api.ts   (cần MySQL + Redis: `docker compose up -d mysql redis`)
-npm run dev:worker  # tsx watch src/entrypoints/worker.ts
-npm run dev:scheduler  # tsx watch src/entrypoints/scheduler.ts
+npm run dev         # tsx watch src/entrypoints/api/main.ts   (cần MySQL + Redis: `docker compose up -d mysql redis`)
+npm run dev:worker  # tsx watch src/entrypoints/worker/main.ts
+npm run dev:scheduler  # tsx watch src/entrypoints/scheduler/main.ts
 npm run typecheck   # tsc --noEmit
 npm run build       # tsc -> dist/
-npm start           # node dist/src/entrypoints/api.js  (start:worker / start:scheduler tương tự)
+npm start           # node dist/src/entrypoints/api/main.js  (start:worker / start:scheduler tương tự)
 npm test            # unit + luật kiến trúc — không cần Docker, < 3 giây
 npm run lint:arch   # chỉ luật kiến trúc (test/architecture/)
 npm run test:integration  # MySQL 8.4 thật qua testcontainers — CẦN Docker, ~1 phút
@@ -20,7 +20,7 @@ npm run test:all    # tất cả
 npx vitest run test/unit/transitions.test.ts   # chạy một file test
 npx vitest -t "excluded THẮNG included"        # chạy một test theo tên
 npm run db:generate # drizzle-kit generate -> drizzle/*.sql
-npm run db:migrate  # tsx src/entrypoints/migrate.ts — cần DATABASE_URL
+npm run db:migrate  # tsx src/entrypoints/migrate/main.ts — cần DATABASE_URL
 npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` trong compose
 
 ADMIN_TOKEN=$(openssl rand -hex 32) docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
@@ -88,8 +88,12 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 
 ```
 src/
-  entrypoints/             api.ts · worker.ts · scheduler.ts · migrate.ts (file chạy, 3 dòng mỗi file)
-                           · *-process.ts (startApi/startWorker/startScheduler — test gọi trực tiếp) · lifecycle
+  entrypoints/             MỖI PROCESS MỘT FOLDER, cùng khuôn (luật kiến trúc ép):
+    api/ · worker/ · scheduler/   main.ts (file CHẠY — không ai được import) · start-<process>.ts (test gọi) · index.ts
+    migrate/                      main.ts (job một lần)
+    runtime/                      runProcess (vòng đời, SIGTERM) · loadEnvOrExit — dùng chung cho mọi process
+                           Thứ riêng của một process (plugin HTTP...) đặt trong folder của process đó;
+                           thứ tái dùng được thì ở shared/ hoặc composition/, không ở entrypoints/.
   composition/             COMPOSITION ROOT — nơi DUY NHẤT ghép hiện thực vào port. Chỉ entrypoint import.
                            container · module-definition · application (buildApplication = DANH SÁCH MODULE)
                            · modules/<x>.module.ts (ghép 1 module) · consumer-registry · scheduler-jobs

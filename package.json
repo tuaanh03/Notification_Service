@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "description": "EWS AstroLink API - clean architecture base",
   "type": "module",
-  "main": "dist/src/entrypoints/api.js",
+  "main": "dist/src/entrypoints/api/main.js",
   "scripts": {
-    "start": "node dist/src/entrypoints/api.js",
-    "start:worker": "node dist/src/entrypoints/worker.js",
-    "start:scheduler": "node dist/src/entrypoints/scheduler.js",
-    "dev": "tsx watch src/entrypoints/api.ts",
-    "dev:worker": "tsx watch src/entrypoints/worker.ts",
-    "dev:scheduler": "tsx watch src/entrypoints/scheduler.ts",
+    "start": "node dist/src/entrypoints/api/main.js",
+    "start:worker": "node dist/src/entrypoints/worker/main.js",
+    "start:scheduler": "node dist/src/entrypoints/scheduler/main.js",
+    "dev": "tsx watch src/entrypoints/api/main.ts",
+    "dev:worker": "tsx watch src/entrypoints/worker/main.ts",
+    "dev:scheduler": "tsx watch src/entrypoints/scheduler/main.ts",
     "typecheck": "tsc --noEmit",
     "lint:arch": "vitest run --project unit test/architecture",
     "build": "tsc -p tsconfig.build.json",
@@ -19,8 +19,8 @@
     "test:all": "vitest run",
     "test:watch": "vitest --project unit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/entrypoints/migrate.ts",
-    "db:migrate:prod": "node dist/src/entrypoints/migrate.js"
+    "db:migrate": "tsx src/entrypoints/migrate/main.ts",
+    "db:migrate:prod": "node dist/src/entrypoints/migrate/main.js"
   },
   "engines": {
     "node": ">=22.18"

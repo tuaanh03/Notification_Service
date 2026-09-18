@@ -1,8 +1,8 @@
-import { httpSurfaces, type Application, type Container } from '../composition/index.ts';
-import { pingDatabase } from '../shared/db/index.ts';
-import { BootstrapAdminAuthenticator, buildHttpServer, type HttpSurfaces } from '../shared/http/index.ts';
-import { pingRedis } from '../shared/streams/index.ts';
-import type { RunningProcess } from './lifecycle.ts';
+import { httpSurfaces, type Application, type Container } from '../../composition/index.ts';
+import { pingDatabase } from '../../shared/db/index.ts';
+import { BootstrapAdminAuthenticator, buildHttpServer, type HttpSurfaces } from '../../shared/http/index.ts';
+import { pingRedis } from '../../shared/streams/index.ts';
+import type { RunningProcess } from '../runtime/lifecycle.ts';
 
 export interface RunningApi extends RunningProcess {
   /** Địa chỉ thật đang lắng nghe — cần khi PORT=0 (test). */

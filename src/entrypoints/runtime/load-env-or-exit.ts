@@ -1,4 +1,4 @@
-import { ConfigError, loadEnv, type Env } from '../shared/config/index.ts';
+import { ConfigError, loadEnv, type Env } from '../../shared/config/index.ts';
 
 /**
  * Fail-fast dùng chung cho mọi entrypoint: cấu hình sai thì in lỗi và thoát mã 1, trước khi mở

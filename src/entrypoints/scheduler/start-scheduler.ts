@@ -1,6 +1,6 @@
-import { schedulerJobs, type Container, type SchedulerTuning } from '../composition/index.ts';
-import { JobRunner, type Job } from '../shared/jobs/index.ts';
-import type { RunningProcess } from './lifecycle.ts';
+import { schedulerJobs, type Container, type SchedulerTuning } from '../../composition/index.ts';
+import { JobRunner, type Job } from '../../shared/jobs/index.ts';
+import type { RunningProcess } from '../runtime/lifecycle.ts';
 
 /**
  * Process `scheduler`: việc theo nhịp thời gian — job hạ tầng (relay outbox, dọn bảng cũ) cộng job

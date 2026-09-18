@@ -1,6 +1,6 @@
 import { migrate } from 'drizzle-orm/mysql2/migrator';
-import { createContainer } from '../composition/index.ts';
-import { loadEnvOrExit } from './load-env-or-exit.ts';
+import { createContainer } from '../../composition/index.ts';
+import { loadEnvOrExit } from '../runtime/load-env-or-exit.ts';
 
 /**
  * Chạy migration trong `drizzle/` — dùng cho job `migrate` của docker compose và cho deploy.

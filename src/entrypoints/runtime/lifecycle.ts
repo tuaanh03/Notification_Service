@@ -1,4 +1,4 @@
-import type { Container } from '../composition/index.ts';
+import type { Container } from '../../composition/index.ts';
 
 /** Một process đang chạy. `stop()` dừng nhận việc mới và CHỜ việc đang dở xong. */
 export interface RunningProcess {

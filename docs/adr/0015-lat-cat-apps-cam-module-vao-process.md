@@ -9,9 +9,9 @@ modules/<x>/interface/http/*.routes.ts   -> factory(useCases) => HttpRoutes
 modules/<x>/interface/consumers/*.ts     -> factory(useCases) => MessageHandler
 composition/modules/<x>.module.ts        -> dựng adapter -> use case -> route/handler, trả ModuleDefinition
 composition/application.ts               -> buildApplication(): danh sách module + authenticators
-entrypoints/api.ts        -> startApi(container, application)        đọc httpSurfaces(application)
-entrypoints/worker.ts     -> startWorker(container, consumerRegistry(application))
-entrypoints/scheduler.ts  -> startScheduler(container, moduleJobs(application))
+entrypoints/api/main.ts        -> startApi(container, application)        đọc httpSurfaces(application)
+entrypoints/worker/main.ts     -> startWorker(container, consumerRegistry(application))
+entrypoints/scheduler/main.ts  -> startScheduler(container, moduleJobs(application))
 ```
 
 `ModuleDefinition = { name, http?: { public?, admin?, v1? }, consumers?, jobs? }`. Thêm module mới =

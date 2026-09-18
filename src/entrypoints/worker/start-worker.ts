@@ -1,6 +1,6 @@
 import { hostname } from 'node:os';
-import { selectConsumers, type ConsumerRegistration, type Container } from '../composition/index.ts';
-import type { RunningProcess } from './lifecycle.ts';
+import { selectConsumers, type ConsumerRegistration, type Container } from '../../composition/index.ts';
+import type { RunningProcess } from '../runtime/lifecycle.ts';
 
 /**
  * Process `worker`: chạy các consumer group theo `WORKER_GROUPS`. `registry` = consumer của mọi
