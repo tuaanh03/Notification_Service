@@ -3,12 +3,29 @@
   "version": "0.1.0",
   "description": "EWS AstroLink API - clean architecture base",
   "type": "module",
-  "main": "src/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "start": "node dist/src/index.js",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "mysql2": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   }
 }
