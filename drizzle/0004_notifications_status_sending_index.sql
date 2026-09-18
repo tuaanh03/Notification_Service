@@ -1,0 +1,1 @@
+CREATE INDEX `idx_notifications_status_sending` ON `notifications` (`status`,`sending_at`);

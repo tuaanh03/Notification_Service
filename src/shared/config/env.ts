@@ -42,6 +42,13 @@ const EnvSchema = z.object({
       const groups = raw.split(',').map((g) => g.trim()).filter(Boolean);
       return groups.length === 0 || groups.includes('all') ? 'all' : groups;
     }),
+  /** Provider gửi email (ADR-0016 D2). `graph` thêm ở GĐ 4. */
+  EMAIL_PROVIDER: z.enum(['mock']).default('mock'),
+  /**
+   * Notification kẹt ở `sending` lâu hơn ngưỡng này -> `failed` / `outcome_unknown` (at-most-once:
+   * không biết Graph đã nhận chưa thì KHÔNG gửi lại). Mặc định 10 phút.
+   */
+  EMAIL_STUCK_SENDING_AFTER_MS: z.coerce.number().int().min(60_000).default(600_000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

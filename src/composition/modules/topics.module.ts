@@ -2,6 +2,7 @@ import type { AppQueries } from '../../modules/apps/application/index.ts';
 import type { FindUserByExternalId } from '../../modules/directory/application/index.ts';
 import type { SetOptedOutOptional } from '../../modules/subscriptions/application/index.ts';
 import {
+  ConsentQueries,
   CreateTopic,
   GetUserPreferences,
   SetUserPreferences,
@@ -23,7 +24,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
 export function topicsModule(
   container: Container,
   dependencies: { appQueries: AppQueries; findUser: FindUserByExternalId; setOptedOutOptional: SetOptedOutOptional },
-): { definition: ModuleDefinition } {
+): { definition: ModuleDefinition; consentQueries: ConsentQueries } {
   const { uow, outbox, clock } = container.ports;
   const { transactions } = container.infra;
 
@@ -34,6 +35,7 @@ export function topicsModule(
   const getUserPreferences = new GetUserPreferences({ topics, preferences, users });
 
   return {
+    consentQueries: new ConsentQueries({ topics, preferences }),
     definition: {
       name: 'topics',
       http: {

@@ -46,6 +46,10 @@ export interface NotificationProps extends TimestampInput {
   targetUserId?: UserId | null | undefined;
   /** Nội dung email trực tiếp. NULL khi dùng template. Tạo bằng `emailContent()`. */
   content?: EmailContent | null | undefined;
+  /** Mốc vòng đời — `apply()` tự đặt; mapper nạp lại từ DB. */
+  queuedAt?: Date | null | undefined;
+  sendingAt?: Date | null | undefined;
+  finishedAt?: Date | null | undefined;
 }
 
 /**
@@ -80,6 +84,10 @@ export class Notification extends BaseEntity<NotificationId> {
   approvedBy: string | null;
   previewRenderedAt: Date | null;
   counters: Counters;
+  queuedAt: Date | null;
+  /** Lúc "nhận việc" gửi — job fail-stuck-sending tính thời gian kẹt từ mốc này. */
+  sendingAt: Date | null;
+  finishedAt: Date | null;
 
   /** Trạng thái lúc đọc từ DB — repository dùng làm `WHERE status = :expected`. */
   private loadedStatus: NotificationStatus;
@@ -110,6 +118,10 @@ export class Notification extends BaseEntity<NotificationId> {
     this.approvedBy = props.approvedBy ?? null;
     this.previewRenderedAt = props.previewRenderedAt ?? null;
     this.counters = props.counters ?? EMPTY_COUNTERS;
+    // Notification của API sinh ra đã ở `queued` -> lúc tạo cũng là lúc vào hàng đợi.
+    this.queuedAt = props.queuedAt ?? (this.status === 'queued' ? this.createdAt : null);
+    this.sendingAt = props.sendingAt ?? null;
+    this.finishedAt = props.finishedAt ?? null;
 
     assertPayloadSize(this.payload);
   }
@@ -142,6 +154,9 @@ export class Notification extends BaseEntity<NotificationId> {
     const record: TransitionRecord = { from, to, event, actor, reason: reason ?? null, at };
     this.status = to;
     this.pending = record;
+    if (to === 'queued') this.queuedAt = at;
+    if (to === 'sending') this.sendingAt = at;
+    if (isTerminal(to)) this.finishedAt = at;
     this.touch(at);
     return record;
   }

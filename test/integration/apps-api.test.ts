@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { inject } from 'vitest';
 import {
   buildApplication,
   consumerRegistry,
@@ -12,7 +11,7 @@ import { loadEnv } from '../../src/shared/config/index.ts';
 import { outbox } from '../../src/shared/db/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { race } from './support/race.ts';
-import { createTestRedis, eventually } from './support/redis.ts';
+import { createTestRedis, eventually, testRedisUrl } from './support/redis.ts';
 
 const ADMIN_TOKEN = 'test-admin-token-'.padEnd(40, 'x');
 
@@ -26,13 +25,13 @@ beforeAll(async () => {
   c = createContainer(
     loadEnv({
       DATABASE_URL: t.url,
-      REDIS_URL: inject('redisUrl'),
+      REDIS_URL: await testRedisUrl(),
       LOG_LEVEL: 'fatal',
       HOST: '127.0.0.1',
       PORT: '0',
       ADMIN_TOKEN,
     }),
-    { database: t, redis: createTestRedis() },
+    { database: t, redis: await createTestRedis() },
   );
   application = buildApplication(c);
   api = await startApi(c, application);
@@ -84,9 +83,9 @@ describe('bề mặt /admin — xác thực', () => {
   });
 
   it('ADMIN_TOKEN không cấu hình -> /admin đóng hoàn toàn', async () => {
-    const closed = createContainer(loadEnv({ DATABASE_URL: t.url, REDIS_URL: inject('redisUrl'), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0' }), {
+    const closed = createContainer(loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0' }), {
       database: t,
-      redis: createTestRedis(),
+      redis: await createTestRedis(),
     });
     const closedApi = await startApi(closed, buildApplication(closed));
     try {

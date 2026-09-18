@@ -5,12 +5,15 @@ import {
   type HttpRoutes,
   type HttpSurfaces,
 } from '../shared/http/index.ts';
+import type { EmailProvider } from '../modules/delivery/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
 import type { ConsumerRegistration } from './consumer-registry.ts';
 import type { Container } from './container.ts';
 import type { ModuleDefinition } from './module-definition.ts';
 import { appsModule } from './modules/apps.module.ts';
 import { auditModule } from './modules/audit.module.ts';
+import { deliveryModule } from './modules/delivery.module.ts';
+import { notificationsModule } from './modules/notifications.module.ts';
 import { directoryModule } from './modules/directory.module.ts';
 import { subscriptionsModule } from './modules/subscriptions.module.ts';
 import { topicsModule } from './modules/topics.module.ts';
@@ -25,9 +28,15 @@ export interface Application {
 /**
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
  * Thứ tự dựng theo phụ thuộc: tenancy -> apps (cần findOrganization); subscriptions -> directory
- * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions).
+ * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
+ * -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, delivery).
  */
-export function buildApplication(container: Container): Application {
+export interface ApplicationOverrides {
+  /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
+  emailProvider?: EmailProvider | undefined;
+}
+
+export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
   const tenancy = tenancyModule(container);
   const apps = appsModule(container, { findOrganization: tenancy.findOrganization });
   const subscriptions = subscriptionsModule(container);
@@ -36,6 +45,13 @@ export function buildApplication(container: Container): Application {
     appQueries: apps.appQueries,
     findUser: directory.findUser,
     setOptedOutOptional: subscriptions.setOptedOutOptional,
+  });
+  const delivery = deliveryModule(container, overrides);
+  const notifications = notificationsModule(container, {
+    findUser: directory.findUser,
+    findUserEmail: subscriptions.findUserEmail,
+    consentQueries: topics.consentQueries,
+    sendEmail: delivery.sendEmail,
   });
   const audit = auditModule(container);
 
@@ -46,6 +62,8 @@ export function buildApplication(container: Container): Application {
       subscriptions.definition,
       directory.definition,
       topics.definition,
+      delivery.definition,
+      notifications.definition,
       audit,
     ],
     authenticators: {

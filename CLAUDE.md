@@ -41,12 +41,13 @@ TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 1 xong · MVP email: xong GĐ 2/4
+## Trạng thái: phase 1 xong · MVP email: xong GĐ 3/4
 
 **Đang làm MVP gửi email trực tiếp qua Microsoft Graph — đọc `implementation_plan.md` và ADR-0016
 trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng người theo `external_id`, at-most-once,
 nội dung trực tiếp (chưa template), consent kiểm ở worker. Xong GĐ 0 (nền), GĐ 1 (user + email),
-GĐ 2 (topic + preference); tiếp theo GĐ 3 (`notifications` + worker gửi bằng Mock).
+GĐ 2 (topic + preference), GĐ 3 (gửi end-to-end bằng `MockEmailProvider`); tiếp theo GĐ 4 (provider
+Microsoft Graph + throttle).
 
 Có trong repo: domain model 10 module · schema MySQL + 4 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
@@ -57,12 +58,13 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `tenancy` | tạo account / organization; query `FindOrganization` cho module khác |
 | `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác |
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
-| `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi) |
+| `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `ConsentQueries` cho module khác |
+| `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
+| `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `MockEmailProvider` |
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
 
-7 module còn lại (`directory`, `subscriptions`, `topics`, `segments`, `templates`, `notifications`,
-`delivery`) mới có domain + schema. `/admin/*` đang dùng bootstrap token tạm thời (ADR-0015 §4).
+`segments` và `templates` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` đang dùng bootstrap token tạm thời (ADR-0015 §4).
 
 Phase 1 làm theo 4 lượt, mỗi lượt dừng để người dùng review:
 1. ~~`shared/config` + `shared/db` + test tích hợp~~ — xong (kèm chuẩn hoá DI + Docker)
@@ -130,7 +132,9 @@ src/
 test/
   unit/                    domain thuần, không DB
   architecture/            luật phụ thuộc (ADR-0012) — chạy cùng `npm test`
-  integration/             MySQL thật; support/: global-setup, createTestDatabase(), fixtures, race()
+  integration/             MySQL + Redis thật; support/: global-setup, createTestDatabase(), testRedisUrl() /
+                           createTestRedis() (MỖI FILE một db logic Redis riêng — tên stream là toàn cục,
+                           dùng chung là worker file này lấy mất message file kia), http.ts (provisionApp), race()
 Dockerfile · docker-compose.yml · .dockerignore
 ```
 

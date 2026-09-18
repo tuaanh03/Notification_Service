@@ -17,6 +17,8 @@ describe('loadEnv — fail-fast', () => {
       DB_POOL_SIZE: 10,
       REDIS_URL: REDIS,
       WORKER_GROUPS: 'all',
+      EMAIL_PROVIDER: 'mock',
+      EMAIL_STUCK_SENDING_AFTER_MS: 600_000,
     });
   });
 

@@ -1,2 +1,2 @@
-// Tầng application: ports/ · commands/ · queries/ · dto.ts — dựng ở phase 1.
-export {};
+export * from './commands/index.ts';
+export * from './ports/index.ts';

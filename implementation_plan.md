@@ -231,13 +231,18 @@ Thứ tự để có email chạy end-to-end (bằng Mock) sớm nhất. Mỗi g
 - **Test:** tắt topic mandatory -> 422 `TOPIC_MANDATORY`; topic `opt_in` chưa có preference -> không
   nhận; topic của app khác -> 404.
 
-### GĐ 3 — `notifications` + worker gửi (Mock)
+### GĐ 3 — `notifications` + worker gửi (Mock) ✅ xong 2026-09-19
 - `AcceptEmailNotification` (API): kiểm input, idempotency (trùng key -> 200 bản cũ), INSERT `queued`
   + outbox `NotificationQueued` (đã route sang `notif.queued`).
 - `email-gate.ts` (domain) + `DeliverEmailNotification` (worker, các bước ở mục 7) + port `EmailProvider`
   + `MockEmailProvider` (ghi log, cấu hình được để giả lập 202 / 429 / 4xx / timeout).
 - Consumer group `email-sender` trên `notif.queued` (`idempotency: 'handler'`); job `fail-stuck-sending`.
 - `GET /v1/notifications/:id`.
+- Thêm migration `0004`: index `(status, sending_at)` — job fail-stuck-sending chạy mỗi phút trên bảng
+  không bao giờ xoá dòng.
+- Test race "nhiều worker cùng một notification" gọi đúng handler 5 lần qua barrier; đã thăm dò: bỏ
+  `WHERE status = 'queued'` là test đỏ (provider bị gọi nhiều lần).
+- Test tiêm `MockEmailProvider` qua `buildApplication(container, { emailProvider })`.
 - **Test:** đủ các nhánh gate (mandatory vượt L1+L3 nhưng không vượt L0); 429 rồi thành công -> `sent`
   đúng 1 lần gửi; timeout sau khi gửi -> `failed/outcome_unknown` và **không** gửi lần hai; giao lại
   message khi đang `sending` -> không gửi; hai worker cùng nhận một message -> đúng 1 lần gửi (race).

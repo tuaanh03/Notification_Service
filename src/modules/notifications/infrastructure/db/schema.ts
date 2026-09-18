@@ -89,6 +89,9 @@ export const notifications = mysqlTable(
     index('idx_notifications_app_created').on(t.appId, t.createdAt),
     // MySQL không có partial index -> index thường, query phải kèm status='scheduled'.
     index('idx_notifications_scheduled').on(t.status, t.scheduledAt),
+    // Job fail-stuck-sending (mỗi phút): WHERE status='sending' AND sending_at < ?. Bảng không bao giờ
+    // xoá dòng (SM-8) — thiếu index là mỗi phút quét cả bảng.
+    index('idx_notifications_status_sending').on(t.status, t.sendingAt),
   ],
 );
 

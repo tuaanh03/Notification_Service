@@ -21,7 +21,7 @@ export class NotificationRecipient {
   readonly subscriptionId: SubscriptionId | null;
   readonly channel: Channel;
   readonly address: string;
-  readonly includedVia: SegmentId | 'all_users' | null;
+  readonly includedVia: SegmentId | 'all_users' | 'direct' | null;
   readonly exclusionReason: ExclusionReason | null;
   batchNo: number | null;
   status: RecipientStatus;
@@ -36,7 +36,7 @@ export class NotificationRecipient {
     subscriptionId?: SubscriptionId | null | undefined;
     channel: Channel;
     address: string;
-    includedVia?: SegmentId | 'all_users' | null | undefined;
+    includedVia?: SegmentId | 'all_users' | 'direct' | null | undefined;
     exclusionReason?: ExclusionReason | null | undefined;
     batchNo?: number | null | undefined;
     status?: RecipientStatus | undefined;
@@ -59,7 +59,8 @@ export class NotificationRecipient {
     this.sentAt = props.sentAt ?? null;
   }
 
-  markSent(providerMessageId: string, at: Date): void {
+  /** `providerMessageId` null khi provider không trả id (Graph sendMail trả 202 không kèm id). */
+  markSent(providerMessageId: string | null, at: Date): void {
     this.status = 'sent';
     this.providerMessageId = providerMessageId;
     this.sentAt = at;

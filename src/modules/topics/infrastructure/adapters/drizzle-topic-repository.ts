@@ -7,6 +7,7 @@ import {
   ConflictError,
   TopicId,
   type AppId as AppIdType,
+  type TopicId as TopicIdType,
   type Channel,
   type TopicStatus,
 } from '../../../../shared/kernel/index.ts';
@@ -31,6 +32,11 @@ export class DrizzleTopicRepository implements TopicRepository {
       .select()
       .from(topics)
       .where(and(eq(topics.appId, appId), eq(topics.key, key)));
+    return row ? toTopic(row) : null;
+  }
+
+  async findById(id: TopicIdType): Promise<Topic | null> {
+    const [row] = await this.transactions.executor().select().from(topics).where(eq(topics.topicId, id));
     return row ? toTopic(row) : null;
   }
 

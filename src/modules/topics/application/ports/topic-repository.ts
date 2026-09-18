@@ -1,8 +1,9 @@
-import type { AppId, TopicStatus } from '../../../../shared/kernel/index.ts';
+import type { AppId, TopicId, TopicStatus } from '../../../../shared/kernel/index.ts';
 import type { Topic } from '../../domain/entities/topic.ts';
 
 export interface TopicRepository {
   findByKey(appId: AppId, key: string): Promise<Topic | null>;
+  findById(id: TopicId): Promise<Topic | null>;
   listByApp(appId: AppId): Promise<Topic[]>;
   /** Trùng key trong app -> ConflictError `TOPIC_KEY_TAKEN`. */
   insert(topic: Topic): Promise<void>;

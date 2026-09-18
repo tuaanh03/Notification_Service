@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { lt, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { inject } from 'vitest';
 import {
   buildApplication,
   createContainer,
@@ -17,18 +16,20 @@ import { DEFAULT_BODY_LIMIT_BYTES, LARGE_BODY_LIMIT_BYTES } from '../../src/shar
 import { ValidationError } from '../../src/shared/kernel/index.ts';
 import { createRedis, type StreamMessage } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
-import { createTestRedis, eventually, uniqueStream } from './support/redis.ts';
+import { createTestRedis, eventually, testRedisUrl, uniqueStream } from './support/redis.ts';
 
 const STREAM = uniqueStream('proc');
 
 let t: TestDatabase;
 let c: Container;
+let redisUrl: string;
 const envFor = (extra: Record<string, string> = {}) =>
-  loadEnv({ DATABASE_URL: t.url, REDIS_URL: inject('redisUrl'), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ...extra });
+  loadEnv({ DATABASE_URL: t.url, REDIS_URL: redisUrl, LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ...extra });
 
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 10 });
-  c = createContainer(envFor(), { database: t, redis: createTestRedis(), route: () => [STREAM] });
+  redisUrl = await testRedisUrl();
+  c = createContainer(envFor(), { database: t, redis: await createTestRedis(), route: () => [STREAM] });
 });
 afterAll(async () => {
   await c?.dispose();
@@ -173,7 +174,7 @@ describe('process worker', () => {
   });
 
   it('WORKER_GROUPS gõ sai -> không khởi động được', async () => {
-    const container = createContainer(envFor({ WORKER_GROUPS: 'typo-group' }), { database: t, redis: createTestRedis() });
+    const container = createContainer(envFor({ WORKER_GROUPS: 'typo-group' }), { database: t, redis: await createTestRedis() });
     try {
       await expect(startWorker(container, [])).rejects.toThrow(/unknown WORKER_GROUPS: typo-group/);
     } finally {
@@ -226,7 +227,7 @@ describe.each(['api', 'worker', 'scheduler'])('process thật: %s', (name) => {
         ...process.env,
         NODE_ENV: 'test',
         DATABASE_URL: t.url,
-        REDIS_URL: inject('redisUrl'),
+        REDIS_URL: redisUrl,
         LOG_LEVEL: 'info',
         HOST: '127.0.0.1',
         PORT: '0',

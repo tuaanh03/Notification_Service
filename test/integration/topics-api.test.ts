@@ -1,13 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { inject } from 'vitest';
 import { buildApplication, createContainer, type Container } from '../../src/composition/index.ts';
 import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
 import { outbox } from '../../src/shared/db/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, type Json } from './support/http.ts';
-import { createTestRedis } from './support/redis.ts';
+import { createTestRedis, testRedisUrl } from './support/redis.ts';
 
 const ADMIN_TOKEN = 'topics-test-admin-token-'.padEnd(40, 'x');
 
@@ -20,8 +19,8 @@ let shop: { appId: string; apiKey: string };
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 10 });
   c = createContainer(
-    loadEnv({ DATABASE_URL: t.url, REDIS_URL: inject('redisUrl'), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ADMIN_TOKEN }),
-    { database: t, redis: createTestRedis() },
+    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ADMIN_TOKEN }),
+    { database: t, redis: await createTestRedis() },
   );
   api = await startApi(c, buildApplication(c));
   http = httpClient(api.url);

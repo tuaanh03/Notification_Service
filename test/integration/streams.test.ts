@@ -31,7 +31,7 @@ let redis: RedisHandle;
 let c: Container;
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 10 });
-  redis = createTestRedis();
+  redis = await createTestRedis();
   c = createContainer(
     loadEnv({ DATABASE_URL: 'mysql://unused/in-test', REDIS_URL: 'redis://unused', LOG_LEVEL: 'fatal' }),
     {
