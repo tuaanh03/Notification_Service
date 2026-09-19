@@ -33,7 +33,7 @@ let shop: { appId: string; apiKey: string };
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 12 });
   c = createContainer(
-    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ADMIN_TOKEN }),
+    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ADMIN_TOKEN, EMAIL_MAX_PER_MINUTE: '10000' }),
     { database: t, redis: await createTestRedis() },
   );
   mail = new MockEmailProvider({ logger: c.ports.logger });

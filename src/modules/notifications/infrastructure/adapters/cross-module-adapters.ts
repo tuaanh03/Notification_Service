@@ -1,4 +1,4 @@
-import type { SendEmail } from '../../../delivery/application/index.ts';
+import type { SendEmail, SendRateLimiter } from '../../../delivery/application/index.ts';
 import type { FindUserByExternalId } from '../../../directory/application/index.ts';
 import type { FindUserEmail } from '../../../subscriptions/application/index.ts';
 import type { ConsentQueries } from '../../../topics/application/index.ts';
@@ -83,9 +83,15 @@ export class TopicsConsentLookup implements TopicConsentLookup {
 /** notifications -> delivery. `SendEmail` đã tự thử lại, kết quả không còn `retryable`. */
 export class DeliveryEmailSender implements EmailSender {
   private readonly sendEmail: SendEmail;
+  private readonly rateLimiter: SendRateLimiter;
 
-  constructor(deps: { sendEmail: SendEmail }) {
+  constructor(deps: { sendEmail: SendEmail; sendRateLimiter: SendRateLimiter }) {
     this.sendEmail = deps.sendEmail;
+    this.rateLimiter = deps.sendRateLimiter;
+  }
+
+  awaitCapacity(): Promise<void> {
+    return this.rateLimiter.acquire();
   }
 
   send(email: { to: string; subject: string; html: string; text: string | null; notificationId: string }): Promise<EmailDeliveryOutcome> {

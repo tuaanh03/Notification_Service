@@ -20,7 +20,8 @@
     "test:watch": "vitest --project unit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env src/entrypoints/migrate/main.ts",
-    "db:migrate:prod": "node dist/src/entrypoints/migrate/main.js"
+    "db:migrate:prod": "node dist/src/entrypoints/migrate/main.js",
+    "email:test": "tsx --env-file-if-exists=.env src/entrypoints/send-test-email/main.ts"
   },
   "engines": {
     "node": ">=22.18"

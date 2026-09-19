@@ -19,7 +19,28 @@ describe('loadEnv — fail-fast', () => {
       WORKER_GROUPS: 'all',
       EMAIL_PROVIDER: 'mock',
       EMAIL_STUCK_SENDING_AFTER_MS: 600_000,
+      EMAIL_MAX_PER_MINUTE: 30,
+      EMAIL_SEND_TIMEOUT_MS: 15_000,
     });
+  });
+
+  it('EMAIL_PROVIDER=graph thiếu biến kết nối -> dừng khởi động, nêu đủ biến thiếu', () => {
+    try {
+      loadEnv({ ...REQUIRED, EMAIL_PROVIDER: 'graph', GRAPH_TENANT_ID: 't', GRAPH_CLIENT_SECRET: '' });
+      expect.unreachable();
+    } catch (err) {
+      expect((err as ConfigError).issues.map((i) => i.split(':')[0]).sort()).toEqual([
+        'EMAIL_SENDER_ADDRESS',
+        'GRAPH_CLIENT_ID',
+        'GRAPH_CLIENT_SECRET',
+      ]);
+    }
+  });
+
+  it('EMAIL_PROVIDER=graph đủ biến -> hợp lệ; mock thì không cần biến Graph', () => {
+    const graph = { EMAIL_PROVIDER: 'graph', EMAIL_SENDER_ADDRESS: 'noreply@company.com', GRAPH_TENANT_ID: 't', GRAPH_CLIENT_ID: 'c', GRAPH_CLIENT_SECRET: 's' };
+    expect(loadEnv({ ...REQUIRED, ...graph }).EMAIL_PROVIDER).toBe('graph');
+    expect(loadEnv({ ...REQUIRED, GRAPH_TENANT_ID: '' }).GRAPH_TENANT_ID).toBeUndefined();
   });
 
   it('WORKER_GROUPS: danh sách cách nhau bởi dấu phẩy, "all" thắng mọi thứ', () => {

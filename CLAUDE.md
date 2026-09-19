@@ -23,6 +23,7 @@ npx vitest -t "excluded THẮNG included"        # chạy một test theo tên
 npm run db:generate # drizzle-kit generate -> drizzle/*.sql
 npm run db:migrate  # tsx --env-file-if-exists=.env src/entrypoints/migrate/main.ts — cần DATABASE_URL
 npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` trong compose
+npm run email:test -- ban@company.com   # gửi MỘT thư thử qua EMAIL_PROVIDER đang cấu hình (đọc .env)
 
 ADMIN_TOKEN=$(openssl rand -hex 32) docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
 docker compose up -d --scale worker=3   # thêm worker
@@ -42,13 +43,13 @@ TypeScript strict (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `
 `erasableSyntaxOnly` đang bật: **không dùng `enum`, `namespace`, hay parameter property** — enum khai
 bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union type vừa đưa thẳng vào `mysqlEnum()`.
 
-## Trạng thái: phase 1 xong · MVP email: xong GĐ 3/4
+## Trạng thái: phase 1 xong · MVP email: xong GĐ 4/4
 
 **Đang làm MVP gửi email trực tiếp qua Microsoft Graph — đọc `implementation_plan.md` và ADR-0016
 trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng người theo `external_id`, at-most-once,
 nội dung trực tiếp (chưa template), consent kiểm ở worker. Xong GĐ 0 (nền), GĐ 1 (user + email),
-GĐ 2 (topic + preference), GĐ 3 (gửi end-to-end bằng `MockEmailProvider`); tiếp theo GĐ 4 (provider
-Microsoft Graph + throttle).
+GĐ 2 (topic + preference), GĐ 3 (gửi end-to-end bằng `MockEmailProvider`), GĐ 4 (provider
+Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Tiếp theo: mục 12 "Sau MVP" của plan.
 
 Có trong repo: domain model 10 module · schema MySQL + 4 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
@@ -61,7 +62,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
 | `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `ConsentQueries` cho module khác |
 | `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
-| `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `MockEmailProvider` |
+| `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `GraphEmailProvider` + `MockEmailProvider` (chọn bằng `EMAIL_PROVIDER`), port `SendRateLimiter` (`EMAIL_MAX_PER_MINUTE`, đếm chung trên Redis) |
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
 
@@ -94,6 +95,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0015` | Lát cắt apps: `ModuleDefinition` cắm module vào process, 3 bề mặt HTTP, API key SHA-256, admin token tạm |
 | `0016` | **MVP email trực tiếp**: Graph + Mock, at-most-once, `EmailContent`, consumer `idempotency: 'handler'`, bodyLimit theo route |
 | `0017` | **READ COMMITTED** cho mọi connection — REPEATABLE READ phá mẫu "khoá rồi mới đọc" của ADR-0009 |
+| `0018` | Provider Microsoft Graph (client credentials, phân loại kết quả) + giới hạn tốc độ gửi trên Redis, chờ lượt trước tx1 |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
@@ -104,6 +106,7 @@ src/
   entrypoints/             MỖI PROCESS MỘT FOLDER, cùng khuôn (luật kiến trúc ép):
     api/ · worker/ · scheduler/   main.ts (file CHẠY — không ai được import) · start-<process>.ts (test gọi) · index.ts
     migrate/                      main.ts (job một lần)
+    send-test-email/              main.ts — `npm run email:test -- <địa chỉ>` gửi một thư thử qua provider đang cấu hình
     runtime/                      runProcess (vòng đời, SIGTERM) · loadEnvOrExit — dùng chung cho mọi process
                            Thứ riêng của một process (plugin HTTP...) đặt trong folder của process đó;
                            thứ tái dùng được thì ở shared/ hoặc composition/, không ở entrypoints/.
@@ -122,6 +125,7 @@ src/
     http/                  buildHttpServer (3 bề mặt public/admin/v1, health, request id) · toProblem
                            · auth (AppCaller, AdminCaller, 2 interface authenticator) · parseInput (zod)
     jobs/                  JobRunner — job định kỳ không chồng lần, stop() chờ lần đang chạy
+    rate-limit/            FixedWindowRateLimiter (Redis, cửa sổ 1 phút, dùng chung mọi process) — chỉ infrastructure import
   modules/<name>/
     domain/                CẤM import Drizzle, MySQL, HTTP, application, infrastructure, global của Node
       entities/            class entity, mỗi file 1 entity + interface `XxxProps` của nó

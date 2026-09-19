@@ -1,4 +1,4 @@
-import type { SendEmail } from '../../modules/delivery/application/index.ts';
+import type { SendEmail, SendRateLimiter } from '../../modules/delivery/application/index.ts';
 import type { FindUserByExternalId } from '../../modules/directory/application/index.ts';
 import {
   AcceptEmailNotification,
@@ -38,6 +38,7 @@ export function notificationsModule(
     findUserEmail: FindUserEmail;
     consentQueries: ConsentQueries;
     sendEmail: SendEmail;
+    sendRateLimiter: SendRateLimiter;
   },
 ): { definition: ModuleDefinition } {
   const { uow, outbox, clock, logger } = container.ports;

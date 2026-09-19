@@ -40,7 +40,7 @@ const COUNTER_OF: Record<ExclusionReason, Partial<Counters>> = {
  *   0. Không còn `queued` -> không làm gì (message giao lại / worker khác đã xử lý).
  *   1. Gate (L0/L1/L3) với dữ liệu MỚI NHẤT — consent có thể đã đổi kể từ lúc xếp hàng.
  *      Bị chặn -> `queued -> no_recipient` + lý do. Xong.
- *   2. tx1 "nhận việc": `queued -> sending` CÓ ĐIỀU KIỆN, COMMIT. Thua (ConcurrentTransition) -> dừng:
+ *   2. Chờ lượt gửi (giới hạn tốc độ), rồi tx1 "nhận việc": `queued -> sending` CÓ ĐIỀU KIỆN, COMMIT. Thua (ConcurrentTransition) -> dừng:
  *      worker khác đã nhận, chỉ một bên được gửi.
  *   3. Gọi provider NGOÀI transaction (delivery tự thử lại khi chắc chắn chưa gửi).
  *   4. tx2: `sending -> sent | failed`.
@@ -108,7 +108,8 @@ export class DeliverEmailNotification {
       return won ? 'no_recipient' : 'skipped';
     }
 
-    // --- 2: tx1, nhận việc ---
+    // --- 2: chờ lượt gửi, rồi tx1 nhận việc ---
+    await sender.awaitCapacity();
     const recipient = new NotificationRecipient(recipientProps);
     const claimed = await this.transition(notification, 'first_batch_left', null, async () => {
       notification.counters = addCounters(notification.counters, { resolved: 1 });

@@ -12,6 +12,14 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379
   # TẠM THỜI cho /admin/* (ADR-0015). Không đặt = /admin đóng hoàn toàn. Sinh: openssl rand -hex 32
   ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+  # Gửi email (ADR-0016, ADR-0018). Mặc định `mock` — không gửi thư thật. `graph` cần đủ 4 biến dưới.
+  EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mock}
+  EMAIL_SENDER_ADDRESS: ${EMAIL_SENDER_ADDRESS:-}
+  EMAIL_MAX_PER_MINUTE: ${EMAIL_MAX_PER_MINUTE:-30}
+  EMAIL_SEND_TIMEOUT_MS: ${EMAIL_SEND_TIMEOUT_MS:-15000}
+  GRAPH_TENANT_ID: ${GRAPH_TENANT_ID:-}
+  GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
+  GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET:-}
 
 # Cùng một image cho mọi process; `pull_policy: build` để compose dựng tại chỗ thay vì đi pull
 # một image không có trên registry.

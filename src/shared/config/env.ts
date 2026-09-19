@@ -8,6 +8,9 @@ import { LOG_LEVELS } from '../observability/logger.ts';
  * Chỉ khai biến mà code hiện tại thật sự dùng — thêm biến đúng lúc bước dùng nó xuất hiện,
  * để không bắt môi trường dev phải khai biến chưa ai đọc.
  */
+/** Biến tuỳ chọn: chuỗi rỗng (`X=` trong .env, `${X:-}` của compose) = không cấu hình. */
+const optional = <T extends z.ZodType>(schema: T) => z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   /** Process `api`: địa chỉ lắng nghe. 0.0.0.0 để nhận kết nối từ ngoài container. */
@@ -42,8 +45,21 @@ const EnvSchema = z.object({
       const groups = raw.split(',').map((g) => g.trim()).filter(Boolean);
       return groups.length === 0 || groups.includes('all') ? 'all' : groups;
     }),
-  /** Provider gửi email (ADR-0016 D2). `graph` thêm ở GĐ 4. */
-  EMAIL_PROVIDER: z.enum(['mock']).default('mock'),
+  /** Provider gửi email (ADR-0016 D2): `mock` cho dev/test, `graph` gửi thật qua Microsoft Graph. */
+  EMAIL_PROVIDER: z.enum(['mock', 'graph']).default('mock'),
+  /** Mailbox gửi (`POST /users/{mailbox}/sendMail`) — phải tồn tại trong tenant. Bắt buộc khi `graph`. */
+  EMAIL_SENDER_ADDRESS: optional(z.email()),
+  /**
+   * Số email tối đa mỗi phút, dùng chung MỌI bản worker (đếm trên Redis). Exchange Online giới hạn tốc
+   * độ gửi theo mailbox — đặt theo giới hạn thật của tenant (implementation_plan.md §7).
+   */
+  EMAIL_MAX_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(30),
+  /** Timeout một lần gọi Graph. Hết giờ SAU khi đã gửi request -> `outcome_unknown`, không gửi lại. */
+  EMAIL_SEND_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(15_000),
+  /** Azure App Registration (client credentials, quyền APPLICATION Mail.Send). Bắt buộc khi `graph`. */
+  GRAPH_TENANT_ID: optional(z.string().min(1)),
+  GRAPH_CLIENT_ID: optional(z.string().min(1)),
+  GRAPH_CLIENT_SECRET: optional(z.string().min(1)),
   /**
    * Notification kẹt ở `sending` lâu hơn ngưỡng này -> `failed` / `outcome_unknown` (at-most-once:
    * không biết Graph đã nhận chưa thì KHÔNG gửi lại). Mặc định 10 phút.
@@ -66,9 +82,18 @@ export class ConfigError extends Error {
   }
 }
 
+/** Ràng buộc giữa các biến: chọn `graph` thì phải đủ thông tin kết nối — thiếu là dừng khởi động. */
+const REQUIRED_FOR_GRAPH = ['EMAIL_SENDER_ADDRESS', 'GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID', 'GRAPH_CLIENT_SECRET'] as const;
+const CheckedEnvSchema = EnvSchema.superRefine((env, ctx) => {
+  if (env.EMAIL_PROVIDER !== 'graph') return;
+  for (const key of REQUIRED_FOR_GRAPH) {
+    if (env[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'required when EMAIL_PROVIDER=graph' });
+  }
+});
+
 /** Nhận `source` làm tham số để test không phải sửa `process.env` toàn cục. */
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
-  const result = EnvSchema.safeParse(source);
+  const result = CheckedEnvSchema.safeParse(source);
   if (!result.success) {
     throw new ConfigError(
       result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`),

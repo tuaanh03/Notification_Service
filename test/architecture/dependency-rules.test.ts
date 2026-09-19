@@ -183,7 +183,7 @@ describe('luật phụ thuộc', () => {
   it('mỗi package hạ tầng chỉ được import ở đúng chỗ của nó', () => {
     // pkg -> các tiền tố đường dẫn được phép. Thêm chỗ dùng mới = sửa bảng này, có chủ đích.
     const HOME: Record<string, readonly string[]> = {
-      ioredis: ['src/shared/streams/'],
+      ioredis: ['src/shared/streams/', 'src/shared/rate-limit/'],
       'drizzle-orm': ['src/shared/db/', 'src/shared/streams/outbox-relay.ts', 'src/modules/', 'src/entrypoints/migrate/'],
       mysql2: ['src/shared/db/'],
       pino: ['src/shared/observability/pino-logger.ts'],
@@ -209,6 +209,8 @@ describe('luật phụ thuộc', () => {
       if (moduleOf(f.path) === undefined) return false;
       // shared/db: chỉ infrastructure của module (adapter, schema).
       if (to.startsWith('src/shared/db/')) return layerOf(f.path) !== 'infrastructure';
+      // shared/rate-limit: chạm Redis -> chỉ infrastructure (application thấy port SendRateLimiter).
+      if (to.startsWith('src/shared/rate-limit/')) return layerOf(f.path) !== 'infrastructure';
       // shared/streams: handler (interface) chỉ thấy hợp đồng message, không thấy client Redis.
       if (to.startsWith('src/shared/streams/')) return to !== 'src/shared/streams/contracts.ts';
       return false;

@@ -52,6 +52,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     findUserEmail: subscriptions.findUserEmail,
     consentQueries: topics.consentQueries,
     sendEmail: delivery.sendEmail,
+    sendRateLimiter: delivery.sendRateLimiter,
   });
   const audit = auditModule(container);
 

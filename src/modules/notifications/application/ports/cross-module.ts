@@ -52,5 +52,10 @@ export type EmailDeliveryOutcome =
   | { kind: 'unknown'; reason: string };
 
 export interface EmailSender {
+  /**
+   * Chờ lượt gửi (giới hạn tốc độ của mailbox gửi). Gọi SAU gate, TRƯỚC khi nhận việc: thư bị chặn
+   * không tốn lượt, và lúc đang chờ notification vẫn `queued` — worker chết thì không có outcome_unknown oan.
+   */
+  awaitCapacity(): Promise<void>;
   send(email: { to: string; subject: string; html: string; text: string | null; notificationId: string }): Promise<EmailDeliveryOutcome>;
 }

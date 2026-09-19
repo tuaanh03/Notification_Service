@@ -182,7 +182,7 @@ Thêm tuỳ chọn cho consumer: `idempotency: 'handler'` -> khung KHÔNG mở t
 (`audit-writer`) giữ mặc định `'framework'`. Có test riêng cho cả hai chế độ.
 
 **Throttle:** Exchange Online giới hạn tốc độ gửi theo mailbox người gửi (con số cụ thể phải kiểm với
-tenant — thường nhắc tới khoảng 30 thư/phút và 10.000 người nhận/ngày). Worker dùng token bucket trên
+tenant — thường nhắc tới khoảng 30 thư/phút và 10.000 người nhận/ngày). Worker dùng bộ đếm cửa sổ 1 phút trên
 Redis (`EMAIL_MAX_PER_MINUTE`) dùng chung giữa mọi bản worker; hết lượt thì chờ trước khi gọi Graph
 (chưa qua tx1 thì chưa "nhận việc", không ảnh hưởng at-most-once).
 
@@ -247,13 +247,19 @@ Thứ tự để có email chạy end-to-end (bằng Mock) sớm nhất. Mỗi g
   đúng 1 lần gửi; timeout sau khi gửi -> `failed/outcome_unknown` và **không** gửi lần hai; giao lại
   message khi đang `sending` -> không gửi; hai worker cùng nhận một message -> đúng 1 lần gửi (race).
 
-### GĐ 4 — Graph provider
-- `GraphEmailProvider`: lấy token client credentials (cache tới gần hết hạn),
-  `POST https://graph.microsoft.com/v1.0/users/{EMAIL_SENDER_ADDRESS}/sendMail`, gắn header
-  `X-EWS-Notification-Id` qua `internetMessageHeaders` để truy vết thư. Phân loại kết quả đúng mục 7.
-- Token bucket `EMAIL_MAX_PER_MINUTE` trên Redis.
-- **Test:** dựng request đúng format Graph (unit, không gọi mạng); phân loại 202 / 429 / 400 / 401 /
-  timeout; token được cache. Gửi thử một thư thật tới hộp thư nội bộ (thủ công, có hướng dẫn).
+### GĐ 4 — Graph provider ✅ xong 2026-09-19
+- ADR-0018. `GraphEmailProvider`: token client credentials (cache, làm mới trước hết hạn 5 phút, một
+  request token cho nhiều lần gửi đồng thời), `POST /v1.0/users/{EMAIL_SENDER_ADDRESS}/sendMail`, header
+  `X-EWS-Notification-Id` + `client-request-id`. Phân loại kết quả theo bảng ở ADR-0018 D2.
+- Giới hạn `EMAIL_MAX_PER_MINUTE`: cửa sổ cố định 1 phút trên Redis (`shared/rate-limit`), dùng chung mọi
+  worker; chờ lượt SAU gate, TRƯỚC tx1 (lý do ở ADR-0018 D3).
+- `loadEnv` fail-fast khi `graph` thiếu biến; compose truyền biến email/Graph qua `${VAR:-}`.
+- `npm run email:test -- <địa chỉ>`: gửi một thư thử thật qua provider đang cấu hình.
+- **Test:** unit `graph-email-provider.test.ts` (format request, cache token, 202 / 429 / 503 / 401 /
+  4xx / 5xx / lỗi mạng / timeout / token bị từ chối, bằng `fetch` giả); integration `rate-limit.test.ts`
+  (20 lượt đồng thời, trần 5 -> đúng 5 qua; sang phút mới; TTL key).
+- **Gửi thử thật (thủ công):** trong `.env` đặt `EMAIL_PROVIDER=graph`, `EMAIL_SENDER_ADDRESS` và 3 biến
+  `GRAPH_*` -> `npm run email:test -- ban@company.com` -> kết quả `accepted` là cấu hình đúng; kiểm hộp thư.
 
 ## 10. Cấu hình (.env)
 
