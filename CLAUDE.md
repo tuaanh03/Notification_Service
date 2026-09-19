@@ -7,9 +7,10 @@ Trao đổi với người dùng bằng tiếng Việt. Giữ tiếng Anh cho đ
 ## Lệnh
 
 ```bash
-npm run dev         # tsx watch src/entrypoints/api/main.ts   (cần MySQL + Redis: `docker compose up -d mysql redis`)
-npm run dev:worker  # tsx watch src/entrypoints/worker/main.ts
-npm run dev:scheduler  # tsx watch src/entrypoints/scheduler/main.ts
+cp .env.example .env # lần đầu — `.env` bị git bỏ qua; giá trị bí mật chỉ đặt ở đây
+npm run dev         # tsx watch --env-file-if-exists=.env src/entrypoints/api/main.ts   (cần `docker compose up -d mysql redis`)
+npm run dev:worker  # như dev, với src/entrypoints/worker/main.ts
+npm run dev:scheduler  # như dev, với src/entrypoints/scheduler/main.ts
 npm run typecheck   # tsc --noEmit
 npm run build       # tsc -> dist/
 npm start           # node dist/src/entrypoints/api/main.js  (start:worker / start:scheduler tương tự)
@@ -20,7 +21,7 @@ npm run test:all    # tất cả
 npx vitest run test/unit/transitions.test.ts   # chạy một file test
 npx vitest -t "excluded THẮNG included"        # chạy một test theo tên
 npm run db:generate # drizzle-kit generate -> drizzle/*.sql
-npm run db:migrate  # tsx src/entrypoints/migrate/main.ts — cần DATABASE_URL
+npm run db:migrate  # tsx --env-file-if-exists=.env src/entrypoints/migrate/main.ts — cần DATABASE_URL
 npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` trong compose
 
 ADMIN_TOKEN=$(openssl rand -hex 32) docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
@@ -261,6 +262,11 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   4. `composition/modules/<x>.module.ts` trả `ModuleDefinition { http: { admin, v1, public }, consumers, jobs }`
      + một dòng trong `buildApplication`. Process api/worker/scheduler tự nhận, không sửa entrypoint.
 - **Route/handler không bao giờ nhận `infra`** — chỉ use case (mà use case chỉ thấy port).
+- **Biến môi trường** (không dùng dotenv): script `dev*` / `db:migrate` nạp `.env` bằng
+  `--env-file-if-exists=.env` (biến export trong shell thắng file); compose đọc `.env` chỉ để thay
+  `${...}`; `npm start` (production) không đọc file nào. Thêm biến = thêm vào schema `env.ts` VÀ
+  `.env.example` — `test/unit/env-example.test.ts` đỏ nếu thiếu, nếu biến nhạy cảm có giá trị, nếu có
+  giá trị trông như credential (GUID, chuỗi dài ngẫu nhiên) hoặc URL không phải localhost.
 - **Giới hạn body mặc định 64 KB.** Route cần body lớn khai riêng `{ bodyLimit: LARGE_BODY_LIMIT_BYTES }`
   (512 KB — gửi email kèm HTML); không nới giới hạn cho toàn API.
 - **Lỗi HTTP luôn là `application/problem+json`** qua `toProblem`. Route không tự `reply.status(4xx)`

@@ -8,9 +8,9 @@
     "start": "node dist/src/entrypoints/api/main.js",
     "start:worker": "node dist/src/entrypoints/worker/main.js",
     "start:scheduler": "node dist/src/entrypoints/scheduler/main.js",
-    "dev": "tsx watch src/entrypoints/api/main.ts",
-    "dev:worker": "tsx watch src/entrypoints/worker/main.ts",
-    "dev:scheduler": "tsx watch src/entrypoints/scheduler/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/entrypoints/api/main.ts",
+    "dev:worker": "tsx watch --env-file-if-exists=.env src/entrypoints/worker/main.ts",
+    "dev:scheduler": "tsx watch --env-file-if-exists=.env src/entrypoints/scheduler/main.ts",
     "typecheck": "tsc --noEmit",
     "lint:arch": "vitest run --project unit test/architecture",
     "build": "tsc -p tsconfig.build.json",
@@ -19,7 +19,7 @@
     "test:all": "vitest run",
     "test:watch": "vitest --project unit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/entrypoints/migrate/main.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env src/entrypoints/migrate/main.ts",
     "db:migrate:prod": "node dist/src/entrypoints/migrate/main.js"
   },
   "engines": {

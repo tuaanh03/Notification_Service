@@ -53,6 +53,9 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
+/** Tên mọi biến môi trường code đọc — test đối chiếu với `.env.example` để file mẫu không lệch code. */
+export const ENV_KEYS: readonly string[] = Object.keys(EnvSchema.shape);
+
 export class ConfigError extends Error {
   readonly issues: readonly string[];
 
