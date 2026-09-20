@@ -42,7 +42,8 @@ services:
       MYSQL_USER: ${MYSQL_USER:-ews}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ews}
     ports:
-      - ${MYSQL_PORT:-3306}:3306
+      # Chỉ loopback: giữ được `npm run dev` trên host, không mở ra ngoài server.
+      - 127.0.0.1:${MYSQL_PORT:-3306}:3306
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -59,7 +60,7 @@ services:
     # AOF: Redis Streams là hàng đợi, mất dữ liệu khi restart sẽ phải relay lại từ outbox.
     command: ['redis-server', '--appendonly', 'yes']
     ports:
-      - ${REDIS_PORT:-6379}:6379
+      - 127.0.0.1:${REDIS_PORT:-6379}:6379
     volumes:
       - redis-data:/data
     healthcheck:
@@ -87,6 +88,13 @@ services:
     ports:
       # Cổng phía host theo tài liệu kiến trúc §2 (4002); trong container vẫn là 3000.
       - ${API_PORT:-4002}:3000
+    networks:
+      # default: tới mysql/redis. ews-net: để frontend gọi http://ews-astrolink-api:3000 không qua host.
+      default: {}
+      ews-net:
+        # `api` quá chung cho một network dùng chung nhiều project — đặt alias riêng.
+        aliases:
+          - ews-astrolink-api
     depends_on: &after-migrate
       migrate:
         condition: service_completed_successfully
@@ -120,6 +128,12 @@ services:
     depends_on: *after-migrate
     stop_grace_period: 15s
     restart: unless-stopped
+
+networks:
+  # Dựng một lần trước khi `up`:  docker network create ews-net
+  # Frontend (compose riêng) gắn vào cùng network này và gọi api qua DNS service `api`.
+  ews-net:
+    external: true
 
 volumes:
   mysql-data:
