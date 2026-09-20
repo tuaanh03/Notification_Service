@@ -2,6 +2,7 @@ import { type EventOutbox, type UnitOfWork } from '../../../../shared/applicatio
 import {
   ConcurrentTransitionError,
   ValidationError,
+  type AppId,
   type Clock,
   type ExclusionReason,
   type NotificationId,
@@ -14,6 +15,7 @@ import { emailGate } from '../../domain/rules/email-gate.ts';
 import type { Counters } from '../../domain/types/counters.ts';
 import { EMAIL_SENDER_ACTOR, NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS, OUTCOME_UNKNOWN } from '../events.ts';
 import type {
+  EmailDeliveryOutcome,
   EmailLookup,
   EmailSender,
   NotificationRepository,
@@ -22,6 +24,17 @@ import type {
 } from '../ports/index.ts';
 
 export type DeliveryOutcome = 'skipped' | 'no_recipient' | 'sent' | 'failed';
+
+/**
+ * Những gì biết thêm được dọc đường, CHỈ để ghi log (ĐX-0001) — không nhánh nào đọc để quyết định.
+ * Rỗng ở bước 0: notification không còn `queued` thì chưa tra được app hay topic.
+ */
+interface DeliveryTrace {
+  appId?: AppId | undefined;
+  topic?: string | undefined;
+  exclusionReason?: ExclusionReason | undefined;
+  providerResult?: EmailDeliveryOutcome['kind'] | undefined;
+}
 
 /** Lý do bị gate chặn -> ô counters tương ứng. */
 const COUNTER_OF: Record<ExclusionReason, Partial<Counters>> = {
@@ -66,12 +79,34 @@ export class DeliverEmailNotification {
   }
 
   async execute(id: NotificationId): Promise<DeliveryOutcome> {
-    const { clock, notifications, recipients, emails, topics, sender } = this.deps;
     const log = this.deps.logger.child('deliver-email');
+    const startedAt = this.deps.clock.now();
+    const trace: DeliveryTrace = {};
+    const outcome = await this.deliver(id, trace, log);
+    // MỘT dòng cho mọi lần worker chạm vào notification, đủ mọi nhánh DeliveryOutcome (ĐX-0001).
+    // Trước đây chỉ MockEmailProvider ghi log, nên đường gửi thật qua Graph hoàn toàn im lặng.
+    // KHÔNG ghi địa chỉ, tiêu đề hay nội dung thư: log đi xa hơn database, đó là dữ liệu cá nhân.
+    // Tên provider không lấy qua port `EmailSender` (port nghiệp vụ, không phải chỗ khai báo hạ tầng)
+    // — mỗi worker đã ghi `email provider selected` lúc khởi động, ghép theo process là ra.
+    log.info('email delivery finished', {
+      notification_id: id,
+      app_id: trace.appId ?? null,
+      topic: trace.topic ?? null,
+      outcome,
+      provider_result: trace.providerResult ?? null,
+      exclusion_reason: trace.exclusionReason ?? null,
+      duration_ms: this.deps.clock.now().getTime() - startedAt.getTime(),
+    });
+    return outcome;
+  }
+
+  private async deliver(id: NotificationId, trace: DeliveryTrace, log: Logger): Promise<DeliveryOutcome> {
+    const { clock, notifications, recipients, emails, topics, sender } = this.deps;
 
     // --- 0 ---
     const notification = await notifications.findById(id);
     if (!notification || notification.status !== 'queued') return 'skipped';
+    trace.appId = notification.appId;
     const { targetUserId: userId, content } = notification;
     if (!userId || !content) {
       // Không phải email gửi trực tiếp — MVP chưa có đường gửi khác. Tất định -> DLQ.
@@ -81,6 +116,7 @@ export class DeliverEmailNotification {
     // --- 1 ---
     const topic = await topics.topicById(notification.topicId);
     if (!topic) throw ValidationError.of('TOPIC_NOT_FOUND', `topic of notification ${id} no longer exists`);
+    trace.topic = topic.key;
     const email = await emails.find(notification.appId, userId);
     const gate = emailGate({
       subscription: email,
@@ -98,6 +134,7 @@ export class DeliverEmailNotification {
     };
 
     if (!gate.allowed) {
+      trace.exclusionReason = gate.reason;
       const won = await this.transition(notification, 'zero_recipients', gate.reason, async () => {
         notification.counters = addCounters(notification.counters, { resolved: 1, ...COUNTER_OF[gate.reason] });
         await recipients.insert(
@@ -128,6 +165,7 @@ export class DeliverEmailNotification {
     });
 
     // --- 4: tx2, ghi kết quả ---
+    trace.providerResult = result.kind;
     const now = clock.now();
     if (result.kind === 'accepted') {
       recipient.markSent(result.providerMessageId, now);

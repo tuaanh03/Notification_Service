@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { SendEmail, type EmailProvider, type EmailSendResult, type OutgoingEmail } from '../../src/modules/delivery/application/index.ts';
+import { DeliverEmailNotification } from '../../src/modules/notifications/application/commands/deliver-email-notification.ts';
+import type { EmailDeliveryOutcome, UserEmailForDelivery } from '../../src/modules/notifications/application/ports/index.ts';
 import { Notification } from '../../src/modules/notifications/domain/entities/notification.ts';
 import { emailGate } from '../../src/modules/notifications/domain/rules/email-gate.ts';
 import { emailContent } from '../../src/modules/notifications/domain/types/email-content.ts';
-import { AppId, NotificationId, TopicId, UserId } from '../../src/shared/kernel/index.ts';
+import { AppId, NotificationId, SubscriptionId, TopicId, UserId } from '../../src/shared/kernel/index.ts';
 import type { Logger } from '../../src/shared/observability/logger.ts';
 
 const silent: Logger = {
@@ -122,5 +124,94 @@ describe('Notification — mốc vòng đời', () => {
     expect(n.finishedAt).toBeNull();
     n.apply('all_accepted', actor, t2);
     expect(n.finishedAt).toEqual(t2);
+  });
+});
+
+describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (ĐX-0001)', () => {
+  /** Fake tối thiểu: chỉ đủ để chạy hết 4 nhánh DeliveryOutcome, không chạm DB. */
+  function harness(options: { notification: Notification | null; email?: UserEmailForDelivery | null; sendKind?: EmailDeliveryOutcome['kind'] }) {
+    const lines: Array<{ msg: string; meta: Record<string, unknown> }> = [];
+    const capture: Logger = { ...silent, info: (msg, meta) => void lines.push({ msg, meta: meta ?? {} }), child: () => capture };
+    // Clock nhích 5ms mỗi lần đọc -> duration_ms tính được mà không cần hẹn giờ thật.
+    let tick = 0;
+    const topicId = options.notification?.topicId ?? TopicId.create();
+    const deliver = new DeliverEmailNotification({
+      uow: { run: async (work) => work() },
+      outbox: { append: async () => undefined },
+      clock: { now: () => new Date(2026, 8, 20, 0, 0, 0, (tick += 5)) },
+      logger: capture,
+      notifications: {
+        insert: async () => undefined,
+        findById: async () => options.notification,
+        findByIdempotencyKey: async () => null,
+        saveTransition: async () => undefined,
+        listStuckSending: async () => [],
+      },
+      recipients: { findByNotification: async () => null, insert: async () => undefined, update: async () => undefined },
+      emails: { find: async () => options.email ?? null },
+      topics: {
+        topicByKey: async () => null,
+        topicById: async () => ({ topicId, key: 'order_updates', status: 'active', mandatory: false, defaultOptedIn: true }),
+        preference: async () => null,
+      },
+      sender: {
+        awaitCapacity: async () => undefined,
+        send: async () =>
+          options.sendKind === 'rejected'
+            ? { kind: 'rejected', reason: 'mailbox full' }
+            : { kind: 'accepted', providerMessageId: 'graph-1' },
+      },
+    });
+    return { deliver, lines };
+  }
+
+  function queued() {
+    return new Notification({
+      id: NotificationId.create(),
+      appId: AppId.create(),
+      topicId: TopicId.create(),
+      origin: 'api',
+      targetUserId: UserId.create(),
+      content: emailContent({ subject: 's', html: 'h' }),
+      createdAt: new Date(2026, 8, 20),
+    });
+  }
+
+  const reachable: UserEmailForDelivery = {
+    subscriptionId: SubscriptionId.create(),
+    address: 'nhanvien@company.com',
+    status: 'active',
+    suppressedReason: null,
+    optedOutOptional: false,
+  };
+
+  it.each([
+    ['gửi được', { notification: queued(), email: reachable }, 'sent', { provider_result: 'accepted', exclusion_reason: null }],
+    ['provider từ chối', { notification: queued(), email: reachable, sendKind: 'rejected' as const }, 'failed', { provider_result: 'rejected', exclusion_reason: null }],
+    ['gate chặn — chưa có email', { notification: queued(), email: null }, 'no_recipient', { provider_result: null, exclusion_reason: 'no_channel' }],
+  ])('%s -> outcome %s, đủ trường, KHÔNG có dữ liệu cá nhân', async (_name, options, outcome, extra) => {
+    const { deliver, lines } = harness(options);
+    expect(await deliver.execute(options.notification.id)).toBe(outcome);
+    expect(lines).toHaveLength(1);
+    const [line] = lines;
+    expect(line?.msg).toBe('email delivery finished');
+    expect(line?.meta).toMatchObject({
+      notification_id: options.notification.id,
+      app_id: options.notification.appId,
+      topic: 'order_updates',
+      outcome,
+      ...extra,
+    });
+    expect(line?.meta['duration_ms']).toBeGreaterThan(0);
+    // Địa chỉ / tiêu đề / nội dung không được rơi vào log dù ở bất kỳ trường nào.
+    expect(JSON.stringify(line?.meta)).not.toContain('company.com');
+  });
+
+  it('notification không còn queued -> vẫn ghi một dòng, app_id và topic để trống', async () => {
+    const { deliver, lines } = harness({ notification: null });
+    const id = NotificationId.create();
+    expect(await deliver.execute(id)).toBe('skipped');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.meta).toMatchObject({ notification_id: id, outcome: 'skipped', app_id: null, topic: null });
   });
 });

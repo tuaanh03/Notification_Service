@@ -14,4 +14,6 @@ chuyển trạng thái, không xoá — để lần sau còn tra được vì sa
 
 | File | Trạng thái | Tóm tắt |
 | --- | --- | --- |
-| `0001-ghi-log-ket-qua-gui-email.md` | chờ duyệt | Gửi email thật qua Graph không để lại dòng log nào |
+| `0001-ghi-log-ket-qua-gui-email.md` | **xong 2026-09-20** | Gửi email thật qua Graph không để lại dòng log nào |
+| `0002-viec-can-lam-de-hoan-thien-mvp.md` | đang làm — Việc 1 xong | 4 việc còn lại để MVP bàn giao được; máy chủ đã xong, console còn 23 màn hàng mẫu |
+| `0003-consent-theo-topic-da-xong-nhung-khong-nhin-thay.md` | chờ duyệt | Gửi theo topic tôn trọng lựa chọn user đã làm đúng và đủ, nhưng không ai xem được; kèm đề xuất điều kiện khi duyệt app |

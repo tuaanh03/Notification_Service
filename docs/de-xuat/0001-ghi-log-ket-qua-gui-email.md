@@ -76,3 +76,27 @@ log thường được gom về nơi có nhiều người đọc hơn database. 
 * `implementation_plan.md` mục 11 — kịch bản nghiệm thu, nơi phát hiện.
 * ADR-0018 — giới hạn tốc độ gửi của Graph (`maxPerMinute`), thứ sẽ đo được nếu có log.
 * ADR-0016 — GĐ 4, thay `MockEmailProvider` bằng Graph.
+
+---
+
+## Kết quả (2026-09-20 — ĐÃ LÀM)
+
+Trạng thái: **xong**.
+
+Một `log.info('email delivery finished', …)` ở cuối `DeliverEmailNotification.execute`, chạy cho cả
+bốn nhánh `DeliveryOutcome`. Thân cũ tách thành `private deliver()`; `execute` chỉ đo thời gian, gom
+`DeliveryTrace` và ghi log — nên **không nhánh return nào thoát được mà không có log**.
+
+Khác đề xuất một điểm: **bỏ trường `provider`.** Port `EmailSender` (`application/ports/cross-module.ts`)
+không khai tên provider, và thêm vào đó chỉ để ghi log là bắt port nghiệp vụ mang chi tiết hạ tầng.
+Mỗi worker đã ghi `email provider selected` lúc khởi động, ghép theo process là ra. Các trường còn
+lại giữ nguyên: `notification_id` · `app_id` · `topic` · `outcome` · `provider_result` ·
+`exclusion_reason` · `duration_ms`.
+
+Kiểm chứng: 4 test mới trong `test/unit/email-delivery.test.ts`, khoá đủ ba thứ — đúng một dòng mỗi
+lần chạy, đủ trường ở cả `sent` / `failed` / `no_recipient` / `skipped`, và **địa chỉ email không
+lọt vào bất kỳ trường nào**. `npm test` 185/185 xanh, `npm run test:integration` 121/121 xanh.
+
+Lưu ý khi nghiệm thu: test tích hợp chạy `LOG_LEVEL: 'fatal'` nên **không** in dòng này ra — đừng
+grep log của test rồi kết luận là chưa có. Xem bằng worker thật: `docker compose logs worker | grep
+"email delivery finished"`.
