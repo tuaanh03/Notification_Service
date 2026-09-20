@@ -58,9 +58,9 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | Module | Có gì |
 | --- | --- |
 | `tenancy` | tạo account / organization; query `FindOrganization` cho module khác |
-| `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác |
+| `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác; `GET /admin/apps/:appId/users` (danh sách người nhận, phân trang + tìm) |
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
-| `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `ConsentQueries` cho module khác |
+| `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `GET /admin/apps/:appId/users/:externalId/preferences` (chỉ đọc); `ConsentQueries` cho module khác |
 | `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
 | `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `GraphEmailProvider` + `MockEmailProvider` (chọn bằng `EMAIL_PROVIDER`), port `SendRateLimiter` (`EMAIL_MAX_PER_MINUTE`, đếm chung trên Redis) |
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
@@ -244,6 +244,14 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   executor bằng `transactions.executor()` (đọc) hoặc `transactions.require(op)` (bắt buộc trong tx:
   outbox, processed_messages, khoá dòng — gọi ngoài `run` ném `TransactionRequiredError`).
   `run` lồng nhau nhập vào transaction ngoài.
+- **Bề mặt ĐỌC cho vận hành đặt dưới `/admin/apps/:appId/*`** (plan §5, ĐX-0004). `appId` trên URL
+  chứ không suy từ token: bảng `admin_app_roles` (vai `app_admin`) đã có sẵn, nên khi làm RBAC
+  (plan §12.4) chỉ cần thêm một lớp kiểm quyền trên chính tham số đó. Nhóm này **chỉ đọc** — admin
+  không sửa consent hộ người dùng; app service tự ghi qua `/v1` bằng khoá của nó.
+- **Đường `/admin` đọc nhiều bản ghi phải lấy dữ liệu liên quan theo LÔ.** `ListUsers` gọi
+  `emails.findMany` (một truy vấn cho cả trang), không gọi `find` từng người — màn danh sách mà
+  bắn N+1 thì 200 người là 201 truy vấn. Cần lô xuyên module thì thêm bản `executeMany` vào use
+  case công khai của module kia, đừng để adapter tự join sang bảng của nó.
 - **Dữ liệu muốn vào `audit_log` phải nằm trong `before` / `after`.** `RecordAuditEntry` chỉ đọc
   `actor`, `source`, `before`, `after` của payload — field top-level khác bị **bỏ im lặng**, không
   lỗi, không cảnh báo. `TransitionApp` từng để `reason` ở top-level và lý do đình chỉ / thu hồi app

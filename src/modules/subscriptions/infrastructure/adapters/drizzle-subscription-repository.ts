@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import { AppId, SubscriptionId, UserId, type AppId as AppIdType, type Channel, type UserId as UserIdType } from '../../../../shared/kernel/index.ts';
 import { emailTaken } from '../../application/commands/set-user-email.ts';
@@ -23,6 +23,18 @@ export class DrizzleSubscriptionRepository implements SubscriptionRepository {
       .where(and(eq(subscriptions.appId, appId), eq(subscriptions.userId, userId), eq(subscriptions.channel, channel)))
       .limit(1);
     return row ? toSubscription(row) : null;
+  }
+
+  async findManyByUsers(appId: AppIdType, userIds: readonly UserIdType[], channel: Channel): Promise<Subscription[]> {
+    if (userIds.length === 0) return [];
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(subscriptions)
+      .where(
+        and(eq(subscriptions.appId, appId), eq(subscriptions.channel, channel), inArray(subscriptions.userId, [...userIds])),
+      );
+    return rows.map(toSubscription);
   }
 
   async findByValue(appId: AppIdType, channel: Channel, value: string): Promise<Subscription | null> {

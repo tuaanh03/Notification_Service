@@ -4,6 +4,11 @@ import type { Subscription } from '../../domain/entities/subscription.ts';
 export interface SubscriptionRepository {
   /** Điểm nhận của user trên một kênh. MVP: mỗi user một email mỗi app (ADR-0016 D9). */
   findByUser(appId: AppId, userId: UserId, channel: Channel): Promise<Subscription | null>;
+  /**
+   * Như `findByUser` nhưng cho nhiều user một lần — dùng khi liệt kê người nhận, để màn danh sách
+   * không bắn N+1 truy vấn. Danh sách rỗng -> trả mảng rỗng, không gọi DB.
+   */
+  findManyByUsers(appId: AppId, userIds: readonly UserId[], channel: Channel): Promise<Subscription[]>;
   /** Ai đang giữ địa chỉ này trong app (`uq_subscriptions_app_channel_value`). */
   findByValue(appId: AppId, channel: Channel, value: string): Promise<Subscription | null>;
   /** Địa chỉ đã thuộc user khác -> ConflictError `EMAIL_TAKEN`. */

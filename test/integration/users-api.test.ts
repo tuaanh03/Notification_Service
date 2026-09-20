@@ -165,3 +165,75 @@ describe('đồng thời', () => {
     expect(subs).toHaveLength(1);
   });
 });
+
+// Bề mặt ĐỌC cho vận hành (plan §5, ĐX-0004). Chỉ đọc: không có PUT/POST/DELETE nào ở đây.
+describe('/admin/apps/:appId/users — màn Người nhận', () => {
+  const admin = (path: string) => http('GET', `/admin${path}`, { token: ADMIN_TOKEN });
+
+  it('liệt kê người nhận của ĐÚNG app, kèm email và tổng số', async () => {
+    const other = await provisionApp(api.url, ADMIN_TOKEN, 'other-app');
+    await v1('PUT', '/users/list_a', { email: 'list.a@company.com' });
+    await v1('PUT', '/users/list_b', { email: 'list.b@company.com' });
+    await v1('PUT', '/users/list_c'); // chưa khai email
+    await http('PUT', '/v1/users/list_a', { token: other.apiKey, body: { email: 'khac@company.com' } });
+
+    const page = (await admin(`/apps/${shop.appId}/users?limit=200`)).body as unknown as Json;
+    const rows = page['rows'] as Json[];
+    const mine = rows.filter((r) => String(r['externalId']).startsWith('list_'));
+    expect(mine.map((r) => r['externalId']).sort()).toEqual(['list_a', 'list_b', 'list_c']);
+    expect(page['total']).toBe(rows.length);
+
+    // Người chưa khai email vẫn hiện, email = null — đó chính là đáp án của "sao anh ấy không nhận được thư".
+    expect(mine.find((r) => r['externalId'] === 'list_c')?.['email']).toBeNull();
+    expect(mine.find((r) => r['externalId'] === 'list_a')?.['email']).toMatchObject({
+      address: 'list.a@company.com',
+      status: 'active',
+    });
+
+    // App khác có `list_a` riêng, email khác — không lẫn sang nhau.
+    const theirs = ((await admin(`/apps/${other.appId}/users`)).body as unknown as Json)['rows'] as Json[];
+    expect(theirs).toHaveLength(1);
+    expect(theirs[0]).toMatchObject({ externalId: 'list_a', email: { address: 'khac@company.com' } });
+  });
+
+  it('tìm theo external_id và phân trang', async () => {
+    const found = ((await admin(`/apps/${shop.appId}/users?q=list_b`)).body as unknown as Json)['rows'] as Json[];
+    expect(found.map((r) => r['externalId'])).toEqual(['list_b']);
+
+    const first = (await admin(`/apps/${shop.appId}/users?limit=1&offset=0`)).body as unknown as Json;
+    expect((first['rows'] as Json[])).toHaveLength(1);
+    expect(first['limit']).toBe(1);
+    expect(first['total']).toBeGreaterThan(1);
+  });
+
+  it('cài đặt nhận tin của một người: có cả lựa chọn đã bấm và kết quả hiệu lực', async () => {
+    // provisionApp không tạo topic — dựng hai topic để thấy rõ hai cột optedIn / effectiveOptIn.
+    const makeTopic = async (key: string) => {
+      await http('POST', `/admin/apps/${shop.appId}/topics`, { token: ADMIN_TOKEN, body: { key, name: key } });
+      await http('POST', `/admin/apps/${shop.appId}/topics/${key}/activate`, { token: ADMIN_TOKEN });
+    };
+    await makeTopic('pref_seen');
+    await makeTopic('pref_untouched');
+    await v1('PUT', '/users/pref_view', { email: 'pref.view@company.com' });
+    await v1('PUT', '/users/pref_view/preferences', { topics: { pref_seen: false } });
+
+    const body = (await admin(`/apps/${shop.appId}/users/pref_view/preferences`)).body as unknown as Json;
+    // `UserEmailSummary` CỐ TÌNH không mang địa chỉ — chỉ trạng thái. Địa chỉ lấy từ route danh sách,
+    // không nới DTO này chỉ để phục vụ một màn hình.
+    expect(body).toMatchObject({
+      externalId: 'pref_view',
+      email: { status: 'active', optedOutOptional: false },
+    });
+    const rows = body['topics'] as Json[];
+
+    // Đã bấm tắt -> cả hai cột đều false.
+    expect(rows.find((r) => r['key'] === 'pref_seen')).toMatchObject({ optedIn: false, effectiveOptIn: false });
+    // CHƯA bấm gì -> optedIn null, nhưng effectiveOptIn vẫn true theo defaultMode `opt_out`.
+    // Hai cột khác nhau: một cái là "người này đã bấm gì", cái kia là "rốt cuộc có nhận không".
+    expect(rows.find((r) => r['key'] === 'pref_untouched')).toMatchObject({ optedIn: null, effectiveOptIn: true });
+  });
+
+  it('người không tồn tại -> 404', async () => {
+    expect((await admin(`/apps/${shop.appId}/users/khong_co/preferences`)).status).toBe(404);
+  });
+});

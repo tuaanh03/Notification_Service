@@ -16,5 +16,7 @@ export interface UserEmailView {
 export interface UserEmailPort {
   set(input: { appId: AppId; userId: UserId; email: string }, ctx: CommandContext): Promise<UserEmailView>;
   find(input: { appId: AppId; userId: UserId }): Promise<UserEmailView | null>;
+  /** Nhiều user một lần — màn danh sách người nhận, tránh N+1. Chưa có email thì thiếu khoá. */
+  findMany(input: { appId: AppId; userIds: readonly UserId[] }): Promise<Map<UserId, UserEmailView>>;
   unsubscribe(input: { appId: AppId; userId: UserId }, ctx: CommandContext): Promise<UserEmailView>;
 }

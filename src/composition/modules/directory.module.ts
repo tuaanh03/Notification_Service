@@ -1,6 +1,6 @@
-import { FindUserByExternalId, UnsubscribeUserEmail, UpsertUser } from '../../modules/directory/application/index.ts';
+import { FindUserByExternalId, ListUsers, UnsubscribeUserEmail, UpsertUser } from '../../modules/directory/application/index.ts';
 import { DrizzleUserRepository, SubscriptionsUserEmail } from '../../modules/directory/infrastructure/adapters/index.ts';
-import { v1UsersRoutes } from '../../modules/directory/interface/index.ts';
+import { adminUsersRoutes, v1UsersRoutes } from '../../modules/directory/interface/index.ts';
 import type { FindUserEmail, SetUserEmail, UnsubscribeEmail } from '../../modules/subscriptions/application/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
@@ -20,6 +20,7 @@ export function directoryModule(
     definition: {
       name: 'directory',
       http: {
+        admin: [adminUsersRoutes({ listUsers: new ListUsers({ users, emails }) })],
         v1: [
           v1UsersRoutes({
             upsertUser: new UpsertUser({ uow, outbox, clock, users, emails }),

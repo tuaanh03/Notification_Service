@@ -28,6 +28,11 @@ export class SubscriptionsUserEmail implements UserEmailPort {
     return found ? view(found) : null;
   }
 
+  async findMany(input: { appId: AppId; userIds: readonly UserId[] }): Promise<Map<UserId, UserEmailView>> {
+    const found = await this.deps.findUserEmail.executeMany(input);
+    return new Map([...found].map(([userId, dto]) => [userId, view(dto)]));
+  }
+
   async unsubscribe(input: { appId: AppId; userId: UserId }, ctx: CommandContext): Promise<UserEmailView> {
     return view(await this.deps.unsubscribeEmail.execute(input, ctx));
   }

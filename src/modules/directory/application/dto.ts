@@ -15,3 +15,11 @@ export const toUserDto = (user: User, email: UserEmailView | null): UserDto => (
   createdAt: user.createdAt.toISOString(),
   email,
 });
+
+/** Một trang người nhận cho màn quản trị. `total` để biết còn bao nhiêu trang. */
+export interface UserPageDto {
+  rows: UserDto[];
+  total: number;
+  limit: number;
+  offset: number;
+}

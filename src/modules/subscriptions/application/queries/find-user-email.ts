@@ -17,4 +17,13 @@ export class FindUserEmail {
     const found = await this.subscriptions.findByUser(input.appId, input.userId, 'email');
     return found ? toEmailSubscriptionDto(found) : null;
   }
+
+  /**
+   * Bản nhiều user cho màn danh sách người nhận — MỘT truy vấn thay vì N.
+   * Trả map theo `userId`; user chưa có email thì không có khoá trong map.
+   */
+  async executeMany(input: { appId: AppId; userIds: readonly UserId[] }): Promise<Map<UserId, EmailSubscriptionDto>> {
+    const found = await this.subscriptions.findManyByUsers(input.appId, input.userIds, 'email');
+    return new Map(found.map((s) => [s.userId, toEmailSubscriptionDto(s)]));
+  }
 }

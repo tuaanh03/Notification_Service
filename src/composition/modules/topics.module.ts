@@ -44,6 +44,7 @@ export function topicsModule(
             createTopic: new CreateTopic({ uow, outbox, clock, topics, apps: new AppsAppLookup(dependencies) }),
             transitionTopic: new TransitionTopic({ uow, outbox, clock, topics }),
             queries,
+            getUserPreferences,
           }),
         ],
         v1: [

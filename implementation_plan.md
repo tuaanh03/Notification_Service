@@ -90,6 +90,39 @@ flowchart TD
 | `POST /v1/notifications` | v1 | `{ to: { externalId }, topic, subject, html, text?, idempotencyKey? }` -> **202** `{ id, status: 'queued' }`; trùng `idempotencyKey` -> **200** bản cũ | 422 `CHANNEL_NOT_GRANTED`, `TOPIC_NOT_FOUND`, `TOPIC_NOT_ACTIVE`, `RECIPIENT_NOT_FOUND`, `INVALID_FIELD` |
 | `GET /v1/notifications/:id` | v1 | `status`, `exclusionReason`, `error`, mốc thời gian | 404 (kể cả notification của app khác) |
 
+### Bề mặt đọc cho vận hành (`/admin`, CHỈ ĐỌC)
+
+*Bổ sung 2026-09-20 — ĐX-0004. Bảng trên là bề mặt GHI của MVP; nhóm này là bề mặt ĐỌC, mở ra vì
+`/admin` không trả lời được hai câu hỏi vận hành thường gặp nhất: "sao người này không nhận được
+thư" và "thư đó đã gửi chưa".*
+
+**Nguyên tắc đường dẫn — áp dụng cho MỌI đường trong nhóm này:**
+
+> Đặt dưới `/admin/apps/:appId/*`. Phạm vi theo app nằm trên URL — không phải tham số truy vấn,
+> không phải suy ra từ token.
+
+Lý do: bảng `admin_app_roles` (đã có trong schema, vai `super_admin` | `app_admin`, kèm composite
+FK chống cấp quyền chéo account — ADR-0011) được thiết kế để phân quyền theo từng app. Hiện
+`/admin/*` vẫn dùng một bootstrap token toàn quyền (ADR-0015 §4). Khi làm đăng nhập + RBAC (mục 12
+việc 4), vai `app_admin` chỉ cần thêm một lớp kiểm "admin này có quyền trên app này không" —
+`appId` đã nằm sẵn trên URL nên cắm vào được ngay, không phải sửa lại bề mặt API lẫn console.
+
+| Route | Bề mặt | Việc | Lỗi chính |
+| --- | --- | --- | --- |
+| `GET /admin/apps/:appId/users` | admin | Danh sách người nhận của app: `externalId`, email + trạng thái, mốc tạo. Phân trang (`limit`, `offset`), tìm theo `externalId` (`q`) | |
+| `GET /admin/apps/:appId/users/:externalId/preferences` | admin | Cài đặt nhận tin của một người: email + mọi topic `active` kèm `optedIn` và `effectiveOptIn` | 404 |
+
+Hai ràng buộc của nhóm:
+
+- **Chỉ đọc.** Admin KHÔNG sửa được lựa chọn topic của người dùng — consent là ý muốn của họ, sửa
+  hộ là mất hết ý nghĩa của cổng L0/L1/L3. App service đã có đủ đường ghi qua `/v1` bằng khoá của
+  chính nó (`PUT /v1/users/:id/preferences`, `DELETE /v1/users/:id/email`).
+- **Dùng lại use case đã có**, không viết lại rule. `GET .../preferences` gọi thẳng
+  `GetUserPreferences` của module topics — cùng use case mà `/v1` đang dùng, nên `effectiveOptIn`
+  luôn khớp với thứ worker tính lúc gửi (ADR-0010).
+
+Còn lại trong nhóm, làm sau: lịch sử gửi (`GET /admin/apps/:appId/notifications`) — ĐX-0002 Việc 2.
+
 Quy ước chung giữ nguyên: lỗi là `application/problem+json` có `code`; route chỉ parse -> gọi use
 case -> trả DTO; mọi thay đổi ghi event qua outbox (audit tự nhận).
 
