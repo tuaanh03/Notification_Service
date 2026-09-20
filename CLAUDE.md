@@ -244,6 +244,11 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   executor bằng `transactions.executor()` (đọc) hoặc `transactions.require(op)` (bắt buộc trong tx:
   outbox, processed_messages, khoá dòng — gọi ngoài `run` ném `TransactionRequiredError`).
   `run` lồng nhau nhập vào transaction ngoài.
+- **Dữ liệu muốn vào `audit_log` phải nằm trong `before` / `after`.** `RecordAuditEntry` chỉ đọc
+  `actor`, `source`, `before`, `after` của payload — field top-level khác bị **bỏ im lặng**, không
+  lỗi, không cảnh báo. `TransitionApp` từng để `reason` ở top-level và lý do đình chỉ / thu hồi app
+  rơi mất suốt; nay nằm trong `after`. Thêm field audit mới thì kiểm bằng test end-to-end qua worker
+  thật (`test/integration/apps-api.test.ts`), đừng tin là nó tự tới.
 - **Event ra ngoài module luôn qua `EventOutbox.append` trong `uow.run`** — không XADD thẳng. Event
   cần worker xử lý thì thêm một dòng vào `EVENT_ROUTES` (`shared/streams/names.ts`); mọi event đã tự
   vào `audit.events`.

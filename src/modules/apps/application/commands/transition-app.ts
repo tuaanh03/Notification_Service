@@ -43,7 +43,13 @@ export class TransitionApp {
           aggregateType: APP_AGGREGATE,
           aggregateId: app.id,
           eventType: EVENT_OF[input.transition],
-          payload: audited(ctx, { before: { status: before }, after: { status: app.status }, reason: input.reason ?? null }),
+          // `reason` phải nằm TRONG `after`: `RecordAuditEntry` chỉ chiếu actor / source / before /
+          // after xuống `audit_log`, field top-level bị bỏ im lặng. Đình chỉ hay thu hồi app là
+          // cắt đường gửi thư của cả một đội — mất lý do là mất thứ đáng giá nhất của dòng audit.
+          payload: audited(ctx, {
+            before: { status: before },
+            after: { status: app.status, reason: input.reason ?? null },
+          }),
         },
       ]);
       return toAppDto(app);

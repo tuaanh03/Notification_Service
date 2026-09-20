@@ -245,4 +245,31 @@ describe('audit end-to-end qua worker thật', () => {
       await worker.stop();
     }
   });
+
+  it('lý do đình chỉ / thu hồi có trong audit — không được rơi mất', async () => {
+    const worker = await startWorker(c, consumerRegistry(application));
+    try {
+      const { appId } = await activeApp('reasoned');
+      await admin('POST', `/apps/${appId}/suspend`, { reason: 'đội đã ngừng dự án' });
+      await admin('POST', `/apps/${appId}/revoke`, { reason: 'dọn app không còn dùng' });
+      while ((await c.infra.outboxRelay.relayOnce()) > 0);
+
+      let entries: Json[] = [];
+      await eventually(async () => {
+        entries = (await admin('GET', `/audit?targetType=App&targetId=${appId}`)).body as unknown as Json[];
+        return entries.some((e) => e['action'] === 'AppRevoked');
+      });
+      // `reason` nằm TRONG `after`: RecordAuditEntry chỉ chiếu actor/source/before/after xuống
+      // audit_log, để ở top-level là mất im lặng.
+      expect(entries.find((e) => e['action'] === 'AppSuspended')).toMatchObject({
+        before: { status: 'active' },
+        after: { status: 'suspended', reason: 'đội đã ngừng dự án' },
+      });
+      expect(entries.find((e) => e['action'] === 'AppRevoked')).toMatchObject({
+        after: { status: 'revoked', reason: 'dọn app không còn dùng' },
+      });
+    } finally {
+      await worker.stop();
+    }
+  });
 });

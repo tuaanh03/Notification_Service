@@ -136,14 +136,28 @@ chính chuyển về `/admin/apps`, wizard chỉ còn là lối tắt. Kèm theo
 Còn lại: app đã tạo thì **không xoá được** (backend không có lệnh xoá, cố ý — giữ vết audit).
 Tạm ngưng / thu hồi là Việc 4 — và đó cũng là cách duy nhất dọn một app tạo nhầm.
 
-### Việc 4 — Công tắc ngắt app *(đang cân nhắc)* — còn lại
+### Việc 4 — Công tắc ngắt app — **ĐÃ LÀM 2026-09-20**
 
 Tạm ngưng / Mở lại / Thu hồi ở `/admin/apps`, bắt buộc nhập lý do.
 
 **Đứng sau việc 3**, không phải trước: mở app còn chưa làm được bằng màn hình thì ngắt app
 chưa gấp. Kế hoạch **không đòi** cái này ở MVP.
 
-Câu hỏi chưa có trả lời: *app đã bị ngắt thì trong ô chọn app nên làm mờ, hay đánh dấu?*
+**Đã làm.** Nút theo đúng bảng `APP_TRANSITIONS`: `active` -> Tạm ngưng / Thu hồi; `suspended`
+-> Mở lại / Thu hồi; `revoked` không nút (trạng thái kết thúc). Lý do bắt buộc nhập.
+
+Câu hỏi *"làm mờ hay đánh dấu?"* -> **đánh dấu**. Menu chọn app vốn đã có `<StatusPill>`; chấm
+trên nút mở menu trước đây xanh cố định, nay lấy màu theo trạng thái thật. Không làm mờ: vẫn
+phải vào xem được chủ đề, khoá, nhật ký của chính app đang có vấn đề.
+
+**Phát hiện lúc làm — đáng giá hơn cả việc chính:** `reason` mà backend nhận **không hề vào
+`audit_log`**. `RecordAuditEntry` chỉ chiếu `actor` / `source` / `before` / `after`; `TransitionApp`
+để `reason` ở top-level nên nó bị bỏ im lặng từ trước tới nay. Đã chuyển vào `after` + thêm test
+end-to-end qua worker thật. Nếu không kiểm tới tận cơ sở dữ liệu thì đã giao một ô "bắt buộc nhập
+lý do" mà lý do bay hơi.
+
+*(Lâu dài `reason` nên là cột riêng của `audit_log` thay vì nằm trong `after` — cần migration,
+chưa làm, chưa đề xuất vì chưa rõ có đáng không.)*
 
 ---
 
