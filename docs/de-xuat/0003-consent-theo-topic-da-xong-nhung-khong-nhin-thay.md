@@ -1,7 +1,7 @@
 # ĐX-0003 — Consent theo topic: đã xong, nhưng không nhìn thấy được
 
 - **Phát hiện**: 2026-09-20, khi rà lại việc "gửi theo topic / lựa chọn của người dùng" ở MVP.
-- **Trạng thái**: chờ duyệt — **chưa làm gì cả**.
+- **Trạng thái**: mục 5 **đã làm 2026-09-20**; phần còn lại là mô tả hiện trạng, không cần làm gì.
 - **Quan hệ với `0002`**: không thêm việc mới vào 4 việc của ĐX-0002. Bổ sung **lý do nghiệp vụ**
   cho Việc 1 và Việc 2 ở đó, cộng **một đề xuất mới không cần code** (mục 5 dưới đây).
 
@@ -133,3 +133,19 @@ Nếu sau này mở ra ngoài công ty thì bước hỏi này không đủ, ph�
 - **Không** đề xuất cho admin sửa lựa chọn của nhân viên thay họ. Consent là ý muốn của người
   dùng; admin sửa hộ thì mất hết ý nghĩa. Admin chỉ cần **xem** (Việc 1 của `0002`).
 - **Không** đề xuất làm sớm `/u/:token` — chỉ bắt buộc khi gửi ra ngoài công ty.
+
+---
+
+## Kết quả mục 5 (2026-09-20 — ĐÃ LÀM)
+
+Ô tick bắt buộc trước khi duyệt app, ở cả hai cửa (`/admin/apps` và wizard bước 4, dùng chung
+`<GrantFields>`):
+
+> ☐ Đội này đã có màn «Cài đặt nhận thông báo» cho nhân viên.
+
+Chưa tick thì nút duyệt khoá.
+
+**Nói rõ giới hạn, đã ghi thẳng vào code:** backend không có cột nào lưu việc này, nên nó
+**không vào audit và không ai kiểm chứng được**. Nó là gờ giảm tốc buộc người duyệt nghĩ một
+lần, không phải hàng rào. Muốn thành hàng rào thì phải thêm cột ở backend — chưa đề xuất, vì
+chưa rõ có đáng không.

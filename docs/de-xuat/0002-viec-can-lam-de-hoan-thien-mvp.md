@@ -124,8 +124,17 @@ Hai điểm đáng ghi:
 * Chuỗi tạo app → allowlist → chủ đề → gửi duyệt **không chung transaction**; quy ước xử lý
   dừng giữa chừng ở `../../../ews-astrolink/CLAUDE.md` mục 2.5.
 
+**Bổ sung 2026-09-20 (cùng ngày):** bản đầu đặt nút duyệt CHỈ ở bước 4 của wizard — phiên đó
+đóng lại là app kẹt `pending_approval` vĩnh viễn, không màn nào duyệt được. Đã sửa: cửa duyệt
+chính chuyển về `/admin/apps`, wizard chỉ còn là lối tắt. Kèm theo:
+
+* Gỡ `/admin/approvals` (còn mock) khỏi menu — hai cửa duyệt, một cửa giả.
+* Cái chuông ở thanh trên từng hiện số giả của mock, nay đếm app `pending_approval` thật.
+  `<PreviewBanner>` chỉ phủ vùng nội dung, không phủ khung — số ở khung phải thật.
+* Ô tick bắt buộc trước khi duyệt (ĐX-0003 mục 5), dùng chung cả hai cửa qua `<GrantFields>`.
+
 Còn lại: app đã tạo thì **không xoá được** (backend không có lệnh xoá, cố ý — giữ vết audit).
-Tạm ngưng / thu hồi là Việc 4.
+Tạm ngưng / thu hồi là Việc 4 — và đó cũng là cách duy nhất dọn một app tạo nhầm.
 
 ### Việc 4 — Công tắc ngắt app *(đang cân nhắc)* — còn lại
 
