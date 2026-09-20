@@ -110,12 +110,24 @@ chủ dự án. Nhưng nói rõ: **không có nó thì hệ thống không vận
 
 Nếu muốn giữ đúng kế hoạch thì riêng ĐX-0001 vẫn đỡ được phần nào — ít nhất còn chỗ mà tra.
 
-### Việc 3 — Mở app mới bằng màn hình *(chặn bàn giao)*
+### Việc 3 — Mở app mới bằng màn hình *(chặn bàn giao)* — **ĐÃ LÀM 2026-09-20**
 
-Nối wizard "Tạo app" vào lệnh thật đã có. **Không cần thêm gì ở máy chủ** — chỉ nối dây. Xong
-việc này thì người khác mở app được.
+Nối wizard "Tạo app" vào lệnh thật đã có. **Không cần thêm gì ở máy chủ.**
 
-### Việc 4 — Công tắc ngắt app *(đang cân nhắc)*
+**Đã làm — nhưng không phải "chỉ nối dây" như ước lượng ban đầu.** Trình tự 4 bước khớp máy
+trạng thái, nhưng các ô nhập thì không: bản v0 có `description`, `technical_contact`,
+`severity`, `userMutable`, kênh riêng từng chủ đề và "quota đề xuất" ở bước 1 — backend không
+có cột nào chứa. Đã bỏ hẳn những ô đó và viết lại form theo đúng body route.
+
+Hai điểm đáng ghi:
+* Kênh và hạn mức chuyển xuống **bước 4**, vì chúng là quyền cấp lúc duyệt.
+* Chuỗi tạo app → allowlist → chủ đề → gửi duyệt **không chung transaction**; quy ước xử lý
+  dừng giữa chừng ở `../../../ews-astrolink/CLAUDE.md` mục 2.5.
+
+Còn lại: app đã tạo thì **không xoá được** (backend không có lệnh xoá, cố ý — giữ vết audit).
+Tạm ngưng / thu hồi là Việc 4.
+
+### Việc 4 — Công tắc ngắt app *(đang cân nhắc)* — còn lại
 
 Tạm ngưng / Mở lại / Thu hồi ở `/admin/apps`, bắt buộc nhập lý do.
 
