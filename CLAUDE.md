@@ -99,6 +99,10 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
+`docs/huong-dan-tich-hop-cho-doi-app.md` là **hợp đồng với đội app** (route, body, mã lỗi `/v1`).
+Đổi route / body / mã lỗi ở `/v1` thì sửa tài liệu đó VÀ `lib/api/v1-errors.ts` của console —
+hai chỗ này không tự đồng bộ.
+
 ## Cấu trúc
 
 ```

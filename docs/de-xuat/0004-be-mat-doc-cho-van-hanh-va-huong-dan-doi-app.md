@@ -257,4 +257,33 @@ người chưa khai email vẫn hiện, tìm + phân trang, 404. Trên trình du
 Hypervisor hiện đúng hai ca cạnh nhau — `order_updates` "tắt / không" và `maintenance_notice`
 "chưa chọn / có".
 
-**Còn lại:** phần 3 (trang giao đội app) và RBAC ở phần 4. Lịch sử gửi xong 2026-09-21 (`0002` Việc 2).
+**Còn lại:** RBAC ở phần 4. Lịch sử gửi xong 2026-09-21 (`0002` Việc 2); phần 3 xong cùng ngày
+(mục 7 dưới).
+
+## 7. Kết quả phần 3 (2026-09-21 — ĐÃ LÀM)
+
+Tách thành `../huong-dan-tich-hop-cho-doi-app.md`. Mỗi luật trong đó ghi test tích hợp nào
+chứng minh nó; không có luật nào chỉ dựa vào đề xuất này.
+
+**Viết lại, không chỉ chép** — đối chiếu mã nguồn tìm ra ba chỗ phần 3 ở trên nói thiếu hoặc sai:
+
+1. **Lỗi `422` không mang mã cụ thể ở `code`.** `code` ngoài cùng luôn là `VALIDATION`; mã như
+   `RECIPIENT_NOT_FOUND` nằm trong `issues[].code`. Đội app bắt lỗi theo `code` ngoài cùng sẽ
+   không bao giờ thấy mã nào trong bảng ở trên.
+2. **Bật lại sau khi ngắt email.** Phần 3 chỉ nói "gọi DELETE". Thực tế: `PUT` lại **đúng địa
+   chỉ cũ** thì bật lại; khai **địa chỉ khác** thì vẫn `unsubscribed`. Đây cũng là lý do thật của
+   chính sách "không tái dùng mã nhân viên".
+3. **Gửi dần, không gửi ngay.** Phần 3 không nhắc giới hạn tốc độ: mọi app chung một hộp thư gửi,
+   mặc định 30 thư/phút. 1 000 thư nhận xong trong vài giây nhưng đi hết hơn nửa giờ.
+
+Thêm: mục "Những gì CHƯA có", để đội app không đi tìm template, huỷ, webhook, `429`.
+
+**Kèm theo trên console:** `/notifications/errors` (hàng mẫu, được nút trên màn Lịch sử gửi trỏ tới)
+dạy mã không tồn tại — `token_expired`, `invalid_credentials`, `missing_variable`,
+`no_template_bound`, `rate_limited` — và header `Idempotency-Key` thay vì trường `idempotencyKey`.
+Dựng lại theo đúng bảng mục 8 của tài liệu; bảng mẫu trong `lib/mock-data.ts` đã xoá.
+
+**Phát hiện, CHƯA sửa — cần quyết định:** wizard tạo app (`step-profile.tsx`) nhận ô IP theo dạng
+**dải** (`10.20.0.0/16`, kiểm bằng `validateCidr`), còn backend so khớp **đúng từng địa chỉ**
+(`network-access.ts`: "CIDR để sau"). Khai một dải là app bị chặn `IP_NOT_ALLOWED` với mọi IP.
+Tài liệu nói đúng hành vi backend.
