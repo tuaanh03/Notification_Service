@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AppId } from '../../../../shared/kernel/index.ts';
-import { MAX_USER_PAGE, type ListUsers } from '../../application/index.ts';
+import { MAX_USER_PAGE, type FindUserByExternalId, type ListUsers } from '../../application/index.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
+const userParams = appParams.extend({ externalId: EXTERNAL_ID });
 const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_USER_PAGE).default(50),
   offset: z.coerce.number().int().min(0).default(0),
@@ -20,12 +21,19 @@ const listQuery = z.object({
  * Chỉ đọc — admin KHÔNG sửa được người nhận ở đây. App service tự ghi qua `/v1` bằng khoá của
  * chính nó.
  */
-export function adminUsersRoutes(useCases: { listUsers: ListUsers }): HttpRoutes {
+export function adminUsersRoutes(useCases: { listUsers: ListUsers; findUser: FindUserByExternalId }): HttpRoutes {
   return (app) => {
     app.get('/apps/:appId/users', async (request) => {
       const { appId } = parseInput(appParams, request.params);
       const { limit, offset, q } = parseInput(listQuery, request.query);
       return useCases.listUsers.execute({ appId: AppId.parse(appId), limit, offset, search: q });
+    });
+
+    // Đúng MỘT người, khớp đủ mã — cho trang chi tiết mở thẳng bằng link. Không tái dùng `?q=` của
+    // danh sách: ô tìm đó khớp một phần. Cùng use case với `GET /v1/users/:externalId`, không có -> 404.
+    app.get('/apps/:appId/users/:externalId', async (request) => {
+      const { appId, externalId } = parseInput(userParams, request.params);
+      return useCases.findUser.get({ appId: AppId.parse(appId), externalId });
     });
   };
 }

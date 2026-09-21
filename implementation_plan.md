@@ -110,6 +110,7 @@ việc 4), vai `app_admin` chỉ cần thêm một lớp kiểm "admin này có 
 | Route | Bề mặt | Việc | Lỗi chính |
 | --- | --- | --- | --- |
 | `GET /admin/apps/:appId/users` | admin | Danh sách người nhận của app: `externalId`, email + trạng thái, mốc tạo. Phân trang (`limit`, `offset`), tìm theo `externalId` (`q`) | |
+| `GET /admin/apps/:appId/users/:externalId` | admin | Đúng một người nhận, khớp ĐỦ `externalId` (khác `q` của danh sách): cùng dạng một dòng danh sách. Cho trang chi tiết mở thẳng bằng link | 404 |
 | `GET /admin/apps/:appId/users/:externalId/preferences` | admin | Cài đặt nhận tin của một người: email + mọi topic `active` kèm `optedIn` và `effectiveOptIn` | 404 |
 | `GET /admin/apps/:appId/notifications` | admin | Lịch sử gửi của app, mới nhất trước: trạng thái, topic, `externalId`, kết cục ở người nhận (lý do bị loại / lỗi), các mốc giờ. Phân trang (`limit`, `offset`); lọc khớp đúng theo `status`, `topic`, `externalId`. **Không** kèm địa chỉ email và nội dung thư | 422 (`status` lạ) |
 

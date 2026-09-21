@@ -20,7 +20,7 @@ export function directoryModule(
     definition: {
       name: 'directory',
       http: {
-        admin: [adminUsersRoutes({ listUsers: new ListUsers({ users, emails }) })],
+        admin: [adminUsersRoutes({ listUsers: new ListUsers({ users, emails }), findUser })],
         v1: [
           v1UsersRoutes({
             upsertUser: new UpsertUser({ uow, outbox, clock, users, emails }),

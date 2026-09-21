@@ -233,7 +233,23 @@ describe('/admin/apps/:appId/users — màn Người nhận', () => {
     expect(rows.find((r) => r['key'] === 'pref_untouched')).toMatchObject({ optedIn: null, effectiveOptIn: true });
   });
 
-  it('người không tồn tại -> 404', async () => {
+  it('một người theo mã: khớp ĐỦ mã, cùng dạng với dòng danh sách, không lẫn app', async () => {
+    const one = await admin(`/apps/${shop.appId}/users/list_a`);
+    expect(one.status).toBe(200);
+    expect(one.body).toMatchObject({ externalId: 'list_a', email: { address: 'list.a@company.com', status: 'active' } });
+
+    // Khác `?q=` của danh sách: một phần mã thì không khớp.
+    expect((await admin(`/apps/${shop.appId}/users/list_`)).status).toBe(404);
+    // Người chưa khai email vẫn đọc được — email = null.
+    expect((await admin(`/apps/${shop.appId}/users/list_c`)).body).toMatchObject({ externalId: 'list_c', email: null });
+
+    const other = await provisionApp(api.url, ADMIN_TOKEN, 'detail-other');
+    expect((await admin(`/apps/${other.appId}/users/list_a`)).status).toBe(404);
+  });
+
+  it('người không tồn tại -> 404; không có token quản trị -> 401', async () => {
+    expect((await admin(`/apps/${shop.appId}/users/khong_co`)).status).toBe(404);
     expect((await admin(`/apps/${shop.appId}/users/khong_co/preferences`)).status).toBe(404);
+    expect((await http('GET', `/admin/apps/${shop.appId}/users/list_a`, {})).status).toBe(401);
   });
 });

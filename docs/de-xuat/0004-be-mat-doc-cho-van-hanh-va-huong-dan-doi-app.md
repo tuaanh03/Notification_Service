@@ -287,3 +287,24 @@ Dựng lại theo đúng bảng mục 8 của tài liệu; bảng mẫu trong `l
 **dải** (`10.20.0.0/16`, kiểm bằng `validateCidr`), còn backend so khớp **đúng từng địa chỉ**
 (`network-access.ts`: "CIDR để sau"). Khai một dải là app bị chặn `IP_NOT_ALLOWED` với mọi IP.
 Tài liệu nói đúng hành vi backend.
+
+## 8. Trang chi tiết người nhận (2026-09-21 — ĐÃ LÀM)
+
+Đường `GET /admin/apps/:appId/users/:externalId` ở bảng mục 2 lúc làm (mục 6) chỉ thành route
+`.../preferences`, vì panel trong `/users` đã có sẵn dòng danh sách để lấy địa chỉ. Nay console
+tách thành **trang riêng** `/users/[externalId]` — một màn trả lời cả "có bị chặn không" lẫn "thư
+đã ra sao" — và trang đó mở được thẳng bằng link, không có dòng danh sách nào để dựa vào.
+
+**Backend:** thêm đúng đường đó, chỉ đọc. Dùng lại `FindUserByExternalId.get` — **cùng use case**
+với `GET /v1/users/:externalId`, không viết truy vấn mới. Trả về đúng dạng một dòng danh sách
+(`UserDto`, có địa chỉ); `UserEmailSummary` của route preferences **vẫn không nới**. Không tái
+dùng `?q=` của danh sách: `q` khớp một phần, trang chi tiết cần khớp đủ mã.
+
+**Console:** app đi theo link (`?app=<slug>`), vì app đang chọn chỉ nằm trong state client và
+cùng mã ở hai app là hai người khác nhau. Chi tiết ở `CLAUDE.md` mục 2.7 của console.
+
+**Kiểm chứng:** 2 test tích hợp mới (`users-api.test.ts`) — khớp đủ mã (một phần mã -> 404),
+người chưa khai email -> `email: null`, không lẫn app, 404, 401. Trên trình duyệt với dữ liệu mẫu
+của EWS Hypervisor: `demo_sent` / `demo_off` / `demo_noemail` hiện đúng cả hai nửa; mở link khi
+ô chọn app đang ở app khác -> tự chuyển; đổi app trên trang -> về `/users`; mã sai -> báo rõ app
+nào; `/users/import` vẫn giữ dải "Bản xem trước".
