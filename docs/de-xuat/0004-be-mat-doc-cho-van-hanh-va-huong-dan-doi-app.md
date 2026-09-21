@@ -283,10 +283,16 @@ dạy mã không tồn tại — `token_expired`, `invalid_credentials`, `missin
 `no_template_bound`, `rate_limited` — và header `Idempotency-Key` thay vì trường `idempotencyKey`.
 Dựng lại theo đúng bảng mục 8 của tài liệu; bảng mẫu trong `lib/mock-data.ts` đã xoá.
 
-**Phát hiện, CHƯA sửa — cần quyết định:** wizard tạo app (`step-profile.tsx`) nhận ô IP theo dạng
+**Phát hiện, ĐÃ SỬA 2026-09-21 (console, chọn cách "wizard chỉ nhận IP đơn"):** wizard tạo app (`step-profile.tsx`) nhận ô IP theo dạng
 **dải** (`10.20.0.0/16`, kiểm bằng `validateCidr`), còn backend so khớp **đúng từng địa chỉ**
 (`network-access.ts`: "CIDR để sau"). Khai một dải là app bị chặn `IP_NOT_ALLOWED` với mọi IP.
 Tài liệu nói đúng hành vi backend.
+
+Cách sửa: wizard và màn mới `/settings/origins` (đấu thật `GET|POST|DELETE .../network-rules`,
+trước là hàng mẫu — khai sai lúc tạo app thì không có chỗ nào trên console để sửa) chỉ nhận
+**một địa chỉ IP**, báo rõ "chưa hỗ trợ dải". Backend không đổi. Còn lại, chưa làm: backend
+**không kiểm định dạng** giá trị `ip` (`AppNetworkRule` chỉ chặn chuỗi rỗng), nên gọi thẳng
+`/admin` với một dải vẫn lưu được. Hỗ trợ CIDR thật vẫn để sau, khi có nhu cầu.
 
 ## 8. Trang chi tiết người nhận (2026-09-21 — ĐÃ LÀM)
 

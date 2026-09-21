@@ -44,6 +44,7 @@ Gửi hàng loạt theo phân khúc, template, hẹn giờ: **chưa có** (xem m
 **Giới hạn nguồn gọi (nếu app đã khai):**
 
 * **IP:** so khớp **đúng từng địa chỉ**, chưa hỗ trợ dải (`10.20.0.0/16` sẽ **không** khớp gì).
+  Đổi IP máy chủ thì báo EWS: thêm IP mới trước, gỡ IP cũ sau, để không có lúc bị chặn.
   Đã khai ít nhất một IP thì mọi IP khác bị chặn.
 * **Origin:** chỉ xét khi request có header `Origin` (gọi từ trình duyệt). Gọi máy-chủ-tới-máy-chủ
   không bị luật này chặn.
