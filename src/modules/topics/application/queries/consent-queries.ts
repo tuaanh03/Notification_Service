@@ -33,6 +33,14 @@ export class ConsentQueries {
     return topic ? view(topic) : null;
   }
 
+  /**
+   * Mọi topic của MỘT app, một truy vấn — cho màn danh sách đổi `topic_id` ra `key` theo lô.
+   * Topic mỗi app chỉ vài chục, nên lấy cả app rẻ hơn và đơn giản hơn tra theo từng id.
+   */
+  async topicsByApp(appId: AppId): Promise<ConsentTopicView[]> {
+    return (await this.deps.topics.listByApp(appId)).map(view);
+  }
+
   /** null = user chưa chọn gì cho topic này. */
   async preference(userId: UserId, topicId: TopicId): Promise<{ optedIn: boolean } | null> {
     const preference = await this.deps.preferences.find(userId, topicId);

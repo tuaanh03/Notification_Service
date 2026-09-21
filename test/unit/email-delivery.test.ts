@@ -145,13 +145,20 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         findById: async () => options.notification,
         findByIdempotencyKey: async () => null,
         saveTransition: async () => undefined,
+        listByApp: async () => ({ rows: [], total: 0 }),
         listStuckSending: async () => [],
       },
-      recipients: { findByNotification: async () => null, insert: async () => undefined, update: async () => undefined },
+      recipients: {
+        findByNotification: async () => null,
+        findByNotifications: async () => new Map(),
+        insert: async () => undefined,
+        update: async () => undefined,
+      },
       emails: { find: async () => options.email ?? null },
       topics: {
         topicByKey: async () => null,
         topicById: async () => ({ topicId, key: 'order_updates', status: 'active', mandatory: false, defaultOptedIn: true }),
+        topicsByApp: async () => [],
         preference: async () => null,
       },
       sender: {

@@ -15,6 +15,8 @@ import type {
 /** -> directory: người nhận theo external_id trong app. */
 export interface RecipientLookup {
   findUserId(appId: AppId, externalId: string): Promise<UserId | null>;
+  /** `external_id` theo LÔ cho màn danh sách. User không còn thì vắng mặt trong Map. */
+  externalIds(appId: AppId, userIds: readonly UserId[]): Promise<Map<UserId, string>>;
 }
 
 /** -> subscriptions: email của user, đủ để chạy L0/L1 và để gửi. */
@@ -42,6 +44,8 @@ export interface TopicForDelivery {
 export interface TopicConsentLookup {
   topicByKey(appId: AppId, key: string): Promise<TopicForDelivery | null>;
   topicById(topicId: TopicId): Promise<TopicForDelivery | null>;
+  /** Mọi topic của app — màn danh sách đổi `topic_id` ra `key` bằng MỘT truy vấn. */
+  topicsByApp(appId: AppId): Promise<TopicForDelivery[]>;
   preference(userId: UserId, topicId: TopicId): Promise<{ optedIn: boolean } | null>;
 }
 

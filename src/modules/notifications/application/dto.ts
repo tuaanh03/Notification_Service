@@ -49,3 +49,40 @@ export function toNotificationDto(
     finishedAt: iso(n.finishedAt),
   };
 }
+
+/**
+ * Một dòng lịch sử gửi cho màn quản trị (`GET /admin/apps/:appId/notifications`).
+ *
+ * Khác `NotificationDto` hai chỗ, đều có chủ đích:
+ *   - có `externalId` — người trực tra theo mã nhân viên, không theo `user_id` nội bộ;
+ *   - người nhận KHÔNG kèm địa chỉ email. Địa chỉ đã có ở màn Người nhận; nhân ra thêm một màn
+ *     danh sách là thêm một chỗ lộ dữ liệu cá nhân mà không giúp gì cho việc tra.
+ * Không có nội dung thư — cùng lý do với `NotificationDto`.
+ */
+export interface NotificationSummaryDto extends Omit<NotificationDto, 'recipient'> {
+  /** null = user đã không còn trong sổ người nhận. */
+  externalId: string | null;
+  recipient: Omit<NotificationRecipientDto, 'address'> | null;
+}
+
+/** Một trang lịch sử gửi. `total` để biết còn bao nhiêu trang. */
+export interface NotificationPageDto {
+  rows: NotificationSummaryDto[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function toNotificationSummaryDto(
+  n: Notification,
+  extra: { topicKey: string; externalId: string | null; recipient: NotificationRecipient | null },
+): NotificationSummaryDto {
+  const { recipient, ...rest } = toNotificationDto(n, extra);
+  return {
+    ...rest,
+    externalId: extra.externalId,
+    recipient: recipient
+      ? { status: recipient.status, exclusionReason: recipient.exclusionReason, error: recipient.error, sentAt: recipient.sentAt }
+      : null,
+  };
+}

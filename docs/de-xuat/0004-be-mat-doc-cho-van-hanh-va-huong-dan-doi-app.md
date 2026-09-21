@@ -257,4 +257,4 @@ người chưa khai email vẫn hiện, tìm + phân trang, 404. Trên trình du
 Hypervisor hiện đúng hai ca cạnh nhau — `order_updates` "tắt / không" và `maintenance_notice`
 "chưa chọn / có".
 
-**Còn lại:** phần 3 (trang giao đội app) và các mục ở phần 4 — RBAC, rồi lịch sử gửi.
+**Còn lại:** phần 3 (trang giao đội app) và RBAC ở phần 4. Lịch sử gửi xong 2026-09-21 (`0002` Việc 2).

@@ -111,6 +111,7 @@ việc 4), vai `app_admin` chỉ cần thêm một lớp kiểm "admin này có 
 | --- | --- | --- | --- |
 | `GET /admin/apps/:appId/users` | admin | Danh sách người nhận của app: `externalId`, email + trạng thái, mốc tạo. Phân trang (`limit`, `offset`), tìm theo `externalId` (`q`) | |
 | `GET /admin/apps/:appId/users/:externalId/preferences` | admin | Cài đặt nhận tin của một người: email + mọi topic `active` kèm `optedIn` và `effectiveOptIn` | 404 |
+| `GET /admin/apps/:appId/notifications` | admin | Lịch sử gửi của app, mới nhất trước: trạng thái, topic, `externalId`, kết cục ở người nhận (lý do bị loại / lỗi), các mốc giờ. Phân trang (`limit`, `offset`); lọc khớp đúng theo `status`, `topic`, `externalId`. **Không** kèm địa chỉ email và nội dung thư | 422 (`status` lạ) |
 
 Hai ràng buộc của nhóm:
 
@@ -121,7 +122,9 @@ Hai ràng buộc của nhóm:
   `GetUserPreferences` của module topics — cùng use case mà `/v1` đang dùng, nên `effectiveOptIn`
   luôn khớp với thứ worker tính lúc gửi (ADR-0010).
 
-Còn lại trong nhóm, làm sau: lịch sử gửi (`GET /admin/apps/:appId/notifications`) — ĐX-0002 Việc 2.
+Lịch sử gửi thêm 2026-09-21 (ĐX-0002 Việc 2). Không có route chi tiết `/notifications/:id` riêng:
+dòng danh sách đã mang đủ mọi trường của `GetNotification` trừ địa chỉ email — route chi tiết chỉ
+thêm đúng thứ mà màn này cố ý không hiện.
 
 Quy ước chung giữ nguyên: lỗi là `application/problem+json` có `code`; route chỉ parse -> gọi use
 case -> trả DTO; mọi thay đổi ghi event qua outbox (audit tự nhận).

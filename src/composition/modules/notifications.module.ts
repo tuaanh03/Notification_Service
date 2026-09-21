@@ -5,6 +5,7 @@ import {
   DeliverEmailNotification,
   FailStuckSending,
   GetNotification,
+  ListNotifications,
 } from '../../modules/notifications/application/index.ts';
 import {
   DeliveryEmailSender,
@@ -15,6 +16,7 @@ import {
   TopicsConsentLookup,
 } from '../../modules/notifications/infrastructure/adapters/index.ts';
 import {
+  adminNotificationsRoutes,
   emailSenderHandler,
   failStuckSendingJob,
   v1NotificationsRoutes,
@@ -27,7 +29,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
 
 /**
  * Ghép module notifications — cắm vào CẢ BA process:
- *   api       POST/GET /v1/notifications
+ *   api       POST/GET /v1/notifications · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
  *   worker    consumer `email-sender` (notif.queued, idempotency: 'handler')
  *   scheduler job `fail-stuck-sending`
  */
@@ -47,11 +49,13 @@ export function notificationsModule(
   const notifications = new DrizzleNotificationRepository({ transactions });
   const recipients = new DrizzleRecipientRepository({ transactions });
   const topics = new TopicsConsentLookup(dependencies);
+  const users = new DirectoryRecipientLookup(dependencies);
 
   return {
     definition: {
       name: 'notifications',
       http: {
+        admin: [adminNotificationsRoutes({ list: new ListNotifications({ notifications, recipients, users, topics }) })],
         v1: [
           v1NotificationsRoutes({
             accept: new AcceptEmailNotification({
@@ -60,7 +64,7 @@ export function notificationsModule(
               clock,
               notifications,
               recipients,
-              users: new DirectoryRecipientLookup(dependencies),
+              users,
               topics,
             }),
             get: new GetNotification({ notifications, recipients, topics }),

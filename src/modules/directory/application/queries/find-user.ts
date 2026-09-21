@@ -1,4 +1,4 @@
-import { NotFoundError, type AppId } from '../../../../shared/kernel/index.ts';
+import { NotFoundError, type AppId, type UserId } from '../../../../shared/kernel/index.ts';
 import { toUserDto, type UserDto } from '../dto.ts';
 import type { UserEmailPort, UserRepository } from '../ports/index.ts';
 
@@ -18,6 +18,16 @@ export class FindUserByExternalId {
     const user = await this.deps.users.findByExternalId(input.appId, input.externalId);
     if (!user) return null;
     return toUserDto(user, await this.deps.emails.find({ appId: input.appId, userId: user.id }));
+  }
+
+  /**
+   * `external_id` của nhiều user trong MỘT truy vấn — cho màn danh sách của module khác (lịch sử gửi).
+   * Chỉ trả mã, không kèm email: phía gọi cần biết "ai", không cần địa chỉ. User không còn hoặc
+   * không có `external_id` thì vắng mặt trong Map.
+   */
+  async externalIdsOf(input: { appId: AppId; userIds: readonly UserId[] }): Promise<Map<UserId, string>> {
+    const users = await this.deps.users.findManyByIds(input.appId, input.userIds);
+    return new Map(users.flatMap((user) => (user.externalId === null ? [] : [[user.id, user.externalId] as const])));
   }
 
   /** Không có -> 404 (cho route). */

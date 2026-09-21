@@ -287,3 +287,80 @@ describe('GET /v1/notifications/:id', () => {
     await deliver();
   });
 });
+
+// Bề mặt đọc cho vận hành (plan §5): "thư gửi anh A ra sao" trả lời được từ console, không cần log.
+describe('GET /admin/apps/:appId/notifications', () => {
+  const history = async (query: string, appId = shop.appId) => (await admin('GET', `/apps/${appId}/notifications?${query}`)).body;
+  const rows = (page: Json) => page['rows'] as Json[];
+
+  it('ba kết cục hiện đúng: đã gửi / bị loại vì tắt chủ đề / chưa có email — kèm mã người nhận, KHÔNG kèm địa chỉ', async () => {
+    await user('h_sent', 'h.sent@company.com');
+    await user('h_off', 'h.off@company.com');
+    await v1('PUT', '/users/h_off/preferences', { topics: { order_updates: false } });
+    await user('h_noemail');
+    for (const id of ['h_sent', 'h_off', 'h_noemail']) expect((await send(id, { idempotencyKey: `hist-${id}` })).status).toBe(202);
+    await deliver();
+
+    const one = async (externalId: string) => {
+      const page = await history(`externalId=${externalId}`);
+      expect(page['total']).toBe(1);
+      return rows(page)[0]!;
+    };
+    expect(await one('h_sent')).toMatchObject({
+      status: 'sent',
+      topic: 'order_updates',
+      externalId: 'h_sent',
+      idempotencyKey: 'hist-h_sent',
+      recipient: { status: 'sent', exclusionReason: null, error: null },
+    });
+    expect(await one('h_off')).toMatchObject({ status: 'no_recipient', recipient: { status: 'skipped', exclusionReason: 'opted_out' } });
+    expect(await one('h_noemail')).toMatchObject({ status: 'no_recipient', recipient: { exclusionReason: 'no_channel' } });
+    // Không có địa chỉ, không có nội dung thư — ở bất kỳ dòng nào.
+    const all = await history('limit=200');
+    for (const row of rows(all)) {
+      expect(row['recipient'] === null || !('address' in (row['recipient'] as Json))).toBe(true);
+      expect(row).not.toHaveProperty('subject');
+    }
+  });
+
+  it('lọc theo trạng thái và chủ đề; giá trị không tồn tại -> trang rỗng, không 404', async () => {
+    await user('h_filter', 'h.filter@company.com');
+    await send('h_filter');
+    await send('h_filter', { topic: 'auth_security' });
+    await deliver();
+
+    const byTopic = await history('externalId=h_filter&topic=auth_security');
+    expect(rows(byTopic).map((r) => r['topic'])).toEqual(['auth_security']);
+    expect(rows(await history('status=sent&limit=200')).every((r) => r['status'] === 'sent')).toBe(true);
+    expect(await history('externalId=nobody_here')).toMatchObject({ rows: [], total: 0 });
+    expect(await history('topic=nope')).toMatchObject({ rows: [], total: 0 });
+    expect((await admin('GET', `/apps/${shop.appId}/notifications?status=bogus`)).status).toBe(422);
+  });
+
+  it('mới nhất trước; phân trang không lặp dòng', async () => {
+    await user('h_page', 'h.page@company.com');
+    const sent: string[] = [];
+    for (let i = 0; i < 3; i++) sent.push((await send('h_page')).body['id'] as string);
+    await deliver();
+
+    const pages = await Promise.all([0, 1, 2].map((offset) => history(`externalId=h_page&limit=1&offset=${offset}`)));
+    const got = pages.map((page) => rows(page)[0]!);
+    // Ba thư có thể tạo trong cùng một mili giây — so TẬP id, và thứ tự thời gian không tăng.
+    expect(new Set(got.map((r) => r['id']))).toEqual(new Set(sent));
+    const times = got.map((r) => Date.parse(r['createdAt'] as string));
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+  });
+
+  it('app khác không thấy lịch sử của app này', async () => {
+    await user('h_iso', 'h.iso@company.com');
+    const id = (await send('h_iso')).body['id'] as string;
+    await deliver();
+    const crm = await provisionApp(api.url, ADMIN_TOKEN, 'crm-history');
+    expect(rows(await history('limit=200', crm.appId)).map((r) => r['id'])).not.toContain(id);
+    expect(await history('externalId=h_iso', crm.appId)).toMatchObject({ rows: [], total: 0 });
+  });
+
+  it('không có token quản trị -> 401', async () => {
+    expect((await http('GET', `/admin/apps/${shop.appId}/notifications`)).status).toBe(401);
+  });
+});

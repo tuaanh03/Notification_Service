@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { TransactionContext } from '../../../../shared/db/index.ts';
 import {
   NotificationId,
@@ -28,6 +28,17 @@ export class DrizzleRecipientRepository implements RecipientRepository {
       .where(eq(notificationRecipients.notificationId, notificationId))
       .limit(1);
     return row ? toRecipient(row) : null;
+  }
+
+  async findByNotifications(notificationIds: readonly NotificationIdType[]): Promise<Map<NotificationIdType, NotificationRecipient>> {
+    if (notificationIds.length === 0) return new Map();
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(notificationRecipients)
+      .where(inArray(notificationRecipients.notificationId, [...notificationIds]));
+    // Gửi trực tiếp: một notification một dòng — cùng giả định với `findByNotification`.
+    return new Map(rows.map((row) => [NotificationId.parse(row.notificationId), toRecipient(row)] as const));
   }
 
   async insert(r: NotificationRecipient): Promise<void> {

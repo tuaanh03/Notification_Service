@@ -97,7 +97,7 @@ render một lần trong `<AppShell>` và tự ẩn ở đó. Liệt kê theo ch
 "chưa thật"** — quên cập nhật thì sai về phía an toàn. Dải băng không có nút tắt. Chi tiết:
 `../../../ews-astrolink/CLAUDE.md` mục 2.4.
 
-### Việc 2 — Trả lời được "thư đó ra sao" *(chặn vận hành)*
+### Việc 2 — Trả lời được "thư đó ra sao" *(chặn vận hành)* — **ĐÃ LÀM 2026-09-21**
 
 Hai phần, đi chung mới có tác dụng:
 
@@ -109,6 +109,27 @@ Phần sau **vượt ra ngoài mục 5 của kế hoạch** — tức là phải
 chủ dự án. Nhưng nói rõ: **không có nó thì hệ thống không vận hành được sau ngày đầu tiên.**
 
 Nếu muốn giữ đúng kế hoạch thì riêng ĐX-0001 vẫn đỡ được phần nào — ít nhất còn chỗ mà tra.
+
+**Đã làm.** Phần nhật ký xong từ ĐX-0001. Phần tra cứu: `GET /admin/apps/:appId/notifications`,
+nằm trong nhóm bề mặt đọc mà ĐX-0004 đã mở ở kế hoạch §5 — nên không phải sửa kế hoạch lần hai,
+chỉ thêm một dòng vào bảng của nhóm đó.
+
+* **Chỉ đọc, 4 truy vấn mỗi trang** bất kể số dòng: topic của app, trang notification, người nhận
+  (theo lô), `external_id` (theo lô, qua `FindUserByExternalId.externalIdsOf` của directory — không
+  đọc bảng của module khác).
+* **Không kèm địa chỉ email, không kèm nội dung thư.** Địa chỉ đã có ở màn Người nhận.
+* **Khác đề xuất ban đầu một chỗ: KHÔNG làm route chi tiết.** Đề xuất có ghi "chi tiết gần như miễn
+  phí vì `GetNotification` có sẵn". Khi làm mới thấy dòng danh sách đã mang đủ mọi trường của
+  `GetNotification` — trừ đúng địa chỉ email. Route chi tiết vì vậy chỉ thêm đúng thứ màn này cố ý
+  không hiện. Panel chi tiết trên console đọc từ dòng đã có, không gọi thêm API.
+* Console: `/notifications` đọc dữ liệu thật; nút "Xem các lần gửi" ở panel Người nhận mở lịch sử
+  đã lọc sẵn theo người đó. `/notifications/[id]` và `/notifications/errors` vẫn là bản xem trước.
+* Dọn kèm: `/subscriptions` (còn mock, trùng dữ liệu với màn Người nhận) gỡ khỏi menu.
+
+**Kiểm chứng:** 5 test tích hợp mới (`notifications-api.test.ts`) — ba kết cục qua worker thật,
+lọc, phân trang không lặp dòng, app khác không thấy, thiếu token -> 401. Trên trình duyệt, ba ca
+thật tạo trên EWS Hypervisor (`demo_sent` / `demo_off` / `demo_noemail`) hiện đúng
+"máy chủ thư đã nhận" / "đã tắt chủ đề này" / "chưa khai email".
 
 ### Việc 3 — Mở app mới bằng màn hình *(chặn bàn giao)* — **ĐÃ LÀM 2026-09-20**
 

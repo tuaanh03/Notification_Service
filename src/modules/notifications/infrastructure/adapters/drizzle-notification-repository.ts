@@ -1,4 +1,4 @@
-import { and, asc, eq, lt } from 'drizzle-orm';
+import { and, asc, count, desc, eq, lt, type SQL } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -13,7 +13,7 @@ import {
   type NotificationId as NotificationIdType,
 } from '../../../../shared/kernel/index.ts';
 import { IdempotencyKeyTakenError } from '../../application/errors.ts';
-import type { NotificationRepository } from '../../application/ports/index.ts';
+import type { NotificationFilter, NotificationPage, NotificationRepository } from '../../application/ports/index.ts';
 import { Notification } from '../../domain/entities/notification.ts';
 import { emailContent } from '../../domain/types/email-content.ts';
 import { notifications, notificationTransitions } from '../db/schema.ts';
@@ -81,6 +81,27 @@ export class DrizzleNotificationRepository implements NotificationRepository {
       .from(notifications)
       .where(and(eq(notifications.appId, appId), eq(notifications.idempotencyKey, key)));
     return row ? toNotification(row) : null;
+  }
+
+  async listByApp(appId: AppIdType, filter: NotificationFilter, page: { limit: number; offset: number }): Promise<NotificationPage> {
+    const conditions: SQL[] = [eq(notifications.appId, appId)];
+    if (filter.status) conditions.push(eq(notifications.status, filter.status));
+    if (filter.topicId) conditions.push(eq(notifications.topicId, filter.topicId));
+    if (filter.targetUserId) conditions.push(eq(notifications.targetUserId, filter.targetUserId));
+    const where = and(...conditions);
+    const executor = this.transactions.executor();
+    const [rows, [totals]] = await Promise.all([
+      executor
+        .select()
+        .from(notifications)
+        .where(where)
+        // id phá hoà khi trùng mili giây — không có nó, một dòng có thể hiện ở hai trang liền nhau.
+        .orderBy(desc(notifications.createdAt), desc(notifications.notificationId))
+        .limit(page.limit)
+        .offset(page.offset),
+      executor.select({ value: count() }).from(notifications).where(where),
+    ]);
+    return { rows: rows.map(toNotification), total: totals?.value ?? 0 };
   }
 
   async saveTransition(n: Notification): Promise<void> {

@@ -33,6 +33,10 @@ export class DirectoryRecipientLookup implements RecipientLookup {
     const user = await this.findUser.find({ appId, externalId });
     return user ? UserId.parse(user.userId) : null;
   }
+
+  externalIds(appId: AppId, userIds: readonly UserIdType[]): Promise<Map<UserIdType, string>> {
+    return this.findUser.externalIdsOf({ appId, userIds });
+  }
 }
 
 /**
@@ -73,6 +77,10 @@ export class TopicsConsentLookup implements TopicConsentLookup {
 
   topicById(topicId: TopicId): Promise<TopicForDelivery | null> {
     return this.consent.topicById(topicId);
+  }
+
+  topicsByApp(appId: AppId): Promise<TopicForDelivery[]> {
+    return this.consent.topicsByApp(appId);
   }
 
   preference(userId: UserIdType, topicId: TopicId): Promise<{ optedIn: boolean } | null> {

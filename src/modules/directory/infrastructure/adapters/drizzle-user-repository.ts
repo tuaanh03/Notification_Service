@@ -1,4 +1,4 @@
-import { and, count, desc, eq, like } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, like } from 'drizzle-orm';
 import { duplicateKeyName, lockParentRow, type TransactionContext } from '../../../../shared/db/index.ts';
 import { AppId, OrgId, PersonId, UserId, type AppId as AppIdType, type UserId as UserIdType } from '../../../../shared/kernel/index.ts';
 import { UserAlreadyExistsError } from '../../application/errors.ts';
@@ -34,6 +34,16 @@ export class DrizzleUserRepository implements UserRepository {
       executor.select({ value: count() }).from(users).where(where),
     ]);
     return { rows: rows.map(toUser), total: totals?.value ?? 0 };
+  }
+
+  async findManyByIds(appId: AppIdType, ids: readonly UserIdType[]): Promise<User[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(users)
+      .where(and(eq(users.appId, appId), inArray(users.userId, [...ids])));
+    return rows.map(toUser);
   }
 
   async insert(user: User): Promise<void> {
