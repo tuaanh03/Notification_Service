@@ -1,6 +1,7 @@
 # Hướng dẫn tích hợp EWS gửi email — cho đội app
 
-*Tách từ ĐX-0004 phần 3 (2026-09-21). Áp dụng cho **MVP**: chỉ email, gửi từng người.*
+*Tách từ ĐX-0004 phần 3 (2026-09-21), bổ sung địa chỉ thật 2026-09-23. Áp dụng cho **MVP**: chỉ
+email, gửi từng người.*
 
 Tài liệu này dành cho đội phát triển của một app muốn gửi email thông báo cho nhân viên qua EWS.
 Mọi route, body, mã lỗi ở đây sao đúng mã nguồn; mỗi mục ghi test nào chứng minh nó. Thấy chỗ nào
@@ -30,9 +31,18 @@ Gửi hàng loạt theo phân khúc, template, hẹn giờ: **chưa có** (xem m
 
 | Thứ | Ghi chú |
 | --- | --- |
-| **Địa chỉ API** | Đội EWS cung cấp. Dưới đây viết là `$EWS`. Mọi đường dẫn bắt đầu bằng `/v1`. |
+| **Địa chỉ API** | `https://api-ews-astrolink.eonsr.net` — dưới đây viết là `$EWS`. Mọi đường dẫn bắt đầu bằng `/v1`. |
 | **Khoá API** | Dạng `ews_<32 hex>_<43 ký tự>`. **Chỉ hiện một lần** lúc cấp — mất là phải cấp khoá mới. |
 | **Danh sách chủ đề** | Đội EWS tạo và kích hoạt. App không tạo được chủ đề. Đọc lại bằng `GET /v1/topics`. |
+
+**Địa chỉ API:**
+
+* **Chỉ `https`.** Gọi `http://` sẽ bị chuyển sang `https` — đừng dựa vào việc chuyển này, cấu hình
+  thẳng `https://` để khoá API không bao giờ đi qua mạng dạng chữ trần.
+* Gọi được **từ Internet**, không cần VPN. Muốn chỉ máy chủ của app gọi được thì khai IP (dưới).
+* Địa chỉ này chỉ mở `/v1` và `/health`. Trang quản trị EWS là địa chỉ khác, chỉ đội EWS dùng.
+* EWS còn sống không: `GET $EWS/health/ready` (không cần khoá) → `200` kèm
+  `{"status":"ok","checks":{"mysql":"ok","redis":"ok"}}`.
 
 **Khoá API:**
 
@@ -166,6 +176,61 @@ Content-Type: application/json
 * Không cần tự chèn link huỷ đăng ký — MVP chưa có (xem mục 9).
 
 *Nguồn: `notifications-api.test.ts` — "202 queued", "lỗi input", "HTML 300 KB".*
+
+### Chạy thử cả vòng trong 5 phút
+
+Chạy trước khi viết code: qua được là khoá, mạng và chủ đề đã thông. Cần `curl`, `jq`, khoá API và
+`key` của một chủ đề **đã kích hoạt** (lấy ở `GET /v1/topics`).
+
+```bash
+EWS=https://api-ews-astrolink.eonsr.net
+read -s -p 'Khoá API: ' KEY; echo
+TOPIC='<key chủ đề>'
+AUTH="Authorization: Bearer $KEY"
+
+# 1. Khoá dùng được? -> "status":"active" và "grantedChannels" có "email"
+curl -s $EWS/v1/me -H "$AUTH" | jq
+
+# 2. Khai một nhân viên thử (201 lần đầu, 200 các lần sau)
+curl -s -X PUT $EWS/v1/users/NV-TEST -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"email":"<email của chính bạn>"}' | jq
+
+# 3. Gửi -> 202, lấy id lá thư
+ID=$(jq -n --arg t "$TOPIC" --arg k "thu-$(date +%s)" \
+  '{to:{externalId:"NV-TEST"},topic:$t,subject:"EWS chạy thử",html:"<p>EWS chạy thử</p>",idempotencyKey:$k}' \
+  | curl -s -X POST $EWS/v1/notifications -H "$AUTH" -H 'Content-Type: application/json' -d @- | jq -r .id)
+echo "id: $ID"
+
+# 4. Vài giây sau: "status" từ queued -> sent
+curl -s $EWS/v1/notifications/$ID -H "$AUTH" | jq
+
+unset KEY AUTH
+```
+
+* Dùng **email của chính bạn** cho `NV-TEST`: khi EWS đã bật gửi thật, thư chạy thử **đi thật**.
+* Bước 3 in `id: null` → xem lỗi bằng cách chạy lại lệnh gửi không có `| jq -r .id`, tra mục 8.
+* EWS không xoá được người đã khai. Luôn dùng lại đúng mã `NV-TEST` cho mọi lần chạy thử, đừng
+  sinh mã mới mỗi lần.
+
+### Sau khi tích hợp: lúc nào app phải gọi EWS
+
+EWS **không tự hỏi** app. Dữ liệu bên app đổi thì **app chủ động gọi** — ngay lúc đổi, không đợi
+cuối ngày:
+
+| Bên app xảy ra | App gọi |
+| --- | --- |
+| Lần đầu nối vào EWS | `PUT /v1/users/:externalId` **lặp cho mọi nhân viên hiện có** |
+| Thêm nhân viên / đổi email | `PUT /v1/users/:externalId` |
+| Nhân viên đổi cài đặt nhận thông báo | `PUT /v1/users/:externalId/preferences` |
+| Nhân viên nghỉ việc | `DELETE /v1/users/:externalId/email` (mục 7) |
+| Cần gửi thư | `POST /v1/notifications` (bước 5) |
+| Muốn biết thư đã đi chưa | `GET /v1/notifications/:id` (mục 5) |
+
+Các lời gọi đổi dữ liệu ghi **trạng thái cuối**, không phải "vừa đổi gì" — gọi lại bao nhiêu lần
+kết quả vẫn thế. Lỗi mạng thì cứ gọi lại, không cần nhớ đã gọi hay chưa.
+
+EWS **chưa có webhook báo ngược** sang app (mục 9) và **chưa nhận nhiều người trong một lời gọi** —
+đồng bộ lần đầu là lặp từng người.
 
 ---
 
@@ -334,7 +399,8 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 ## 10. Tra cứu phía EWS
 
 Nhân viên báo "không nhận được thư": gửi đội EWS **mã nhân viên** và **mã lá thư** (`id` trả về
-lúc gửi). Người trực EWS tra được, không cần hỏi lại:
+lúc gửi). Người trực EWS tra trên trang quản trị `https://ews-astrolink.eonsr.net` (chỉ đội EWS
+đăng nhập được — đội app không dùng địa chỉ này), không cần hỏi lại:
 
 * **Màn Người nhận** — người này có email chưa, đã tắt chủ đề nào, có bị ngắt không.
 * **Màn Lịch sử gửi** — từng lá thư gửi người này ra sao, lúc nào, bị chặn vì đâu.
