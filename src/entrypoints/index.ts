@@ -6,6 +6,7 @@
  *
  * Barrel này chỉ gom phần test được; `main.ts` không bao giờ được export hay import.
  */
+export * from './admin-cli/index.ts';
 export * from './api/index.ts';
 export * from './runtime/index.ts';
 export * from './scheduler/index.ts';

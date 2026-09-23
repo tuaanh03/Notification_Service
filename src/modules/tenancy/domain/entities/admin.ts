@@ -13,6 +13,11 @@ export interface AdminProps extends TimestampInput {
   accountId: AccountId;
   email: string;
   role: AdminRole;
+  /**
+   * Băm mật khẩu — định dạng do adapter quyết định, domain không biết thuật toán.
+   * `null` = chưa đặt mật khẩu -> KHÔNG đăng nhập được. Khác hẳn "mật khẩu rỗng".
+   */
+  passwordHash?: string | null | undefined;
 }
 
 /**
@@ -23,12 +28,24 @@ export class Admin extends BaseEntity<AdminId> {
   readonly accountId: AccountId;
   readonly email: NormalizedEmail;
   role: AdminRole;
+  passwordHash: string | null;
 
   constructor(props: AdminProps) {
     super(props.id, props);
     this.accountId = props.accountId;
     this.email = normalizeEmail(props.email);
     this.role = props.role;
+    this.passwordHash = props.passwordHash ?? null;
+  }
+
+  /** Chưa đặt mật khẩu thì không có đường đăng nhập nào — đặt bằng CLI (`admin-cli`). */
+  get canSignIn(): boolean {
+    return this.passwordHash !== null;
+  }
+
+  /** Gọi sau khi gán `passwordHash` mới: `updatedAt` là mốc đổi mật khẩu gần nhất. */
+  markPasswordChanged(at: Date): void {
+    this.touch(at);
   }
 
   get isSuperAdmin(): boolean {

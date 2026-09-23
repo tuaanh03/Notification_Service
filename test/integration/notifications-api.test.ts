@@ -15,11 +15,12 @@ import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
 import { decodeMessage, STREAMS, type StreamConsumer } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
-import { httpClient, provisionApp, type Json } from './support/http.ts';
+import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
 import { race } from './support/race.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
 
-const ADMIN_TOKEN = 'notifications-test-admin-'.padEnd(40, 'x');
+/** Token phiên của admin test — gán trong `beforeAll` (`signInAdmin`). Không còn token dùng chung trong env. */
+let ADMIN_TOKEN: string;
 
 let t: TestDatabase;
 let c: Container;
@@ -33,12 +34,13 @@ let shop: { appId: string; apiKey: string };
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 12 });
   c = createContainer(
-    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ADMIN_TOKEN, EMAIL_MAX_PER_MINUTE: '10000' }),
+    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', EMAIL_MAX_PER_MINUTE: '10000' }),
     { database: t, redis: await createTestRedis() },
   );
   mail = new MockEmailProvider({ logger: c.ports.logger });
   application = buildApplication(c, { emailProvider: mail });
   api = await startApi(c, application);
+  ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
   worker = emailSender('w1');
   await worker.ensureGroup();

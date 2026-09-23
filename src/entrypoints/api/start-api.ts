@@ -1,6 +1,6 @@
 import { httpSurfaces, type Application, type Container } from '../../composition/index.ts';
 import { pingDatabase } from '../../shared/db/index.ts';
-import { BootstrapAdminAuthenticator, buildHttpServer, type HttpSurfaces } from '../../shared/http/index.ts';
+import { buildHttpServer, type HttpSurfaces } from '../../shared/http/index.ts';
 import { pingRedis } from '../../shared/streams/index.ts';
 import type { RunningProcess } from '../runtime/lifecycle.ts';
 
@@ -22,13 +22,8 @@ export async function startApi(
   options: { extraSurfaces?: HttpSurfaces | undefined } = {},
 ): Promise<RunningApi> {
   const { database, redis } = container.infra;
-  const log = container.ports.logger.child('api');
   const surfaces = httpSurfaces(application);
   const extra = options.extraSurfaces ?? {};
-
-  if (application.authenticators.admin instanceof BootstrapAdminAuthenticator && !application.authenticators.admin.enabled) {
-    log.warn('ADMIN_TOKEN is not set — every /admin/* request will be rejected');
-  }
 
   const server = await buildHttpServer({
     logger: container.ports.logger,

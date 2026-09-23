@@ -14,10 +14,10 @@ afterAll(async () => {
 });
 
 describe('migration trên MySQL thật', () => {
-  it('dựng đủ 27 bảng nghiệp vụ + bảng theo dõi migration', async () => {
+  it('dựng đủ 28 bảng nghiệp vụ + bảng theo dõi migration', async () => {
     const tables = await tableNames(t.db);
     expect(tables).toContain('__drizzle_migrations');
-    expect(tables.filter((name) => name !== '__drizzle_migrations')).toHaveLength(27);
+    expect(tables.filter((name) => name !== '__drizzle_migrations')).toHaveLength(28);
   });
 
   it('chạy lại migrate trên DB đã migrate là no-op, không lỗi', async () => {

@@ -25,7 +25,9 @@ npm run db:migrate  # tsx --env-file-if-exists=.env src/entrypoints/migrate/main
 npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` trong compose
 npm run email:test -- ban@company.com   # gửi MỘT thư thử qua EMAIL_PROVIDER đang cấu hình (đọc .env)
 
-ADMIN_TOKEN=$(openssl rand -hex 32) docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
+docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
+docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin --email ban@company.com --account-name "EWS"
+npx tsx --env-file-if-exists=.env src/entrypoints/admin-cli/main.ts list-accounts   # bản chạy từ source
 docker compose up -d --scale worker=3   # thêm worker
 docker compose up -d mysql redis # chỉ hạ tầng, để chạy `npm run dev` trên máy
 ```
@@ -66,7 +68,9 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
 
-`segments` và `templates` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` đang dùng bootstrap token tạm thời (ADR-0015 §4).
+`segments` và `templates` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
+(`/auth/login` -> token mờ lưu băm trong `admin_sessions`); admin đầu tiên tạo bằng `admin-cli` chạy trong
+container, KHÔNG qua HTTP (ADR-0019 thay §4 của ADR-0015).
 
 Phase 1 làm theo 4 lượt, mỗi lượt dừng để người dùng review:
 1. ~~`shared/config` + `shared/db` + test tích hợp~~ — xong (kèm chuẩn hoá DI + Docker)
@@ -96,6 +100,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0016` | **MVP email trực tiếp**: Graph + Mock, at-most-once, `EmailContent`, consumer `idempotency: 'handler'`, bodyLimit theo route |
 | `0017` | **READ COMMITTED** cho mọi connection — REPEATABLE READ phá mẫu "khoá rồi mới đọc" của ADR-0009 |
 | `0018` | Provider Microsoft Graph (client credentials, phân loại kết quả) + giới hạn tốc độ gửi trên Redis, chờ lượt trước tx1 |
+| `0019` | **Đăng nhập admin bằng phiên** (`admin_sessions`, token mờ + scrypt cho mật khẩu), bỏ `ADMIN_TOKEN`, admin đầu tiên tạo bằng `admin-cli` — **thay §4 của ADR-0015** |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

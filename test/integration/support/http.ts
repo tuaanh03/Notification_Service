@@ -1,3 +1,6 @@
+import type { Application } from '../../../src/composition/index.ts';
+import { AccountId } from '../../../src/shared/kernel/index.ts';
+
 export type Json = Record<string, any>;
 
 export interface HttpResult {
@@ -46,4 +49,35 @@ export async function provisionApp(
   must(await admin('POST', `/apps/${app['id']}/approve`, { grantedChannels: ['email'] }), 200, 'approve app');
   const key = must(await admin('POST', `/apps/${app['id']}/secrets`), 201, 'issue key');
   return { appId: app['id'] as string, orgId: org['id'] as string, apiKey: key['apiKey'] as string };
+}
+
+/** Mật khẩu test: phải đạt MIN_PASSWORD_LENGTH của `password-policy.ts`. */
+export const TEST_PASSWORD = 'test-password-1234';
+
+/**
+ * Dựng quyền quản trị cho test: account -> admin -> ĐĂNG NHẬP, trả token phiên.
+ *
+ * Hai bước đầu đi thẳng qua `adminOps` — đúng đường mà `admin-cli` dùng trên máy chủ thật, vì
+ * không có route HTTP nào tạo admin được (xem `run-admin-cli.ts`). Bước đăng nhập thì qua HTTP
+ * thật, nên test cũng kiểm luôn `/auth/login`.
+ *
+ * Thay cho `ADMIN_TOKEN` cũ: từ nay không còn token dùng chung nào trong env.
+ */
+export async function signInAdmin(
+  application: Application,
+  baseUrl: string,
+  opts: { email?: string; accountName?: string } = {},
+): Promise<{ token: string; accountId: string; adminId: string }> {
+  const ctx = { actor: { id: 'test', type: 'admin' as const }, source: 'system' as const };
+  const email = opts.email ?? `admin-${Math.random().toString(36).slice(2, 10)}@test.local`;
+
+  const account = await application.adminOps.createAccount.execute({ name: opts.accountName ?? 'Test Account' }, ctx);
+  const admin = await application.adminOps.createAdmin.execute(
+    { accountId: AccountId.parse(account.id), email, password: TEST_PASSWORD, role: 'super_admin' },
+    ctx,
+  );
+
+  const res = await httpClient(baseUrl)('POST', '/auth/login', { body: { email, password: TEST_PASSWORD } });
+  if (res.status !== 200) throw new Error(`login: expected 200, got ${res.status} ${JSON.stringify(res.body)}`);
+  return { token: res.body['token'] as string, accountId: account.id, adminId: admin.id };
 }

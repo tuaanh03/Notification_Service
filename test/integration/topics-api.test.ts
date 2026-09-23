@@ -5,10 +5,11 @@ import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
 import { outbox } from '../../src/shared/db/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
-import { httpClient, provisionApp, type Json } from './support/http.ts';
+import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
 
-const ADMIN_TOKEN = 'topics-test-admin-token-'.padEnd(40, 'x');
+/** Token phiên của admin test — gán trong `beforeAll` (`signInAdmin`). Không còn token dùng chung trong env. */
+let ADMIN_TOKEN: string;
 
 let t: TestDatabase;
 let c: Container;
@@ -19,10 +20,12 @@ let shop: { appId: string; apiKey: string };
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 10 });
   c = createContainer(
-    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', ADMIN_TOKEN }),
+    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0' }),
     { database: t, redis: await createTestRedis() },
   );
-  api = await startApi(c, buildApplication(c));
+  const application = buildApplication(c);
+  api = await startApi(c, application);
+  ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
   shop = await provisionApp(api.url, ADMIN_TOKEN, 'shop');
 

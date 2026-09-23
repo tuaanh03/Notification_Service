@@ -11,9 +11,13 @@ import { loadEnv } from '../../src/shared/config/index.ts';
 import { outbox } from '../../src/shared/db/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { race } from './support/race.ts';
+import { signInAdmin, TEST_PASSWORD } from './support/http.ts';
 import { createTestRedis, eventually, testRedisUrl } from './support/redis.ts';
 
-const ADMIN_TOKEN = 'test-admin-token-'.padEnd(40, 'x');
+/** Token phiên của admin test — gán trong `beforeAll` (`signInAdmin`). Không còn token dùng chung trong env. */
+let ADMIN_TOKEN: string;
+let ADMIN_EMAIL: string;
+let ADMIN_ID: string;
 
 let t: TestDatabase;
 let c: Container;
@@ -29,12 +33,15 @@ beforeAll(async () => {
       LOG_LEVEL: 'fatal',
       HOST: '127.0.0.1',
       PORT: '0',
-      ADMIN_TOKEN,
     }),
     { database: t, redis: await createTestRedis() },
   );
   application = buildApplication(c);
   api = await startApi(c, application);
+  ADMIN_EMAIL = 'apps-api@test.local';
+  const signedIn = await signInAdmin(application, api.url, { email: ADMIN_EMAIL });
+  ADMIN_TOKEN = signedIn.token;
+  ADMIN_ID = signedIn.adminId;
 });
 afterAll(async () => {
   await api?.stop();
@@ -73,33 +80,43 @@ async function activeApp(slug: string) {
   return ids;
 }
 
-describe('bề mặt /admin — xác thực', () => {
-  it('thiếu / sai admin token -> 401 problem+json', async () => {
+describe('bề mặt /admin — đăng nhập và phiên', () => {
+  it('thiếu / sai phiên -> 401 problem+json', async () => {
     const missing = await http('GET', '/admin/apps?orgId=00000000-0000-4000-8000-000000000000', { token: null });
     expect(missing.status).toBe(401);
     expect(missing.headers.get('content-type')).toContain('application/problem+json');
-    expect(missing.body['code']).toBe('INVALID_ADMIN_TOKEN');
-    expect((await http('GET', '/admin/apps?orgId=x', { token: 'wrong'.padEnd(40, 'z') })).status).toBe(401);
+    expect(missing.body['code']).toBe('INVALID_ADMIN_SESSION');
+    expect((await http('GET', '/admin/apps?orgId=x', { token: 'khong-phai-phien' })).status).toBe(401);
   });
 
-  it('ADMIN_TOKEN không cấu hình -> /admin đóng hoàn toàn', async () => {
-    const closed = createContainer(loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0' }), {
-      database: t,
-      redis: await createTestRedis(),
-    });
-    const closedApi = await startApi(closed, buildApplication(closed));
-    try {
-      const res = await fetch(`${closedApi.url}/admin/accounts`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${ADMIN_TOKEN}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'x' }),
-      });
-      expect(res.status).toBe(401);
-      expect(((await res.json()) as Json)['code']).toBe('ADMIN_AUTH_DISABLED');
-    } finally {
-      await closedApi.stop();
-      await closed.infra.redis.close();
-    }
+  it('sai mật khẩu và email không tồn tại trả CÙNG một lỗi — không xác nhận email nào có thật', async () => {
+    const wrongPassword = await http('POST', '/auth/login', { token: null, body: { email: ADMIN_EMAIL, password: 'sai-mat-khau-dai' } });
+    const noSuchEmail = await http('POST', '/auth/login', { token: null, body: { email: 'khong-ton-tai@test.local', password: TEST_PASSWORD } });
+    expect(wrongPassword.status).toBe(401);
+    expect(noSuchEmail.status).toBe(401);
+    expect(wrongPassword.body['code']).toBe('INVALID_CREDENTIALS');
+    expect(noSuchEmail.body['code']).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('đăng xuất huỷ phiên NGAY — không chờ hết hạn', async () => {
+    const { token } = await signInAdmin(application, api.url);
+    const org = '00000000-0000-4000-8000-000000000000';
+    expect((await http('GET', `/admin/apps?orgId=${org}`, { token })).status).toBe(200);
+
+    expect((await http('POST', '/auth/logout', { token })).status).toBe(204);
+
+    const after = await http('GET', `/admin/apps?orgId=${org}`, { token });
+    expect(after.status).toBe(401);
+    expect(after.body['code']).toBe('INVALID_ADMIN_SESSION');
+    // Gọi lại lần nữa vẫn 204: đăng xuất là idempotent.
+    expect((await http('POST', '/auth/logout', { token })).status).toBe(204);
+  });
+
+  it('/auth/me trả admin đang đăng nhập, không kèm băm mật khẩu', async () => {
+    const me = await http('GET', '/auth/me');
+    expect(me.status).toBe(200);
+    expect(me.body).toMatchObject({ email: ADMIN_EMAIL, role: 'super_admin' });
+    expect(Object.keys(me.body)).not.toContain('passwordHash');
   });
 });
 
@@ -236,7 +253,9 @@ describe('audit end-to-end qua worker thật', () => {
       expect(entries.map((e) => e['action']).sort()).toEqual(
         ['AppApproved', 'AppCreated', 'AppSecretIssued', 'AppSubmittedForReview'].sort(),
       );
-      expect(entries.every((e) => e['actor'] === 'bootstrap-admin' && e['source'] === 'admin_api')).toBe(true);
+      // Actor là ID admin THẬT đang đăng nhập, không còn 'bootstrap-admin' dùng chung — nhờ vậy
+      // audit_log trả lời được "ai làm việc này", thứ mà một token dùng chung không làm được.
+      expect(entries.every((e) => e['actor'] === ADMIN_ID && e['source'] === 'admin_api')).toBe(true);
       expect(entries.find((e) => e['action'] === 'AppApproved')).toMatchObject({
         before: { status: 'pending_approval' },
         after: { status: 'active', grantedChannels: ['email'] },

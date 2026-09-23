@@ -10,7 +10,6 @@ import { AppNetworkRule } from '../../src/modules/apps/domain/entities/app-netwo
 import { AppSecret } from '../../src/modules/apps/domain/entities/app-secret.ts';
 import { checkNetworkAccess } from '../../src/modules/apps/domain/rules/network-access.ts';
 import { CryptoApiKeyService } from '../../src/modules/apps/infrastructure/adapters/crypto-api-key-service.ts';
-import { BootstrapAdminAuthenticator } from '../../src/shared/http/index.ts';
 import {
   AccountId,
   AppId,
@@ -174,22 +173,5 @@ describe('AuthenticateApiKey (use case, port giả)', () => {
     const appId = AppId.create();
     const { useCase, apiKey } = setup({ rules: [new AppNetworkRule({ appId, kind: 'ip', value: '10.9.9.9' })] });
     expect(await codeOf(call(useCase, apiKey, '10.0.0.1'))).toBe('IP_NOT_ALLOWED');
-  });
-});
-
-describe('BootstrapAdminAuthenticator (tạm thời)', () => {
-  const TOKEN = 'x'.repeat(40);
-
-  it('không cấu hình token -> đóng: mọi request bị từ chối', async () => {
-    expect(await codeOf(new BootstrapAdminAuthenticator({ token: undefined }).authenticate({ bearerToken: TOKEN }))).toBe(
-      'ADMIN_AUTH_DISABLED',
-    );
-  });
-
-  it('đúng token -> caller super_admin; sai token -> INVALID_ADMIN_TOKEN', async () => {
-    const auth = new BootstrapAdminAuthenticator({ token: TOKEN });
-    expect(await auth.authenticate({ bearerToken: TOKEN })).toMatchObject({ kind: 'admin', adminId: 'bootstrap-admin' });
-    expect(await codeOf(auth.authenticate({ bearerToken: 'y'.repeat(40) }))).toBe('INVALID_ADMIN_TOKEN');
-    expect(await codeOf(auth.authenticate({ bearerToken: null }))).toBe('INVALID_ADMIN_TOKEN');
   });
 });

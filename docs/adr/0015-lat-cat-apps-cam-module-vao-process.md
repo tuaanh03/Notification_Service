@@ -23,7 +23,7 @@ với bề mặt (`/apps`, không phải `/admin/apps`).
 | Bề mặt | Prefix | Xác thực | Hiện thực |
 | --- | --- | --- | --- |
 | public | — | không | health |
-| admin | `/admin` | `AdminAuthenticator` | `BootstrapAdminAuthenticator` (tạm, mục 4) |
+| admin | `/admin` | `AdminAuthenticator` | `SessionAdminAuthenticator` (ADR-0019; trước là bootstrap token, mục 4) |
 | v1 | `/v1` | `ApiKeyAuthenticator` | module apps: `AuthenticateApiKey` + allowlist IP/Origin |
 
 Hợp đồng (`AppCaller`, `AdminCaller`, hai interface authenticator) nằm ở `shared/http`, KHÔNG ở module
@@ -41,6 +41,10 @@ thực chạy ở `onRequest` của từng scope Fastify — trước khi parse 
 - "≤ 2 key active": khoá dòng `apps` rồi mới đếm (ADR-0009); có test 5 request HTTP song song.
 
 ## 4. `/admin/*` tạm thời dùng MỘT token từ env `ADMIN_TOKEN`
+
+> **ĐÃ THAY THẾ bởi ADR-0019 (2026-09-23).** `ADMIN_TOKEN` và `BootstrapAdminAuthenticator` đã bị gỡ
+> khỏi mã. `/admin/*` nay xác thực bằng phiên đăng nhập (`SessionAdminAuthenticator`). Mục này giữ
+> lại để đọc hiểu quyết định cũ — đừng dựng lại theo nó.
 
 Chưa có đăng nhập admin + RBAC (`admins`, `admin_app_roles`). Để lát cắt apps dùng được mà không mở
 toang `/admin`: một bootstrap token (≥ 32 ký tự, so sánh thời gian hằng số), actor audit là

@@ -32,7 +32,7 @@ dịch cho từng người**, người nhận bật/tắt được theo topic.
 `segments` (lọc động 7 bước) · `persons` / identity resolver (gộp danh tính chéo app) · broadcast /
 campaign / chia lô 50–200 · `send_approvals` · `templates` · xử lý bounce tự động (đọc NDR) · trang
 công khai `/u/:token` cho người nhận tự quản lý preference · hẹn giờ gửi (`scheduled`) · Huỷ / Dừng ·
-đăng nhập admin + RBAC (vẫn dùng `ADMIN_TOKEN` tạm — ADR-0015 §4).
+RBAC theo `admin_app_roles` (đăng nhập admin đã có — ADR-0019 thay §4 của ADR-0015).
 
 Các bảng liên quan vẫn giữ nguyên trong schema, chỉ chưa có code dùng.
 
@@ -40,7 +40,7 @@ Các bảng liên quan vẫn giữ nguyên trong schema, chỉ chưa có code d�
 
 ```mermaid
 flowchart TD
-    subgraph Admin["Console (/admin, ADMIN_TOKEN)"]
+    subgraph Admin["Console (/admin, phiên đăng nhập)"]
         T1["POST /admin/apps/:appId/topics"]
     end
     subgraph App["App service nội bộ (/v1, Authorization: Bearer <api key>)"]
@@ -335,6 +335,9 @@ Nên giới hạn App Registration chỉ gửi được từ đúng mailbox này
 1. Xử lý bounce: đọc NDR từ hộp thư người gửi -> subscription `invalid` (`hard_bounce`).
 2. `templates` (cú pháp `{{ payload.x }}` / `{{ user.tags.x }}` đã chốt trong `template-variables.ts`).
 3. Link "Quản lý thông báo" + trang `/u/:token` (bắt buộc khi gửi ra ngoài công ty).
-4. Đăng nhập admin + RBAC thay `ADMIN_TOKEN`.
+4. ~~Đăng nhập admin thay `ADMIN_TOKEN`~~ — xong (ADR-0019: phiên mờ trong `admin_sessions`, CLI
+   `admin-cli` tạo admin đầu tiên). Còn lại của việc này: **RBAC** theo `admin_app_roles`
+   (`app_admin` chỉ chạm app được cấp), giới hạn số lần đăng nhập sai, và "đăng xuất mọi thiết bị"
+   trên giao diện.
 5. Quota theo app (`rate_limit_per_minute`, 429 ở API).
 6. Segments / broadcast / identity resolver khi có nhu cầu gửi hàng loạt.

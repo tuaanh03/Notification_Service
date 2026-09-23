@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import type { TransactionContext } from '../../../../shared/db/index.ts';
 import { AccountId, type AccountId as AccountIdType } from '../../../../shared/kernel/index.ts';
 import type { AccountRepository } from '../../application/ports/index.ts';
@@ -17,6 +17,14 @@ export class DrizzleAccountRepository implements AccountRepository {
     return row
       ? new Account({ id: AccountId.parse(row.accountId), name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt })
       : null;
+  }
+
+  async listAll(): Promise<Account[]> {
+    const rows = await this.transactions.executor().select().from(accounts).orderBy(asc(accounts.createdAt));
+    return rows.map(
+      (row) =>
+        new Account({ id: AccountId.parse(row.accountId), name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt }),
+    );
   }
 
   async insert(account: Account): Promise<void> {

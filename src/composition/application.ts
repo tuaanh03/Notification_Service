@@ -1,10 +1,4 @@
-import {
-  BootstrapAdminAuthenticator,
-  type AdminAuthenticator,
-  type ApiKeyAuthenticator,
-  type HttpRoutes,
-  type HttpSurfaces,
-} from '../shared/http/index.ts';
+import type { AdminAuthenticator, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
 import type { ConsumerRegistration } from './consumer-registry.ts';
@@ -17,12 +11,14 @@ import { notificationsModule } from './modules/notifications.module.ts';
 import { directoryModule } from './modules/directory.module.ts';
 import { subscriptionsModule } from './modules/subscriptions.module.ts';
 import { topicsModule } from './modules/topics.module.ts';
-import { tenancyModule } from './modules/tenancy.module.ts';
+import { tenancyModule, type AdminOps } from './modules/tenancy.module.ts';
 
 /** Toàn bộ nghiệp vụ đã ghép, sẵn sàng cắm vào process. */
 export interface Application {
   readonly modules: readonly ModuleDefinition[];
   readonly authenticators: { readonly apiKey: ApiKeyAuthenticator; readonly admin: AdminAuthenticator };
+  /** Việc quản trị KHÔNG có route HTTP — chỉ `entrypoints/admin-cli` gọi (tạo admin đầu tiên). */
+  readonly adminOps: AdminOps;
 }
 
 /**
@@ -69,8 +65,9 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     ],
     authenticators: {
       apiKey: apps.apiKeyAuthenticator,
-      admin: new BootstrapAdminAuthenticator({ token: container.env.ADMIN_TOKEN }),
+      admin: tenancy.adminAuthenticator,
     },
+    adminOps: tenancy.adminOps,
   };
 }
 
