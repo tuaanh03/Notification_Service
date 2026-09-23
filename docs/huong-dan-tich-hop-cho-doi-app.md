@@ -152,6 +152,47 @@ Content-Type: application/json
 
 *Nguồn: `topics-api.test.ts` — "mặc định", "tắt / bật topic", "tắt topic mandatory", "optedOutOptional".*
 
+#### Dựng màn này thế nào
+
+**EWS là nơi duy nhất giữ lựa chọn của nhân viên. Màn của app chỉ là giao diện đặt lên EWS.**
+
+* **Mở màn** → gọi `GET .../preferences`, vẽ từ kết quả. **Bấm Lưu** → gọi `PUT .../preferences`.
+  Không lưu bản sao lựa chọn trong database của app.
+* **Không viết cứng danh sách chủ đề trong code.** Kết quả `GET` chỉ chứa chủ đề **đang kích hoạt**:
+  EWS thêm chủ đề mới thì nó tự hiện, tạm ngưng thì tự biến mất — app không phải sửa gì. Danh sách
+  viết cứng sẽ lệch, và gửi một chủ đề đã tạm ngưng làm **cả lần Lưu** bị từ chối (`TOPIC_NOT_FOUND`).
+* `PUT` trả về **đúng khuôn của `GET`**, đã cập nhật — vẽ lại màn từ đó, không cần gọi `GET` lần nữa.
+
+Vẽ từng phần:
+
+| Dữ liệu | Hiện thế nào |
+| --- | --- |
+| `name` | Nhãn của công tắc. |
+| `effectiveOptIn` | Trạng thái công tắc (bật/tắt). **Không** dùng `optedIn` — `null` không vẽ được. |
+| `mandatory: true` | Công tắc **bật và khoá**, ghi rõ "bắt buộc". |
+| `email.optedOutOptional: true` | Người này đã tắt mọi tin không bắt buộc. Công tắc từng chủ đề **vẫn giữ nguyên giá trị** (`effectiveOptIn` không tính lớp này) — hiện chúng mờ đi kèm dòng "Đang tắt mọi thông báo không bắt buộc", để bật lại lớp chung thì lựa chọn cũ quay về. |
+| `email: null` | Người này chưa có email. Chưa có gì để cài — hiện thông báo, không hiện công tắc. |
+| `email.status` khác `active` | `unsubscribed` (đã ngắt) hoặc `invalid` (địa chỉ hỏng): **không thư nào tới**, kể cả tin bắt buộc. Hiện rõ lý do; công tắc chủ đề không còn tác dụng. |
+
+Ghi lựa chọn:
+
+* **Chỉ gửi chủ đề nhân viên vừa đổi.** Chủ đề không nhắc tới trong `topics` được **giữ nguyên**.
+* Nút **"Tắt mọi thông báo không bắt buộc"** = `{ "optedOutOptional": true }`; bật lại = `false`.
+  Không truyền trường này = giữ nguyên.
+* Không gửi `false` cho chủ đề bắt buộc (bị từ chối). Gửi `true` cho chủ đề bắt buộc thì EWS bỏ qua.
+
+#### App đã có sẵn cài đặt thông báo riêng
+
+Chuyển **một lần**, sau đó dùng cách trên và bỏ bảng cài đặt cũ:
+
+1. Đội app và đội EWS cùng chốt bảng ghép **loại tin cũ của app ↔ `key` chủ đề EWS**. EWS không tự
+   đoán được; loại tin không ghép được thì bỏ.
+2. Khai nhân viên trước (bước 3), rồi lặp `PUT .../preferences` cho từng người, **chỉ gửi những chủ
+   đề người đó đã đổi khác mặc định**. Không gửi gì = theo mặc định của chủ đề.
+3. Lỗi `TOPIC_NOT_FOUND` / `TOPIC_MANDATORY` giữa chừng = bảng ghép sai. Cả lần gọi của người đó
+   không được lưu — sửa bảng ghép rồi chạy lại. Chạy lại không sao: lựa chọn không đổi thì EWS
+   không ghi.
+
 ### Bước 5 — Gửi
 
 ```http
