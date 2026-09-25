@@ -4,6 +4,7 @@ import {
   AcceptEmailNotification,
   DeliverEmailNotification,
   FailStuckSending,
+  GetAppOverview,
   GetNotification,
   ListNotifications,
 } from '../../modules/notifications/application/index.ts';
@@ -11,6 +12,7 @@ import {
   DeliveryEmailSender,
   DirectoryRecipientLookup,
   DrizzleNotificationRepository,
+  DrizzleNotificationStats,
   DrizzleRecipientRepository,
   SubscriptionsEmailLookup,
   TopicsConsentLookup,
@@ -30,6 +32,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
 /**
  * Ghép module notifications — cắm vào CẢ BA process:
  *   api       POST/GET /v1/notifications · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
+ *             · GET /admin/apps/:appId/overview (màn Tổng quan, chỉ đọc)
  *   worker    consumer `email-sender` (notif.queued, idempotency: 'handler')
  *   scheduler job `fail-stuck-sending`
  */
@@ -50,12 +53,18 @@ export function notificationsModule(
   const recipients = new DrizzleRecipientRepository({ transactions });
   const topics = new TopicsConsentLookup(dependencies);
   const users = new DirectoryRecipientLookup(dependencies);
+  const emails = new SubscriptionsEmailLookup(dependencies);
 
   return {
     definition: {
       name: 'notifications',
       http: {
-        admin: [adminNotificationsRoutes({ list: new ListNotifications({ notifications, recipients, users, topics }) })],
+        admin: [
+          adminNotificationsRoutes({
+            list: new ListNotifications({ notifications, recipients, users, topics }),
+            overview: new GetAppOverview({ clock, stats: new DrizzleNotificationStats({ transactions }), users, emails, topics }),
+          }),
+        ],
         v1: [
           v1NotificationsRoutes({
             accept: new AcceptEmailNotification({
@@ -84,7 +93,7 @@ export function notificationsModule(
               logger,
               notifications,
               recipients,
-              emails: new SubscriptionsEmailLookup(dependencies),
+              emails,
               topics,
               sender: new DeliveryEmailSender(dependencies),
             }),

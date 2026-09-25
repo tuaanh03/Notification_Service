@@ -366,3 +366,79 @@ describe('GET /admin/apps/:appId/notifications', () => {
     expect((await http('GET', `/admin/apps/${shop.appId}/notifications`)).status).toBe(401);
   });
 });
+
+// Để CUỐI file: ca này cố ý để lại một thư `queued` chưa giao — describe nào chạy sau mà gọi
+// `deliver()` sẽ gửi nó và lệch số thư của ca đó.
+describe('GET /admin/apps/:appId/overview', () => {
+  it('đếm đúng trong 24 giờ: theo trạng thái, lý do chặn, theo giờ, hàng chờ, người nhận, chủ đề — chỉ của app này', async () => {
+    const dash = await provisionApp(api.url, ADMIN_TOKEN, 'dash-overview');
+    const call = (method: string, path: string, body?: unknown) => v1(method, path, body, dash.apiKey);
+    await admin('POST', `/apps/${dash.appId}/topics`, { key: 'alerts', name: 'alerts', mandatory: false, defaultMode: 'opt_out' });
+    await admin('POST', `/apps/${dash.appId}/topics/alerts/activate`);
+    await admin('POST', `/apps/${dash.appId}/topics`, { key: 'later', name: 'later' });
+
+    await call('PUT', '/users/d_ok', { email: 'd.ok@company.com' });
+    await call('PUT', '/users/d_off', { email: 'd.off@company.com' });
+    await call('PUT', '/users/d_off/preferences', { topics: { alerts: false } });
+    await call('PUT', '/users/d_none');
+    await call('PUT', '/users/d_unsub', { email: 'd.unsub@company.com' });
+    await call('DELETE', '/users/d_unsub/email');
+
+    const sendTo = async (externalId: string) => {
+      const res = await call('POST', '/notifications', { to: { externalId }, topic: 'alerts', subject: 'Cảnh báo', html: '<p>x</p>' });
+      expect(res.status).toBe(202);
+      return res.body['id'] as string;
+    };
+    const backdate = (id: string, hoursAgo: number) =>
+      t.db
+        .update(notifications)
+        .set({ createdAt: new Date(Date.now() - hoursAgo * 3_600_000) })
+        .where(eq(notifications.notificationId, id));
+
+    await sendTo('d_ok'); // sent
+    await sendTo('d_off'); // no_recipient / opted_out
+    await sendTo('d_none'); // no_recipient / no_channel
+    const yesterday = await sendTo('d_ok'); // sent, rồi lùi về 24 giờ trước
+    const older = await sendTo('d_ok'); // sent, rồi lùi ra ngoài cả hai cửa sổ
+    await deliver();
+    mail.respondWith({ kind: 'rejected', reason: 'HTTP 400 ErrorInvalidRecipients' });
+    await sendTo('d_ok'); // failed
+    await deliver();
+    await backdate(yesterday, 30);
+    await backdate(older, 50);
+    await sendTo('d_ok'); // queued — không giao
+
+    const res = await admin('GET', `/apps/${dash.appId}/overview`);
+    expect(res.status).toBe(200);
+    const o = res.body;
+    expect(o['sends']).toEqual({ total: 5, previousTotal: 1 });
+    expect(o['byStatus']).toMatchObject({ sent: 1, failed: 1, no_recipient: 2, queued: 1, sending: 0 });
+    expect(o['blocked']).toMatchObject({ opted_out: 1, no_channel: 1, suppressed: 0 });
+    expect(o['queue']).toMatchObject({ waiting: 1, oldestCreatedAt: expect.any(String) });
+    expect(o['recipients']).toEqual({ total: 4, emailActive: 2, emailUnsubscribed: 1, emailInvalid: 0 });
+    expect(o['topics']).toEqual({ total: 2, active: 1 });
+
+    const hourly = o['hourly'] as Json[];
+    expect(hourly).toHaveLength(24);
+    const hours = hourly.map((h) => Date.parse(h['hour'] as string));
+    expect(hours.every((h, i) => i === 0 || h - hours[i - 1]! === 3_600_000)).toBe(true);
+    const total = (column: string) => hourly.reduce((n, h) => n + (h[column] as number), 0);
+    expect({ sent: total('sent'), failed: total('failed'), blocked: total('blocked'), pending: total('pending') }).toEqual({
+      sent: 1,
+      failed: 1,
+      blocked: 2,
+      pending: 1,
+    });
+
+    // App khác: toàn số 0 — không lẫn số liệu giữa các app.
+    const other = await provisionApp(api.url, ADMIN_TOKEN, 'dash-other');
+    const empty = (await admin('GET', `/apps/${other.appId}/overview`)).body;
+    expect(empty).toMatchObject({ sends: { total: 0, previousTotal: 0 }, queue: { waiting: 0, oldestCreatedAt: null } });
+    expect(empty['recipients']).toMatchObject({ total: 0, emailActive: 0 });
+  });
+
+  it('không có token quản trị -> 401; appId sai dạng -> 422', async () => {
+    expect((await http('GET', `/admin/apps/${shop.appId}/overview`)).status).toBe(401);
+    expect((await admin('GET', '/apps/not-a-uuid/overview')).status).toBe(422);
+  });
+});

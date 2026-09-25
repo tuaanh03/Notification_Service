@@ -1,4 +1,4 @@
-import type { AppId, UserId } from '../../../../shared/kernel/index.ts';
+import type { AppId, SubscriptionStatus, UserId } from '../../../../shared/kernel/index.ts';
 import { toEmailSubscriptionDto, type EmailSubscriptionDto } from '../dto.ts';
 import type { SubscriptionRepository } from '../ports/index.ts';
 
@@ -25,5 +25,10 @@ export class FindUserEmail {
   async executeMany(input: { appId: AppId; userIds: readonly UserId[] }): Promise<Map<UserId, EmailSubscriptionDto>> {
     const found = await this.subscriptions.findManyByUsers(input.appId, input.userIds, 'email');
     return new Map(found.map((s) => [s.userId, toEmailSubscriptionDto(s)]));
+  }
+
+  /** Số email của app theo trạng thái — cho màn Tổng quan (bao nhiêu người còn nhận được thư). */
+  countByStatus(input: { appId: AppId }): Promise<Record<SubscriptionStatus, number>> {
+    return this.subscriptions.countByStatus(input.appId, 'email');
   }
 }

@@ -8,10 +8,12 @@ import {
   SubscriptionId,
   UserId,
   type AppId,
+  type SubscriptionStatus,
   type TopicId,
   type UserId as UserIdType,
 } from '../../../../shared/kernel/index.ts';
 import type {
+  EmailCounts,
   EmailDeliveryOutcome,
   EmailLookup,
   EmailSender,
@@ -37,13 +39,17 @@ export class DirectoryRecipientLookup implements RecipientLookup {
   externalIds(appId: AppId, userIds: readonly UserIdType[]): Promise<Map<UserIdType, string>> {
     return this.findUser.externalIdsOf({ appId, userIds });
   }
+
+  countUsers(appId: AppId): Promise<number> {
+    return this.findUser.countOf({ appId });
+  }
 }
 
 /**
  * notifications -> subscriptions. DTO của subscriptions mang status dạng chuỗi — đổi lại thành kiểu
  * của kernel và TỪ CHỐI giá trị lạ: gate chạy trên dữ liệu sai là gửi nhầm.
  */
-export class SubscriptionsEmailLookup implements EmailLookup {
+export class SubscriptionsEmailLookup implements EmailLookup, EmailCounts {
   private readonly findUserEmail: FindUserEmail;
 
   constructor(deps: { findUserEmail: FindUserEmail }) {
@@ -60,6 +66,10 @@ export class SubscriptionsEmailLookup implements EmailLookup {
       suppressedReason: dto.suppressedReason === null ? null : oneOf(SUPPRESSED_REASONS, dto.suppressedReason, 'suppressed reason'),
       optedOutOptional: dto.optedOutOptional,
     };
+  }
+
+  countByStatus(appId: AppId): Promise<Record<SubscriptionStatus, number>> {
+    return this.findUserEmail.countByStatus({ appId });
   }
 }
 

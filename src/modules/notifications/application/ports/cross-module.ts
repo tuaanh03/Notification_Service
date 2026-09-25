@@ -17,6 +17,8 @@ export interface RecipientLookup {
   findUserId(appId: AppId, externalId: string): Promise<UserId | null>;
   /** `external_id` theo LÔ cho màn danh sách. User không còn thì vắng mặt trong Map. */
   externalIds(appId: AppId, userIds: readonly UserId[]): Promise<Map<UserId, string>>;
+  /** Tổng số người nhận của app — màn Tổng quan. */
+  countUsers(appId: AppId): Promise<number>;
 }
 
 /** -> subscriptions: email của user, đủ để chạy L0/L1 và để gửi. */
@@ -30,6 +32,11 @@ export interface UserEmailForDelivery {
 
 export interface EmailLookup {
   find(appId: AppId, userId: UserId): Promise<UserEmailForDelivery | null>;
+}
+
+/** -> subscriptions: số email của app theo trạng thái — màn Tổng quan. Tách khỏi `EmailLookup` của đường gửi. */
+export interface EmailCounts {
+  countByStatus(appId: AppId): Promise<Record<SubscriptionStatus, number>>;
 }
 
 /** -> topics: topic + preference, đủ để chạy L3. */

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AppId, NOTIFICATION_STATUSES } from '../../../../shared/kernel/index.ts';
-import { MAX_NOTIFICATION_PAGE, type ListNotifications } from '../../application/index.ts';
+import { MAX_NOTIFICATION_PAGE, type GetAppOverview, type ListNotifications } from '../../application/index.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
 const listQuery = z.object({
@@ -16,18 +16,24 @@ const listQuery = z.object({
 
 /**
  * `/admin/apps/:appId/notifications` — bề mặt ĐỌC cho vận hành (plan §5): lịch sử gửi của một app.
+ * `/admin/apps/:appId/overview` — số liệu màn Tổng quan của app đó (24 giờ gần nhất + hàng chờ).
  *
  * `appId` nằm trên URL chứ không suy từ token, cùng lý do với `/admin/apps/:appId/users`: khi có
  * RBAC (plan §12.4), vai `app_admin` chỉ cần thêm một lớp kiểm quyền trên chính tham số này.
  *
  * Chỉ đọc — không huỷ, không gửi lại. MVP không có lệnh nào như vậy.
  */
-export function adminNotificationsRoutes(useCases: { list: ListNotifications }): HttpRoutes {
+export function adminNotificationsRoutes(useCases: { list: ListNotifications; overview: GetAppOverview }): HttpRoutes {
   return (app) => {
     app.get('/apps/:appId/notifications', async (request) => {
       const { appId } = parseInput(appParams, request.params);
       const { limit, offset, status, topic, externalId } = parseInput(listQuery, request.query);
       return useCases.list.execute({ appId: AppId.parse(appId), limit, offset, status, topic, externalId });
+    });
+
+    app.get('/apps/:appId/overview', async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      return useCases.overview.execute({ appId: AppId.parse(appId) });
     });
   };
 }

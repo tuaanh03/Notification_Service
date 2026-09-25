@@ -14,6 +14,8 @@ export interface UserRepository {
    * Phạm vi luôn là app — không có đường nào liệt kê xuyên app.
    */
   listByApp(appId: AppId, page: { limit: number; offset: number; search?: string | undefined }): Promise<UserPage>;
+  /** Tổng số người nhận của MỘT app — cho màn Tổng quan. */
+  countByApp(appId: AppId): Promise<number>;
   /** Tra theo LÔ id, trong phạm vi MỘT app — id của app khác bị bỏ qua, không lỗi. */
   findManyByIds(appId: AppId, ids: readonly UserId[]): Promise<User[]>;
   /** Đã có user cùng `(app_id, external_id)` -> `UserAlreadyExistsError` (caller thử lại). */

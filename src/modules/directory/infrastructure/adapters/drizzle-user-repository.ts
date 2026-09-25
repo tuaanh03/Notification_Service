@@ -36,6 +36,11 @@ export class DrizzleUserRepository implements UserRepository {
     return { rows: rows.map(toUser), total: totals?.value ?? 0 };
   }
 
+  async countByApp(appId: AppIdType): Promise<number> {
+    const [totals] = await this.transactions.executor().select({ value: count() }).from(users).where(eq(users.appId, appId));
+    return totals?.value ?? 0;
+  }
+
   async findManyByIds(appId: AppIdType, ids: readonly UserIdType[]): Promise<User[]> {
     if (ids.length === 0) return [];
     const rows = await this.transactions

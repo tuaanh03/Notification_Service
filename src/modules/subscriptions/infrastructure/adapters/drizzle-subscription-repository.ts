@@ -1,6 +1,15 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, inArray } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
-import { AppId, SubscriptionId, UserId, type AppId as AppIdType, type Channel, type UserId as UserIdType } from '../../../../shared/kernel/index.ts';
+import {
+  AppId,
+  SUBSCRIPTION_STATUSES,
+  SubscriptionId,
+  UserId,
+  type AppId as AppIdType,
+  type Channel,
+  type SubscriptionStatus,
+  type UserId as UserIdType,
+} from '../../../../shared/kernel/index.ts';
 import { emailTaken } from '../../application/commands/set-user-email.ts';
 import type { SubscriptionRepository } from '../../application/ports/index.ts';
 import { Subscription } from '../../domain/entities/subscription.ts';
@@ -35,6 +44,18 @@ export class DrizzleSubscriptionRepository implements SubscriptionRepository {
         and(eq(subscriptions.appId, appId), eq(subscriptions.channel, channel), inArray(subscriptions.userId, [...userIds])),
       );
     return rows.map(toSubscription);
+  }
+
+  async countByStatus(appId: AppIdType, channel: Channel): Promise<Record<SubscriptionStatus, number>> {
+    const rows = await this.transactions
+      .executor()
+      .select({ status: subscriptions.status, value: count() })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.appId, appId), eq(subscriptions.channel, channel)))
+      .groupBy(subscriptions.status);
+    const counts = Object.fromEntries(SUBSCRIPTION_STATUSES.map((status) => [status, 0])) as Record<SubscriptionStatus, number>;
+    for (const row of rows) counts[row.status] = row.value;
+    return counts;
   }
 
   async findByValue(appId: AppIdType, channel: Channel, value: string): Promise<Subscription | null> {

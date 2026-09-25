@@ -30,6 +30,11 @@ export class FindUserByExternalId {
     return new Map(users.flatMap((user) => (user.externalId === null ? [] : [[user.id, user.externalId] as const])));
   }
 
+  /** Tổng số người nhận của app — cho màn Tổng quan của module khác. */
+  countOf(input: { appId: AppId }): Promise<number> {
+    return this.deps.users.countByApp(input.appId);
+  }
+
   /** Không có -> 404 (cho route). */
   async get(input: { appId: AppId; externalId: string }): Promise<UserDto> {
     const user = await this.find(input);

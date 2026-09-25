@@ -86,3 +86,30 @@ export function toNotificationSummaryDto(
       : null,
   };
 }
+
+/**
+ * Số liệu màn Tổng quan của MỘT app (`GET /admin/apps/:appId/overview`). Mọi mốc giờ là UTC —
+ * console tự đổi sang giờ địa phương khi hiển thị.
+ */
+export interface AppOverviewDto {
+  generatedAt: string;
+  /** 24 giờ gần nhất, trượt theo lúc gọi: `[from, to)`. */
+  window: { from: string; to: string };
+  /** Số lần gửi tạo trong cửa sổ, và trong 24 giờ liền trước nó (để tính chênh lệch). */
+  sends: { total: number; previousTotal: number };
+  /** Các lần gửi trong cửa sổ, theo trạng thái hiện tại. Đủ mọi trạng thái, không có thì 0. */
+  byStatus: Record<string, number>;
+  /** Vì sao thư bị chặn (`exclusion_reason`), trong cửa sổ. Đủ mọi lý do, không có thì 0. */
+  blocked: Record<string, number>;
+  /**
+   * 24 cột theo giờ tạo, cũ trước, đủ 24 dòng kể cả giờ trống. Cột cuối là giờ hiện tại (chưa trọn),
+   * cột đầu bắt đầu ở đầu giờ của 23 giờ trước.
+   *   sent = `sent` · failed = `failed` · blocked = `no_recipient` · pending = `queued` + `sending`
+   */
+  hourly: { hour: string; sent: number; failed: number; blocked: number; pending: number }[];
+  /** Hàng chờ ngay lúc này, không giới hạn thời gian tạo. */
+  queue: { waiting: number; oldestCreatedAt: string | null };
+  /** Người nhận của app và tình trạng email của họ. */
+  recipients: { total: number; emailActive: number; emailUnsubscribed: number; emailInvalid: number };
+  topics: { total: number; active: number };
+}
