@@ -3,6 +3,8 @@ import type {
   SubscriptionId,
   SubscriptionStatus,
   SuppressedReason,
+  TemplateId,
+  TemplateVersionId,
   TopicId,
   UserId,
 } from '../../../../shared/kernel/index.ts';
@@ -69,4 +71,35 @@ export interface EmailSender {
    */
   awaitCapacity(): Promise<void>;
   send(email: { to: string; subject: string; html: string; text: string | null; notificationId: string }): Promise<EmailDeliveryOutcome>;
+}
+
+/** -> templates: nội dung đã đổ biến từ bản đang xuất bản (ADR-0020). Lỗi là ValidationError 422. */
+export interface RenderedEmailTemplate {
+  templateId: TemplateId;
+  templateVersionId: TemplateVersionId;
+  name: string;
+  version: number;
+  subject: string;
+  html: string;
+  text: string;
+}
+
+export interface TemplateRenderer {
+  render(input: {
+    appId: AppId;
+    templateId: TemplateId;
+    payload: Readonly<Record<string, unknown>>;
+    externalId: string;
+  }): Promise<RenderedEmailTemplate>;
+}
+
+/** -> templates: lần gửi chỉ lưu `template_version_id`; tên + số version tra theo LÔ khi hiển thị. */
+export interface TemplateLabel {
+  templateId: TemplateId;
+  name: string;
+  version: number;
+}
+
+export interface TemplateLabels {
+  labelsOf(versionIds: readonly TemplateVersionId[]): Promise<Map<TemplateVersionId, TemplateLabel>>;
 }

@@ -44,7 +44,10 @@ export interface NotificationProps extends TimestampInput {
   counters?: Counters | undefined;
   /** Gửi trực tiếp một người (MVP — ADR-0016). NULL khi gửi theo segment. */
   targetUserId?: UserId | null | undefined;
-  /** Nội dung email trực tiếp. NULL khi dùng template. Tạo bằng `emailContent()`. */
+  /**
+   * Nội dung email sẽ gửi, tạo bằng `emailContent()`. Gửi bằng template thì đây là nội dung ĐÃ đổ biến lúc
+   * API nhận request (ADR-0020), kèm `templateVersionId` — worker gửi đúng thứ này, không đổ lại.
+   */
   content?: EmailContent | null | undefined;
   /** Mốc vòng đời — `apply()` tự đặt; mapper nạp lại từ DB. */
   queuedAt?: Date | null | undefined;

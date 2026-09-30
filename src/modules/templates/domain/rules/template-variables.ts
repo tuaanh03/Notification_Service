@@ -11,7 +11,7 @@ import type { ParsedVariable, VariableSpec } from '../types/template-variable.ts
  * Cú pháp ngắn `{{ order_number }}` KHÔNG hợp lệ: nó trỏ tới nguồn khác hẳn và
  * sẽ render ra chuỗi rỗng — lỗi rất khó thấy khi thư đã gửi đi rồi.
  */
-const VARIABLE_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
+export const VARIABLE_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
 const ALLOWED_PREFIXES = ['payload.', 'user.'] as const;
 
 export function parseVariables(body: string): ParsedVariable[] {
@@ -20,13 +20,22 @@ export function parseVariables(body: string): ParsedVariable[] {
     const raw = match[1];
     if (raw === undefined) continue;
     const [pathPart = '', ...filters] = raw.split('|').map((part) => part.trim());
+    const defaultFilter = filters.find((filter) => filter.startsWith('default:'));
     found.push({
       path: pathPart,
-      hasDefault: filters.some((filter) => filter.startsWith('default:')),
+      hasDefault: defaultFilter !== undefined,
+      defaultValue: defaultFilter === undefined ? null : defaultLiteral(defaultFilter),
       raw,
     });
   }
   return found;
+}
+
+/** `default: "quý khách"` / `default: 'x'` / `default: x` -> giá trị đã bỏ ngoặc. */
+function defaultLiteral(filter: string): string {
+  const value = filter.slice('default:'.length).trim();
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(value);
+  return quoted ? (quoted[2] ?? '') : value;
 }
 
 export function hasAllowedPrefix(path: string): boolean {
@@ -153,10 +162,10 @@ function unsupportedUserVariable(path: string): Issue {
   );
 }
 
-const HREF_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
-const ALLOWED_LINK_RE = /^(https:\/\/|mailto:)/i;
+export const HREF_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+export const ALLOWED_LINK_RE = /^(https:\/\/|mailto:)/i;
 /** Link bắt đầu bằng biến (`{{ payload.action_url }}`): chưa biết giá trị — kiểm lại sau khi đổ biến lúc gửi. */
-const VARIABLE_LINK_RE = /^\{\{/;
+export const VARIABLE_LINK_RE = /^\{\{/;
 
 /**
  * Kiểm tra lúc PUBLISH: link trong thư chỉ được `https://` hoặc `mailto:`.

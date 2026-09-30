@@ -23,7 +23,8 @@ lệch với hành vi thật thì báo đội EWS — tài liệu sai, không ph
 * **Kiểm quyền nhận lúc gửi, không phải lúc gọi.** Nhân viên tắt chủ đề sau khi app gọi nhưng
   trước khi thư đi thì thư không đi.
 
-Gửi hàng loạt theo phân khúc, template, hẹn giờ: **chưa có** (xem mục 9).
+Gửi hàng loạt theo phân khúc, hẹn giờ: **chưa có** (xem mục 9). Gửi bằng **template** do EWS soạn
+sẵn: **có** (bước 5, cách 2).
 
 ---
 
@@ -218,6 +219,51 @@ Content-Type: application/json
 
 *Nguồn: `notifications-api.test.ts` — "202 queued", "lỗi input", "HTML 300 KB".*
 
+#### Cách 2 — gửi bằng template
+
+Người lo nội dung soạn template trên console EWS rồi bấm **Xuất bản**. App chỉ gửi **mã template**
+và **dữ liệu để đổ vào** — không gửi `subject` / `html` / `text`:
+
+```http
+POST $EWS/v1/notifications
+Authorization: Bearer <khoá>
+Content-Type: application/json
+
+{
+  "to": { "externalId": "NV-0123" },
+  "topic": "vm_alerts",
+  "templateId": "3f2a9c1e-7b4d-4e8a-9f10-2c6d5e8b1a73",
+  "payload": { "vm_name": "ai-gateway", "threshold": 80 },
+  "idempotencyKey": "vm-ai-gateway-high-load-2026-09-30T09:00-NV-0123"
+}
+```
+
+* **Một trong hai cách cho mỗi lời gọi.** Gửi cả `templateId` lẫn `subject` / `html` / `text` →
+  `CONTENT_AND_TEMPLATE_CONFLICT`. Gửi `payload` mà không có `templateId` → `PAYLOAD_REQUIRES_TEMPLATE`.
+* **EWS luôn dùng bản đang xuất bản.** Người soạn xuất bản bản mới thì từ lần gọi kế tiếp thư theo
+  bản mới — app không sửa gì. Thư đã nhận (`202`) trước đó giữ nguyên bản cũ.
+* **Đổ biến ngay lúc nhận lời gọi.** Thiếu dữ liệu thì bị từ chối ngay (`422`), không có thư nào đi
+  ra với chỗ trống.
+* `payload`: object phẳng, **tối đa 2 KB**. Giá trị là chữ, số hoặc `true` / `false` — object, mảng,
+  `null` → `INVALID_PAYLOAD_VALUE`. Khoá mà template không dùng thì **bị bỏ qua**, không lỗi.
+* Biến nào bắt buộc, tên là gì: xem ở trang template trên console. Template dùng `{{ payload.vm_name }}`
+  thì app gửi `"payload": { "vm_name": … }`. Riêng `{{ user.external_id }}` EWS tự điền bằng
+  `to.externalId`.
+* Giá trị đổ vào phần HTML được EWS **escape** (`<b>` hiện ra đúng chữ `<b>`, không thành chữ đậm).
+  Muốn thư có định dạng khác thì sửa template, không nhét HTML vào `payload`.
+* Biến dùng làm link (`href="{{ payload.url }}"`) phải ra `https://…` hoặc `mailto:…` — khác đi là
+  `LINK_SCHEME_NOT_ALLOWED`.
+
+**Hai điều đội app phải nhớ:**
+
+1. **Mã template khác nhau giữa các môi trường.** Cùng template "Cảnh báo VM" trên máy thử và trên
+   máy thật là hai mã khác nhau. Để `templateId` trong cấu hình theo môi trường, cạnh khoá API —
+   đừng viết cứng trong code.
+2. **Người soạn thêm biến BẮT BUỘC mới = app phải gửi thêm biến đó.** Từ lúc bản mới được xuất bản,
+   lời gọi thiếu biến sẽ bị `MISSING_VARIABLE`. Hai bên thống nhất trước khi xuất bản.
+
+*Nguồn: `notifications-api.test.ts` — khối "gửi bằng template".*
+
 ### Chạy thử cả vòng trong 5 phút
 
 Chạy trước khi viết code: qua được là khoá, mạng và chủ đề đã thông. Cần `curl`, `jq`, khoá API và
@@ -318,6 +364,9 @@ GET $EWS/v1/notifications/<id>
 thư đã đi hay chưa**. EWS **không tự gửi lại** để nhân viên không nhận hai lần. Muốn gửi lại thì gọi
 gửi mới với **khoá `idempotencyKey` mới** — và chấp nhận khả năng người nhận có hai thư.
 
+Gửi bằng template thì kết quả có thêm `"template": { "id": "…", "version": 3 }` — bản đã dùng cho
+lá thư đó. Gửi bằng nội dung viết thẳng thì `"template": null`.
+
 Thư của app khác → `404`, như thể không tồn tại.
 
 *Nguồn: `notifications-api.test.ts` — khối "gate L0 / L1 / L3", "chuyển phát at-most-once", "GET /v1/notifications/:id".*
@@ -403,7 +452,16 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | 422 | `TOPIC_NOT_ACTIVE` | gửi | Chủ đề còn nháp hoặc đang tạm ngưng. Liên hệ EWS. |
 | 422 | `CHANNEL_NOT_GRANTED` | gửi | App chưa được cấp kênh email lúc duyệt. Liên hệ EWS. |
 | 422 | `EMAIL_SUBJECT_REQUIRED` · `EMAIL_SUBJECT_TOO_LONG` · `EMAIL_SUBJECT_INVALID` | gửi | Tiêu đề trống / quá 998 ký tự / có xuống dòng. |
-| 422 | `EMAIL_HTML_REQUIRED` · `EMAIL_BODY_TOO_LARGE` | gửi | Thiếu `html` / một phần thân quá 256 KB. |
+| 422 | `EMAIL_HTML_REQUIRED` · `EMAIL_BODY_TOO_LARGE` | gửi | Thiếu `html` / một phần thân quá 256 KB. Gửi bằng template thì tính trên nội dung đã đổ biến. |
+| 422 | `CONTENT_AND_TEMPLATE_CONFLICT` | gửi | Gửi cả `templateId` lẫn `subject` / `html` / `text`. Chọn một cách. |
+| 422 | `PAYLOAD_REQUIRES_TEMPLATE` | gửi | Có `payload` mà không có `templateId`. |
+| 422 | `TEMPLATE_NOT_FOUND` | gửi | Sai `templateId`, mã của môi trường khác, hoặc template của app khác. |
+| 422 | `TEMPLATE_NOT_PUBLISHED` | gửi | Template chưa được xuất bản lần nào. Liên hệ người soạn. |
+| 422 | `TEMPLATE_ARCHIVED` | gửi | Template đã lưu trữ, không dùng được nữa. Hỏi người soạn mã mới. |
+| 422 | `MISSING_VARIABLE` | gửi | Thiếu biến bắt buộc. `issues` liệt kê **mọi** biến thiếu, `path` là tên biến (`payload.vm_name`). |
+| 422 | `INVALID_PAYLOAD_VALUE` | gửi | Giá trị trong `payload` là object, mảng hoặc `null`. |
+| 422 | `LINK_SCHEME_NOT_ALLOWED` | gửi | Biến làm link ra địa chỉ không phải `https://` / `mailto:`. |
+| 422 | `PAYLOAD_TOO_LARGE` | gửi | `payload` quá 2 KB (khác mã `413` cùng tên — cái này nằm trong `issues`). |
 | 422 | `TOPIC_MANDATORY` | preferences | Cố tắt chủ đề bắt buộc. Không có đường lách. |
 | 422 | `EMAIL_NOT_SET` | preferences | Đặt `optedOutOptional` cho người chưa có email. |
 | 422 | `EMAIL_INVALID` | khai người | Email sai định dạng. |
@@ -427,7 +485,8 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | Chưa có | Hệ quả cho app |
 | --- | --- |
 | Gửi hàng loạt theo chủ đề / phân khúc | App tự lặp từng người (mục 6). |
-| Template | App tự dựng `subject` / `html` / `text`. |
+| App tự tạo / sửa template qua API | Template chỉ soạn và xuất bản trên console EWS. |
+| Biến `{{ user.tags.… }}` trong template | Chỉ có `payload.…` và `user.external_id`. |
 | Hẹn giờ, huỷ, dừng, gửi lại | Gọi lúc nào thì xếp hàng lúc đó. Thư đã nhận không huỷ được. |
 | Xử lý thư dội về | Chính sách "nghỉ việc → ngắt email" (mục 7) là lớp bảo vệ duy nhất. |
 | Link "Quản lý thông báo" trong thư | Màn cài đặt của app (bước 4) là cửa duy nhất. |

@@ -128,6 +128,21 @@ Content-Type: application/json
   Mỗi phần thân tối đa 256 KB.
 * Gửi cho nhiều người = gọi nhiều lần, mỗi người một lần.
 
+**Hoặc gửi bằng template** do người soạn làm sẵn trên console EWS — app không gửi `subject` /
+`html` / `text` nữa, chỉ gửi mã template và dữ liệu để đổ vào:
+
+```json
+{ "to": { "externalId": "NV-01" }, "topic": "⟨mã chủ đề⟩",
+  "templateId": "⟨mã template⟩", "payload": { "thiet_bi": "iPhone 15" },
+  "idempotencyKey": "canh-bao-dang-nhap-EV12345-NV-01" }
+```
+
+* Một trong hai cách cho mỗi lần gọi, không trộn. EWS luôn dùng bản template **đang xuất bản**.
+* `payload` tối đa 2 KB; giá trị là chữ, số, `true` / `false`. Khoá template không dùng bị bỏ qua.
+* **Mã template khác nhau giữa máy thử và máy thật** — để trong cấu hình theo môi trường, cạnh khoá.
+* Người soạn thêm biến bắt buộc mới thì app phải gửi thêm biến đó, không thì bị `MISSING_VARIABLE`.
+* Chi tiết đầy đủ: `huong-dan-tich-hop-cho-doi-app.md`, bước 5 — cách 2.
+
 **`idempotencyKey` — luôn gửi kèm.** Mạng lỗi, bạn gọi lại: cùng khoá thì EWS trả `200` kèm thư cũ,
 **không gửi lần hai**. Không có khoá thì mỗi lần gọi lại là một thư trùng.
 
@@ -191,6 +206,10 @@ trong `issues[0].code` (ngoài cùng chỉ là `VALIDATION`):
 | 422 | `TOPIC_NOT_FOUND` · `TOPIC_NOT_ACTIVE` | Sai mã chủ đề / chủ đề đang tạm ngưng |
 | 422 | `EMAIL_SUBJECT_REQUIRED` · `EMAIL_SUBJECT_TOO_LONG` · `EMAIL_SUBJECT_INVALID` | Tiêu đề trống / quá dài / có xuống dòng |
 | 422 | `EMAIL_HTML_REQUIRED` · `EMAIL_BODY_TOO_LARGE` | Thiếu `html` / nội dung quá 256 KB |
+| 422 | `TEMPLATE_NOT_FOUND` · `TEMPLATE_NOT_PUBLISHED` · `TEMPLATE_ARCHIVED` | Sai mã template (hoặc mã của môi trường khác) / chưa xuất bản / đã lưu trữ |
+| 422 | `MISSING_VARIABLE` · `INVALID_PAYLOAD_VALUE` | Thiếu biến bắt buộc (`issues` liệt kê đủ) / giá trị là object, mảng, `null` |
+| 422 | `CONTENT_AND_TEMPLATE_CONFLICT` · `PAYLOAD_REQUIRES_TEMPLATE` | Trộn hai cách gửi / có `payload` mà không có `templateId` |
+| 422 | `LINK_SCHEME_NOT_ALLOWED` | Dữ liệu đổ vào link không phải `https://` / `mailto:` |
 | 422 | `EMAIL_INVALID` | Email sai định dạng |
 | 422 | `INVALID_FIELD` | Sai kiểu, thừa trường, mã người nhận có ký tự lạ — `path` chỉ trường nào |
 | 409 | `EMAIL_TAKEN` | Email đã thuộc người khác trong app |
@@ -203,8 +222,8 @@ chờ — thử lại có giãn cách, **giữ nguyên `idempotencyKey`**.
 
 ## 6. Chưa có
 
-Hẹn giờ gửi · huỷ thư đã gửi · mẫu thư (template) · tệp đính kèm · EWS gọi ngược báo kết quả
-(webhook). App tự dựng nội dung, gọi lúc nào gửi lúc đó, cần kết quả thì hỏi (mục 4).
+Hẹn giờ gửi · huỷ thư đã gửi · tệp đính kèm · EWS gọi ngược báo kết quả (webhook). Gọi lúc nào
+gửi lúc đó, cần kết quả thì hỏi (mục 4).
 
 ---
 
@@ -251,7 +270,7 @@ Sau `DELETE .../email`: `"status": "unsubscribed"`, `"suppressedReason": "user_u
 
 ```json
 {
-  "id": "…", "status": "queued", "topic": "⟨mã chủ đề⟩",
+  "id": "…", "status": "queued", "topic": "⟨mã chủ đề⟩", "template": null,
   "idempotencyKey": "canh-bao-dang-nhap-EV12345-NV-01", "recipient": null,
   "createdAt": "2026-09-24T03:00:00.000Z", "queuedAt": "2026-09-24T03:00:00.000Z",
   "sendingAt": null, "finishedAt": null
@@ -262,7 +281,7 @@ Sau `DELETE .../email`: `"status": "unsubscribed"`, `"suppressedReason": "user_u
 
 ```json
 {
-  "id": "…", "status": "sent", "topic": "⟨mã chủ đề⟩",
+  "id": "…", "status": "sent", "topic": "⟨mã chủ đề⟩", "template": null,
   "idempotencyKey": "canh-bao-dang-nhap-EV12345-NV-01",
   "recipient": { "address": "an.nguyen@company.com", "status": "sent",
                  "exclusionReason": null, "error": null, "sentAt": "2026-09-24T03:00:04.000Z" },
@@ -270,5 +289,8 @@ Sau `DELETE .../email`: `"status": "unsubscribed"`, `"suppressedReason": "user_u
   "sendingAt": "2026-09-24T03:00:03.000Z", "finishedAt": "2026-09-24T03:00:04.000Z"
 }
 ```
+
+`template` là `null` khi gửi nội dung viết thẳng; gửi bằng template thì là `{ "id": "…", "version": 3 }` —
+bản đã dùng cho lá thư đó.
 
 Mọi mốc thời gian là ISO 8601, giờ UTC. `…` là mã do EWS sinh.

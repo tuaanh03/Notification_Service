@@ -1,6 +1,12 @@
 import type { AppId, NotificationStatus, TopicId, UserId } from '../../../../shared/kernel/index.ts';
 import { toNotificationSummaryDto, type NotificationPageDto } from '../dto.ts';
-import type { NotificationRepository, RecipientLookup, RecipientRepository, TopicConsentLookup } from '../ports/index.ts';
+import type {
+  NotificationRepository,
+  RecipientLookup,
+  RecipientRepository,
+  TemplateLabels,
+  TopicConsentLookup,
+} from '../ports/index.ts';
 
 /** Giới hạn cứng: bề mặt đọc không được biến thành đường kéo cả lịch sử gửi về một lần. */
 export const MAX_NOTIFICATION_PAGE = 200;
@@ -9,8 +15,8 @@ export const MAX_NOTIFICATION_PAGE = 200;
  * Lịch sử gửi của MỘT app, cho màn quản trị (plan §5 — bề mặt đọc cho vận hành). Trả lời câu
  * "thư gửi anh A lúc 9 giờ ra sao" mà không phải vào máy chủ đọc log.
  *
- * Mọi thứ đi kèm lấy theo LÔ — cả trang tốn cố định 4 truy vấn (topic của app, trang notification,
- * người nhận, external_id), không phụ thuộc số dòng.
+ * Mọi thứ đi kèm lấy theo LÔ — cả trang tốn cố định 5 truy vấn (topic của app, trang notification,
+ * người nhận, external_id, nhãn template), không phụ thuộc số dòng.
  *
  * Lọc theo `topic` / `externalId` là khớp ĐÚNG. Giá trị không tồn tại -> trang rỗng, không 404:
  * đây là bộ lọc, "không có thư nào khớp" là một câu trả lời hợp lệ.
@@ -21,6 +27,7 @@ export class ListNotifications {
     recipients: RecipientRepository;
     users: RecipientLookup;
     topics: TopicConsentLookup;
+    templates: TemplateLabels;
   };
 
   constructor(deps: ListNotifications['deps']) {
@@ -56,9 +63,11 @@ export class ListNotifications {
       { limit, offset: input.offset },
     );
     const userIds = [...new Set(page.rows.flatMap((n) => (n.targetUserId === null ? [] : [n.targetUserId])))];
-    const [recipients, externalIds] = await Promise.all([
+    const versionIds = [...new Set(page.rows.flatMap((n) => (n.templateVersionId === null ? [] : [n.templateVersionId])))];
+    const [recipients, externalIds, templates] = await Promise.all([
       this.deps.recipients.findByNotifications(page.rows.map((n) => n.id)),
       this.deps.users.externalIds(input.appId, userIds),
+      this.deps.templates.labelsOf(versionIds),
     ]);
     const topicKeys = new Map(topics.map((topic) => [topic.topicId, topic.key] as const));
 
@@ -68,6 +77,7 @@ export class ListNotifications {
           topicKey: topicKeys.get(n.topicId) ?? '',
           externalId: n.targetUserId === null ? null : (externalIds.get(n.targetUserId) ?? null),
           recipient: recipients.get(n.id) ?? null,
+          template: n.templateVersionId === null ? null : (templates.get(n.templateVersionId) ?? null),
         }),
       ),
       total: page.total,

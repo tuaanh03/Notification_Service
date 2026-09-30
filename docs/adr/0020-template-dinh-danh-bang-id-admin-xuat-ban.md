@@ -53,7 +53,24 @@ khi xoá cũ vì FK `app_id` đang dựa vào index cũ. `template_versions`: `h
 (như `notifications.body_html`), thêm `created_by` / `published_by`. Biến khai thêm `sample` /
 `description` (JSON, chỉ để xem thử — không dùng lúc gửi).
 
-## 6. Chưa làm
+## 6. Gửi bằng template (GĐ 2)
 
-Gửi bằng template qua `/v1` (GĐ 2) · nối console (GĐ 3) · gửi thử · `user.tags.*` · app tự tạo
-template qua `/v1` · binding theo topic.
+`POST /v1/notifications` nhận `templateId` + `payload` THAY cho `subject` / `html` / `text` — trộn là
+`CONTENT_AND_TEMPLATE_CONFLICT`, `payload` không kèm `templateId` là `PAYLOAD_REQUIRES_TEMPLATE`.
+
+- **Đổ biến ở `AcceptEmailNotification`**, qua port `TemplateRenderer` -> use case công khai
+  `RenderTemplate` của templates (notifications không đọc bảng templates). Kết quả đi qua CÙNG
+  `emailContent()` với nội dung viết thẳng, rồi lưu vào `subject` / `body_html` / `body_text` kèm
+  `template_version_id` + `payload`. Worker không đổi, không biết template tồn tại.
+- **Luật đổ** (`renderTemplate`, hàm thuần): một lượt, giá trị không bị quét lại; html escape, subject /
+  text giữ nguyên; thiếu biến bắt buộc / giá trị không phải chữ-số-bool gom hết vào một lỗi; biến tuỳ
+  chọn dùng `| default:`; khoá thừa trong `payload` bỏ qua; link bắt đầu bằng biến kiểm lại sau khi đổ.
+- **Mọi lỗi template là 422** (kể cả `TEMPLATE_NOT_FOUND`), như `TOPIC_NOT_FOUND`: request đúng đường,
+  dữ liệu bên trong sai. Template của app khác = `TEMPLATE_NOT_FOUND`.
+- `payload` được LƯU (tra lỗi, gửi lại sau này) nhưng không xuất hiện ở `/admin` lẫn `/v1` — có thể chứa
+  dữ liệu cá nhân. Lịch sử gửi chỉ có `template: { id, name, version }`, tra nhãn theo lô.
+- Trùng `idempotencyKey` trả bản cũ TRƯỚC khi đổ biến — không đổ lại, không gửi lại.
+
+## 7. Chưa làm
+
+Nối console (GĐ 3) · gửi thử · `user.tags.*` · app tự tạo template qua `/v1` · binding theo topic.

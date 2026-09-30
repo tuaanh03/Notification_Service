@@ -52,7 +52,8 @@ trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng ngư�
 nội dung trực tiếp (chưa template), consent kiểm ở worker. Xong GĐ 0 (nền), GĐ 1 (user + email),
 GĐ 2 (topic + preference), GĐ 3 (gửi end-to-end bằng `MockEmailProvider`), GĐ 4 (provider
 Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm mục 12 "Sau MVP" của plan:
-`templates` (ADR-0020) — xong GĐ 1 (admin soạn / xuất bản), tiếp theo GĐ 2 (app gửi bằng `templateId` + `payload`) rồi GĐ 3 (nối console).
+`templates` (ADR-0020) — xong GĐ 1 (admin soạn / xuất bản) và GĐ 2 (app gửi bằng `templateId` +
+`payload`), tiếp theo GĐ 3 (nối console).
 
 Có trong repo: domain model 10 module · schema MySQL + 7 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
@@ -64,11 +65,11 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác; `GET /admin/apps/:appId/users` (danh sách người nhận, phân trang + tìm) và `GET /admin/apps/:appId/users/:externalId` (một người, khớp đủ mã — cùng `FindUserByExternalId.get` với `/v1`) |
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
 | `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `GET /admin/apps/:appId/users/:externalId/preferences` (chỉ đọc); `ConsentQueries` cho module khác |
-| `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency); `GET /admin/apps/:appId/notifications` (lịch sử gửi, chỉ đọc, không kèm địa chỉ / nội dung); `GET /admin/apps/:appId/overview` (số liệu màn Tổng quan: 24 giờ gần nhất + hàng chờ, chỉ con số); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
+| `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency; nội dung viết thẳng HOẶC `templateId` + `payload`, đổ biến lúc nhận); `GET /admin/apps/:appId/notifications` (lịch sử gửi, chỉ đọc, không kèm địa chỉ / nội dung); `GET /admin/apps/:appId/overview` (số liệu màn Tổng quan: 24 giờ gần nhất + hàng chờ, chỉ con số); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
 | `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `GraphEmailProvider` + `MockEmailProvider` (chọn bằng `EMAIL_PROVIDER`), port `SendRateLimiter` (`EMAIL_MAX_PER_MINUTE`, đếm chung trên Redis) |
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
-| `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản. Chưa có đường gửi bằng template ở `/v1` |
+| `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản; `RenderTemplate` (đổ `payload` vào bản đang xuất bản) + `TemplateQueries.labelsOf` cho module khác |
 
 `segments` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
 (`/auth/login` -> token mờ lưu băm trong `admin_sessions`); admin đầu tiên tạo bằng `admin-cli` chạy trong
@@ -103,7 +104,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0017` | **READ COMMITTED** cho mọi connection — REPEATABLE READ phá mẫu "khoá rồi mới đọc" của ADR-0009 |
 | `0018` | Provider Microsoft Graph (client credentials, phân loại kết quả) + giới hạn tốc độ gửi trên Redis, chờ lượt trước tx1 |
 | `0019` | **Đăng nhập admin bằng phiên** (`admin_sessions`, token mờ + scrypt cho mật khẩu), bỏ `ADMIN_TOKEN`, admin đầu tiên tạo bằng `admin-cli` — **thay §4 của ADR-0015** |
-| `0020` | **Template**: app gửi bằng `templateId` (bỏ `key`), tên không trùng trong app, không binding topic, đổ biến lúc API nhận request, nháp lỏng / xuất bản chặt |
+| `0020` | **Template**: app gửi bằng `templateId` (bỏ `key`), tên không trùng trong app, không binding topic, đổ biến lúc API nhận request (qua `RenderTemplate`, worker không đổi), nháp lỏng / xuất bản chặt, lỗi template đều 422 |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

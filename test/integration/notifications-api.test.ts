@@ -442,3 +442,131 @@ describe('GET /admin/apps/:appId/overview', () => {
     expect((await admin('GET', '/apps/not-a-uuid/overview')).status).toBe(422);
   });
 });
+
+// ADR-0020: app gửi bằng templateId + payload; EWS đổ biến lúc nhận request. App riêng để không lẫn
+// vào số liệu của `shop` ở các test lịch sử / tổng quan phía trên.
+describe('gửi bằng template', () => {
+  let tpl: { appId: string; apiKey: string };
+  const tv1 = (method: string, path: string, body?: unknown) => v1(method, path, body, tpl.apiKey);
+  const sendTpl = (externalId: string, extra: Record<string, unknown>) =>
+    tv1('POST', '/notifications', { to: { externalId }, topic: 'alerts', ...extra });
+  const tstatus = async (id: string) => (await tv1('GET', `/notifications/${id}`)).body;
+  /** Chỉ thư gửi tới người này — worker dùng chung có thể còn thư tồn của describe khác. */
+  const deliveredTo = (externalId: string) => mail.delivered.filter((m) => m.to === `${externalId.replace('_', '.')}@company.com`);
+  const issueCodes = (body: Json) => ((body['issues'] ?? []) as Json[]).map((i) => i['code']);
+
+  const draft = (subject: string) => ({
+    subject,
+    html: '<p>Máy ảo {{ payload.vm_name }} — chủ: {{ payload.owner | default: "chưa rõ" }}</p><a href="{{ payload.url }}">Xem</a>',
+    text: 'Máy ảo {{ payload.vm_name }}',
+    variables: [
+      { name: 'payload.vm_name', source: 'payload', required: true },
+      { name: 'payload.owner', source: 'payload', required: false },
+      { name: 'payload.url', source: 'payload', required: true },
+    ],
+  });
+  async function publishedTemplate(name: string, subject = '[Cảnh báo] {{ payload.vm_name }}'): Promise<string> {
+    const created = await admin('POST', `/apps/${tpl.appId}/templates`, { name, ...draft(subject) });
+    const id = created.body['id'] as string;
+    expect((await admin('POST', `/apps/${tpl.appId}/templates/${id}/publish`)).status).toBe(200);
+    return id;
+  }
+  const payload = { vm_name: '<ai-gateway>', url: 'https://ews.example.com/vm/1', extra: 'bỏ qua' };
+
+  beforeAll(async () => {
+    tpl = await provisionApp(api.url, ADMIN_TOKEN, 'tpl-sender');
+    await admin('POST', `/apps/${tpl.appId}/topics`, { key: 'alerts', name: 'Cảnh báo' });
+    await admin('POST', `/apps/${tpl.appId}/topics/alerts/activate`);
+    for (const id of ['t_ok', 't_err', 't_v2', 't_idem']) {
+      await tv1('PUT', `/users/${id}`, { email: `${id.replace('_', '.')}@company.com` });
+    }
+  });
+
+  it('202 -> worker gửi đúng nội dung ĐÃ đổ biến (html escape, default, khoá thừa bỏ qua); GET có template', async () => {
+    const id = await publishedTemplate('Cảnh báo VM');
+    const res = await sendTpl('t_ok', { templateId: id, payload });
+    expect(res.status).toBe(202);
+    expect(res.body['template']).toEqual({ id, version: 1 });
+
+    await deliver();
+    expect(deliveredTo('t_ok')).toEqual([
+      expect.objectContaining({
+        to: 't.ok@company.com',
+        subject: '[Cảnh báo] <ai-gateway>',
+        html: '<p>Máy ảo &lt;ai-gateway&gt; — chủ: chưa rõ</p><a href="https://ews.example.com/vm/1">Xem</a>',
+        text: 'Máy ảo <ai-gateway>',
+      }),
+    ]);
+    expect(await tstatus(res.body['id'] as string)).toMatchObject({ status: 'sent', template: { id, version: 1 } });
+
+    // Lưu template_version_id + payload để tra lại; lịch sử admin có tên template, không có payload.
+    const [row] = await t.db.select().from(notifications).where(eq(notifications.notificationId, res.body['id'] as string));
+    expect(row?.payload).toEqual(payload);
+    const history = (await admin('GET', `/apps/${tpl.appId}/notifications?externalId=t_ok`)).body;
+    expect((history['rows'] as Json[])[0]).toMatchObject({ template: { id, name: 'Cảnh báo VM', version: 1 } });
+    expect((history['rows'] as Json[])[0]).not.toHaveProperty('payload');
+  });
+
+  it('admin xuất bản v2 -> lần gửi sau dùng v2; thư đã nhận trước đó giữ v1', async () => {
+    const id = await publishedTemplate('Đổi phiên bản', 'Bản 1: {{ payload.vm_name }}');
+    const before = await sendTpl('t_v2', { templateId: id, payload });
+    await admin('POST', `/apps/${tpl.appId}/templates/${id}/draft/from/1`);
+    await admin('PUT', `/apps/${tpl.appId}/templates/${id}/draft`, draft('Bản 2: {{ payload.vm_name }}'));
+    await admin('POST', `/apps/${tpl.appId}/templates/${id}/publish`);
+    const after = await sendTpl('t_v2', { templateId: id, payload });
+
+    await deliver();
+    expect(deliveredTo('t_v2').map((m) => m.subject).sort()).toEqual(['Bản 1: <ai-gateway>', 'Bản 2: <ai-gateway>']);
+    expect((await tstatus(before.body['id'] as string))['template']).toEqual({ id, version: 1 });
+    expect((await tstatus(after.body['id'] as string))['template']).toEqual({ id, version: 2 });
+  });
+
+  it('lỗi -> 422 với mã rõ ràng, không xếp hàng, không gửi', async () => {
+    const id = await publishedTemplate('Kiểm lỗi');
+    const code = async (extra: Record<string, unknown>) => issueCodes((await sendTpl('t_err', extra)).body);
+
+    expect(await code({ templateId: id, payload: { url: 'https://a.vn' } })).toEqual(['MISSING_VARIABLE']);
+    expect(await code({ templateId: id, payload: { ...payload, vm_name: { a: 1 } } })).toEqual(['INVALID_PAYLOAD_VALUE']);
+    expect(await code({ templateId: id, payload: { ...payload, url: 'javascript:alert(1)' } })).toEqual(['LINK_SCHEME_NOT_ALLOWED']);
+    expect(await code({ templateId: id, payload, subject: 'x', html: '<p>x</p>' })).toEqual(['CONTENT_AND_TEMPLATE_CONFLICT']);
+    expect(await code({ subject: 'x', html: '<p>x</p>', payload })).toEqual(['PAYLOAD_REQUIRES_TEMPLATE']);
+    expect(await code({ templateId: '00000000-0000-4000-8000-000000000000', payload })).toEqual(['TEMPLATE_NOT_FOUND']);
+
+    // Template của app khác: như không tồn tại.
+    const foreign = (await admin('POST', `/apps/${shop.appId}/templates`, { name: 'Của shop', ...draft('x {{ payload.vm_name }}') })).body;
+    await admin('POST', `/apps/${shop.appId}/templates/${foreign['id']}/publish`);
+    expect(await code({ templateId: foreign['id'], payload })).toEqual(['TEMPLATE_NOT_FOUND']);
+
+    // Chưa xuất bản / đã lưu trữ.
+    const unpublished = (await admin('POST', `/apps/${tpl.appId}/templates`, { name: 'Chưa xuất bản' })).body['id'];
+    expect(await code({ templateId: unpublished, payload })).toEqual(['TEMPLATE_NOT_PUBLISHED']);
+    await admin('POST', `/apps/${tpl.appId}/templates/${id}/archive`);
+    expect(await code({ templateId: id, payload })).toEqual(['TEMPLATE_ARCHIVED']);
+
+    await deliver();
+    expect(deliveredTo('t_err')).toHaveLength(0);
+  });
+
+  it('trùng idempotencyKey -> 200 bản cũ kèm template; chỉ 1 thư', async () => {
+    const id = await publishedTemplate('Idempotency');
+    const first = await sendTpl('t_idem', { templateId: id, payload, idempotencyKey: 'tpl-idem-1' });
+    const again = await sendTpl('t_idem', { templateId: id, payload, idempotencyKey: 'tpl-idem-1' });
+    expect([first.status, again.status]).toEqual([202, 200]);
+    expect(again.body).toMatchObject({ id: first.body['id'], template: { id, version: 1 } });
+    await deliver();
+    expect(deliveredTo('t_idem')).toHaveLength(1);
+  });
+
+  it('gửi bằng nội dung viết thẳng vẫn như cũ, template = null', async () => {
+    const res = await tv1('POST', '/notifications', {
+      to: { externalId: 't_ok' },
+      topic: 'alerts',
+      subject: 'Viết thẳng',
+      html: '<p>x</p>',
+    });
+    expect(res.status).toBe(202);
+    expect(res.body['template']).toBeNull();
+    await deliver();
+    expect(deliveredTo('t_ok').map((m) => m.subject)).toEqual(['Viết thẳng']);
+  });
+});

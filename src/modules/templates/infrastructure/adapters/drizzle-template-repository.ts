@@ -8,9 +8,10 @@ import {
   TemplateVersionId,
   type AppId as AppIdType,
   type TemplateId as TemplateIdType,
+  type TemplateVersionId as TemplateVersionIdType,
   type TemplateVersionStatus,
 } from '../../../../shared/kernel/index.ts';
-import type { TemplateRepository } from '../../application/ports/index.ts';
+import type { TemplateRepository, TemplateVersionLabel } from '../../application/ports/index.ts';
 import { TemplateVersion } from '../../domain/entities/template-version.ts';
 import { Template } from '../../domain/entities/template.ts';
 import { templates, templateVersions } from '../db/schema.ts';
@@ -103,6 +104,37 @@ export class DrizzleTemplateRepository implements TemplateRepository {
         ),
       );
     return rows.map(toVersion);
+  }
+
+  async findPublishedVersion(templateId: TemplateIdType): Promise<TemplateVersion | null> {
+    const [row] = await this.transactions
+      .executor()
+      .select()
+      .from(templateVersions)
+      .where(and(eq(templateVersions.templateId, templateId), eq(templateVersions.status, 'published')));
+    return row ? toVersion(row) : null;
+  }
+
+  async labelsOfVersions(versionIds: readonly TemplateVersionIdType[]): Promise<TemplateVersionLabel[]> {
+    if (versionIds.length === 0) return [];
+    // Hai bảng này đều thuộc module templates — join trong module là được phép.
+    const rows = await this.transactions
+      .executor()
+      .select({
+        templateVersionId: templateVersions.templateVersionId,
+        templateId: templates.templateId,
+        name: templates.name,
+        version: templateVersions.version,
+      })
+      .from(templateVersions)
+      .innerJoin(templates, eq(templates.templateId, templateVersions.templateId))
+      .where(inArray(templateVersions.templateVersionId, [...versionIds]));
+    return rows.map((row) => ({
+      templateVersionId: TemplateVersionId.parse(row.templateVersionId),
+      templateId: TemplateId.parse(row.templateId),
+      name: row.name,
+      version: row.version,
+    }));
   }
 
   async insertVersion(version: TemplateVersion): Promise<void> {

@@ -17,5 +17,7 @@ export interface ParsedVariable {
   path: string;
   /** Có `| default:` phía sau hay không. */
   hasDefault: boolean;
+  /** Giá trị của `| default: "..."` (đã bỏ ngoặc); null = không có default. */
+  defaultValue: string | null;
   raw: string;
 }

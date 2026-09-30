@@ -5,29 +5,48 @@ import {
   type AppId,
   type Channel,
   type Clock,
+  type TemplateId,
 } from '../../../../shared/kernel/index.ts';
 import { Notification } from '../../domain/entities/notification.ts';
-import { emailContent } from '../../domain/types/email-content.ts';
+import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
 import { toNotificationDto, type NotificationDto } from '../dto.ts';
 import { IdempotencyKeyTakenError } from '../errors.ts';
+import { templateLabelOf } from '../queries/get-notification.ts';
 import { NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS } from '../events.ts';
-import type { NotificationRepository, RecipientLookup, RecipientRepository, TopicConsentLookup } from '../ports/index.ts';
+import type {
+  NotificationRepository,
+  RecipientLookup,
+  RecipientRepository,
+  TemplateLabel,
+  TemplateLabels,
+  TemplateRenderer,
+  TopicConsentLookup,
+} from '../ports/index.ts';
 
 export interface AcceptEmailNotificationInput {
   appId: AppId;
   grantedChannels: readonly Channel[];
   externalId: string;
   topic: string;
-  subject: string;
-  html: string;
+  /** Cách 1 — nội dung viết thẳng. */
+  subject?: string | undefined;
+  html?: string | undefined;
   text?: string | undefined;
+  /** Cách 2 — gửi bằng template đã xuất bản (ADR-0020). Loại trừ với cách 1. */
+  templateId?: TemplateId | undefined;
+  payload?: Record<string, unknown> | undefined;
   idempotencyKey?: string | undefined;
 }
 
 /**
- * `POST /v1/notifications` — nhận một email gửi trực tiếp và XẾP HÀNG. Không gửi, không kiểm consent
+ * `POST /v1/notifications` — nhận một email và XẾP HÀNG. Không gửi, không kiểm consent
  * (worker kiểm ngay trước lúc gửi — ADR-0016 D7). Chỉ chặn lỗi input:
- *   CHANNEL_NOT_GRANTED · nội dung sai (EmailContent) · TOPIC_NOT_FOUND · TOPIC_NOT_ACTIVE · RECIPIENT_NOT_FOUND
+ *   CHANNEL_NOT_GRANTED · CONTENT_AND_TEMPLATE_CONFLICT · PAYLOAD_REQUIRES_TEMPLATE · nội dung sai
+ *   (EmailContent) · TOPIC_NOT_FOUND · TOPIC_NOT_ACTIVE · RECIPIENT_NOT_FOUND · lỗi của template
+ *   (TEMPLATE_NOT_FOUND / _NOT_PUBLISHED / _ARCHIVED · MISSING_VARIABLE · INVALID_PAYLOAD_VALUE · LINK_SCHEME_NOT_ALLOWED)
+ *
+ * Gửi bằng template: đổ biến NGAY Ở ĐÂY (ADR-0020), lưu nội dung đã đổ + `template_version_id` + `payload`.
+ * Worker gửi y như nội dung viết thẳng. Admin xuất bản bản mới sau đó không đổi thư đã nhận.
  *
  * Idempotency: trùng `idempotencyKey` trong app -> trả notification cũ (`created: false`, HTTP 200),
  * kể cả khi hai request đua nhau (unique index quyết định).
@@ -41,6 +60,8 @@ export class AcceptEmailNotification {
     recipients: RecipientRepository;
     users: RecipientLookup;
     topics: TopicConsentLookup;
+    renderer: TemplateRenderer;
+    templates: TemplateLabels;
   };
 
   constructor(deps: AcceptEmailNotification['deps']) {
@@ -51,11 +72,28 @@ export class AcceptEmailNotification {
     input: AcceptEmailNotificationInput,
     ctx: CommandContext,
   ): Promise<{ notification: NotificationDto; created: boolean }> {
-    const { uow, outbox, clock, notifications, users, topics } = this.deps;
+    const { uow, outbox, clock, notifications, users, topics, renderer } = this.deps;
     if (!input.grantedChannels.includes('email')) {
       throw ValidationError.of('CHANNEL_NOT_GRANTED', 'this app is not granted the email channel', 'channel');
     }
-    const content = emailContent({ subject: input.subject, html: input.html, text: input.text });
+    const templateId = input.templateId;
+    if (templateId && [input.subject, input.html, input.text].some((field) => field !== undefined)) {
+      throw ValidationError.of(
+        'CONTENT_AND_TEMPLATE_CONFLICT',
+        'send either templateId + payload or subject + html, not both',
+        'templateId',
+      );
+    }
+    if (!templateId && input.payload !== undefined) {
+      throw ValidationError.of('PAYLOAD_REQUIRES_TEMPLATE', 'payload is only used together with templateId', 'payload');
+    }
+    // Nội dung viết thẳng kiểm ngay; nội dung từ template kiểm sau khi đổ biến (cùng `emailContent()`).
+    const source = templateId
+      ? ({ kind: 'template', templateId } as const)
+      : ({
+          kind: 'direct',
+          content: emailContent({ subject: input.subject ?? '', html: input.html ?? '', text: input.text }),
+        } as const);
 
     if (input.idempotencyKey) {
       const existing = await notifications.findByIdempotencyKey(input.appId, input.idempotencyKey);
@@ -76,6 +114,21 @@ export class AcceptEmailNotification {
       );
     }
 
+    let content: EmailContent;
+    let template: (TemplateLabel & { templateVersionId: NonNullable<Notification['templateVersionId']> }) | null = null;
+    if (source.kind === 'template') {
+      const rendered = await renderer.render({
+        appId: input.appId,
+        templateId: source.templateId,
+        payload: input.payload ?? {},
+        externalId: input.externalId,
+      });
+      content = emailContent(rendered);
+      template = rendered;
+    } else {
+      content = source.content;
+    }
+
     return uow.run(async () => {
       const notification = new Notification({
         id: NotificationId.create(),
@@ -85,6 +138,8 @@ export class AcceptEmailNotification {
         idempotencyKey: input.idempotencyKey ?? null,
         targetUserId: userId,
         content,
+        templateVersionId: template?.templateVersionId ?? null,
+        payload: input.payload ?? {},
         createdBy: ctx.actor.id,
         createdAt: clock.now(),
       });
@@ -101,10 +156,20 @@ export class AcceptEmailNotification {
           aggregateType: NOTIFICATION_AGGREGATE,
           aggregateId: notification.id,
           eventType: NOTIFICATION_EVENTS.queued,
-          payload: audited(ctx, { after: { status: 'queued', topic: topic.key, channel: 'email' } }),
+          payload: audited(ctx, {
+            after: {
+              status: 'queued',
+              topic: topic.key,
+              channel: 'email',
+              ...(template ? { template: { id: template.templateId, version: template.version } } : {}),
+            },
+          }),
         },
       ]);
-      return { notification: toNotificationDto(notification, { topicKey: topic.key, recipient: null }), created: true };
+      return {
+        notification: toNotificationDto(notification, { topicKey: topic.key, recipient: null, template }),
+        created: true,
+      };
     });
   }
 
@@ -113,6 +178,7 @@ export class AcceptEmailNotification {
     return toNotificationDto(n, {
       topicKey: topic?.key ?? '',
       recipient: await this.deps.recipients.findByNotification(n.id),
+      template: await templateLabelOf(this.deps.templates, n.templateVersionId),
     });
   }
 }

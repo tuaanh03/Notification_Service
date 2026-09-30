@@ -26,7 +26,7 @@ export interface Application {
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
  * Thứ tự dựng theo phụ thuộc: tenancy -> apps (cần findOrganization); subscriptions -> directory
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
- * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, delivery).
+ * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, templates, delivery).
  */
 export interface ApplicationOverrides {
   /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
@@ -51,6 +51,8 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     consentQueries: topics.consentQueries,
     sendEmail: delivery.sendEmail,
     sendRateLimiter: delivery.sendRateLimiter,
+    renderTemplate: templates.renderTemplate,
+    templateQueries: templates.templateQueries,
   });
   const audit = auditModule(container);
 
@@ -61,7 +63,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
       subscriptions.definition,
       directory.definition,
       topics.definition,
-      templates,
+      templates.definition,
       delivery.definition,
       notifications.definition,
       audit,

@@ -15,6 +15,8 @@ import {
   DrizzleNotificationStats,
   DrizzleRecipientRepository,
   SubscriptionsEmailLookup,
+  TemplatesLabels,
+  TemplatesRenderer,
   TopicsConsentLookup,
 } from '../../modules/notifications/infrastructure/adapters/index.ts';
 import {
@@ -24,6 +26,7 @@ import {
   v1NotificationsRoutes,
 } from '../../modules/notifications/interface/index.ts';
 import type { FindUserEmail } from '../../modules/subscriptions/application/index.ts';
+import type { RenderTemplate, TemplateQueries } from '../../modules/templates/application/index.ts';
 import type { ConsentQueries } from '../../modules/topics/application/index.ts';
 import { STREAMS } from '../../shared/streams/index.ts';
 import type { Container } from '../container.ts';
@@ -44,6 +47,8 @@ export function notificationsModule(
     consentQueries: ConsentQueries;
     sendEmail: SendEmail;
     sendRateLimiter: SendRateLimiter;
+    renderTemplate: RenderTemplate;
+    templateQueries: TemplateQueries;
   },
 ): { definition: ModuleDefinition } {
   const { uow, outbox, clock, logger } = container.ports;
@@ -54,6 +59,7 @@ export function notificationsModule(
   const topics = new TopicsConsentLookup(dependencies);
   const users = new DirectoryRecipientLookup(dependencies);
   const emails = new SubscriptionsEmailLookup(dependencies);
+  const templates = new TemplatesLabels(dependencies);
 
   return {
     definition: {
@@ -61,7 +67,7 @@ export function notificationsModule(
       http: {
         admin: [
           adminNotificationsRoutes({
-            list: new ListNotifications({ notifications, recipients, users, topics }),
+            list: new ListNotifications({ notifications, recipients, users, topics, templates }),
             overview: new GetAppOverview({ clock, stats: new DrizzleNotificationStats({ transactions }), users, emails, topics }),
           }),
         ],
@@ -75,8 +81,10 @@ export function notificationsModule(
               recipients,
               users,
               topics,
+              renderer: new TemplatesRenderer(dependencies),
+              templates,
             }),
-            get: new GetNotification({ notifications, recipients, topics }),
+            get: new GetNotification({ notifications, recipients, topics, templates }),
           }),
         ],
       },

@@ -1,5 +1,6 @@
 import type { Notification } from '../domain/entities/notification.ts';
 import type { NotificationRecipient } from '../domain/entities/notification-recipient.ts';
+import type { TemplateLabel } from './ports/index.ts';
 
 export interface NotificationRecipientDto {
   address: string;
@@ -20,6 +21,8 @@ export interface NotificationDto {
   /** queued | sending | sent | no_recipient | failed */
   status: string;
   topic: string;
+  /** Gửi bằng template: id + số version đã dùng (ADR-0020). null = nội dung viết thẳng. */
+  template: { id: string; version: number } | null;
   idempotencyKey: string | null;
   recipient: NotificationRecipientDto | null;
   createdAt: string;
@@ -32,13 +35,14 @@ const iso = (d: Date | null) => d?.toISOString() ?? null;
 
 export function toNotificationDto(
   n: Notification,
-  extra: { topicKey: string; recipient: NotificationRecipient | null },
+  extra: { topicKey: string; recipient: NotificationRecipient | null; template: TemplateLabel | null },
 ): NotificationDto {
   const r = extra.recipient;
   return {
     id: n.id,
     status: n.status,
     topic: extra.topicKey,
+    template: extra.template ? { id: extra.template.templateId, version: extra.template.version } : null,
     idempotencyKey: n.idempotencyKey,
     recipient: r
       ? { address: r.address, status: r.status, exclusionReason: r.exclusionReason, error: r.error, sentAt: iso(r.sentAt) }
@@ -59,9 +63,11 @@ export function toNotificationDto(
  *     danh sách là thêm một chỗ lộ dữ liệu cá nhân mà không giúp gì cho việc tra.
  * Không có nội dung thư — cùng lý do với `NotificationDto`.
  */
-export interface NotificationSummaryDto extends Omit<NotificationDto, 'recipient'> {
+export interface NotificationSummaryDto extends Omit<NotificationDto, 'recipient' | 'template'> {
   /** null = user đã không còn trong sổ người nhận. */
   externalId: string | null;
+  /** Như `NotificationDto.template`, kèm tên template cho người đọc. */
+  template: { id: string; name: string; version: number } | null;
   recipient: Omit<NotificationRecipientDto, 'address'> | null;
 }
 
@@ -75,12 +81,13 @@ export interface NotificationPageDto {
 
 export function toNotificationSummaryDto(
   n: Notification,
-  extra: { topicKey: string; externalId: string | null; recipient: NotificationRecipient | null },
+  extra: { topicKey: string; externalId: string | null; recipient: NotificationRecipient | null; template: TemplateLabel | null },
 ): NotificationSummaryDto {
-  const { recipient, ...rest } = toNotificationDto(n, extra);
+  const { recipient, template: _template, ...rest } = toNotificationDto(n, extra);
   return {
     ...rest,
     externalId: extra.externalId,
+    template: extra.template ? { id: extra.template.templateId, name: extra.template.name, version: extra.template.version } : null,
     recipient: recipient
       ? { status: recipient.status, exclusionReason: recipient.exclusionReason, error: recipient.error, sentAt: recipient.sentAt }
       : null,
