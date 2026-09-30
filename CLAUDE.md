@@ -52,8 +52,8 @@ trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng ngư�
 nội dung trực tiếp (chưa template), consent kiểm ở worker. Xong GĐ 0 (nền), GĐ 1 (user + email),
 GĐ 2 (topic + preference), GĐ 3 (gửi end-to-end bằng `MockEmailProvider`), GĐ 4 (provider
 Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm mục 12 "Sau MVP" của plan:
-`templates` (ADR-0020) — xong GĐ 1 (admin soạn / xuất bản) và GĐ 2 (app gửi bằng `templateId` +
-`payload`), tiếp theo GĐ 3 (nối console).
+`templates` (ADR-0020) — xong cả 3 GĐ: admin soạn / xuất bản, app gửi bằng `templateId` + `payload`,
+màn Templates của console đã đấu API.
 
 Có trong repo: domain model 10 module · schema MySQL + 7 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.

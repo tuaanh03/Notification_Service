@@ -73,4 +73,4 @@ khi xoá cũ vì FK `app_id` đang dựa vào index cũ. `template_versions`: `h
 
 ## 7. Chưa làm
 
-Nối console (GĐ 3) · gửi thử · `user.tags.*` · app tự tạo template qua `/v1` · binding theo topic.
+Gửi thử · `user.tags.*` · app tự tạo template qua `/v1` · binding theo topic.
