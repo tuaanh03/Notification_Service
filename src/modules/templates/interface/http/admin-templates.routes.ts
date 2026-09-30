@@ -4,6 +4,7 @@ import { adminCaller, LARGE_BODY_LIMIT_BYTES, parseInput, type HttpRoutes } from
 import { AppId, TemplateId, VARIABLE_SOURCES } from '../../../../shared/kernel/index.ts';
 import type {
   ArchiveTemplate,
+  ComposeTemplateDraft,
   CreateTemplate,
   DraftFromVersion,
   PublishVersion,
@@ -50,6 +51,23 @@ const createBody = z
   .strict();
 const renameBody = z.object({ name: NAME }).strict();
 
+/** "Nhờ AI soạn": trạng thái ĐANG SOẠN trên màn (có thể chưa lưu). Không có giá trị mẫu — không gửi ra ngoài. */
+const aiComposeBody = z
+  .object({
+    instruction: z.string().trim().min(1).max(2000),
+    mode: z.enum(['new', 'revise']),
+    variables: z
+      .array(z.object({ name: z.string().min(1).max(128), required: z.boolean(), description: z.string().max(500).optional() }).strict())
+      .max(100)
+      .default([]),
+    current: z.object({ subject: z.string().max(500), html: z.string(), text: z.string().default('') }).strict().optional(),
+  })
+  .strict()
+  .refine((body) => body.mode === 'new' || body.current !== undefined, {
+    message: 'current is required when mode is revise',
+    path: ['current'],
+  });
+
 const toContent = (body: z.infer<typeof draftBody>): TemplateContent => ({
   subject: body.subject,
   html: body.html,
@@ -68,6 +86,7 @@ export function adminTemplatesRoutes(useCases: {
   draftFromVersion: DraftFromVersion;
   publishVersion: PublishVersion;
   archiveTemplate: ArchiveTemplate;
+  composeTemplateDraft: ComposeTemplateDraft;
   queries: TemplateQueries;
 }): HttpRoutes {
   return (app) => {
@@ -121,6 +140,13 @@ export function adminTemplatesRoutes(useCases: {
     app.post('/apps/:appId/templates/:templateId/publish', async (request) => {
       const params = ids(parseInput(templateParams, request.params));
       return useCases.publishVersion.execute(params, ctx(request));
+    });
+
+    // Trả ĐỀ XUẤT của AI, không ghi gì (ADR-0020 §7). Có thể mất vài chục giây — chờ nhà cung cấp.
+    app.post('/apps/:appId/templates/:templateId/ai-compose', { bodyLimit: LARGE_BODY_LIMIT_BYTES }, async (request) => {
+      const params = ids(parseInput(templateParams, request.params));
+      const body = parseInput(aiComposeBody, request.body);
+      return useCases.composeTemplateDraft.execute({ ...params, ...body }, ctx(request));
     });
 
     app.post('/apps/:appId/templates/:templateId/archive', async (request) => {

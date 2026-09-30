@@ -2,12 +2,26 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApplication, consumerRegistry, createContainer, type Application, type Container } from '../../src/composition/index.ts';
 import { startApi, startWorker, type RunningApi } from '../../src/entrypoints/index.ts';
+import type { AiCompletion, TemplateAiWriter } from '../../src/modules/templates/application/index.ts';
+import type { AiChatMessage } from '../../src/modules/templates/domain/rules/ai-compose-prompt.ts';
 import { templateVersions } from '../../src/modules/templates/infrastructure/db/schema.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
 import { race } from './support/race.ts';
 import { createTestRedis, eventually, testRedisUrl } from './support/redis.ts';
+
+/** AI giả: trả `reply`, ghi lại câu lệnh đã nhận — không gọi ra ngoài. */
+class FakeAiWriter implements TemplateAiWriter {
+  configured = true;
+  reply = '{"subject":"S","html":"<p>H</p>","text":"T"}';
+  calls: (readonly AiChatMessage[])[] = [];
+  async complete(messages: readonly AiChatMessage[]): Promise<AiCompletion> {
+    this.calls.push(messages);
+    return { content: this.reply, model: 'fake-model', promptTokens: 1, completionTokens: 2 };
+  }
+}
+const ai = new FakeAiWriter();
 
 let ADMIN_TOKEN: string;
 let ADMIN_ID: string;
@@ -26,7 +40,7 @@ beforeAll(async () => {
     loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0' }),
     { database: t, redis: await createTestRedis() },
   );
-  application = buildApplication(c);
+  application = buildApplication(c, { templateAiWriter: ai });
   api = await startApi(c, application);
   const signedIn = await signInAdmin(application, api.url);
   ADMIN_TOKEN = signedIn.token;
@@ -260,5 +274,81 @@ describe('audit end-to-end qua worker thật', () => {
     } finally {
       await worker.stop();
     }
+  });
+});
+
+// ADR-0020 §7: AI chỉ trả ĐỀ XUẤT — không ghi DB; chỉ dùng biến đã khai; kiểm bằng luật lúc xuất bản.
+describe('Nhờ AI soạn — POST .../ai-compose', () => {
+  const compose = (id: string, body: Record<string, unknown>, token = ADMIN_TOKEN) =>
+    http('POST', `/admin${base()}/${id}/ai-compose`, { token, body });
+  const variables = [{ name: 'payload.vm_name', required: true, description: 'Tên máy ảo' }];
+
+  it('trả đề xuất + issues rỗng; KHÔNG ghi gì vào DB; câu lệnh chỉ có biến đã khai, không giá trị mẫu', async () => {
+    const id = await createTemplate('AI đề xuất');
+    ai.reply = '```json\n{"subject":"[Cảnh báo] {{ payload.vm_name }}","html":"<p>{{ payload.vm_name }}</p><a href=\\"https://a.vn\\">Xem</a>","text":"VM {{ payload.vm_name }}"}\n```';
+    const res = await compose(id, { instruction: 'Cảnh báo VM quá tải', mode: 'new', variables });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      subject: '[Cảnh báo] {{ payload.vm_name }}',
+      html: '<p>{{ payload.vm_name }}</p><a href="https://a.vn">Xem</a>',
+      text: 'VM {{ payload.vm_name }}',
+      issues: [],
+    });
+    const sent = ai.calls.at(-1)!.map((m) => m.content).join('\n');
+    expect(sent).toContain('{{ payload.vm_name }} (required): Tên máy ảo');
+    // Nháp v1 vẫn rỗng: AI không tự lưu.
+    const detail = (await admin('GET', `${base()}/${id}`)).body;
+    expect(detail['versions'][0]).toMatchObject({ version: 1, subject: '', html: '' });
+  });
+
+  it('AI dùng biến CHƯA khai / link http -> vẫn trả đề xuất, kèm issues để người soạn thấy', async () => {
+    const id = await createTemplate('AI lỗi biến');
+    ai.reply = '{"subject":"{{ payload.owner }}","html":"<a href=\\"http://x.vn\\">x</a>"}';
+    const res = await compose(id, { instruction: 'x', mode: 'new', variables });
+    expect(res.status).toBe(200);
+    expect(codesOf(res.body).sort()).toEqual(['LINK_SCHEME_NOT_ALLOWED', 'VARIABLE_NOT_IN_SCHEMA']);
+  });
+
+  it('revise gửi kèm nội dung đang soạn; thiếu current -> 422', async () => {
+    const id = await createTemplate('AI sửa');
+    ai.reply = '{"subject":"S","html":"<p>H</p>"}';
+    const current = { subject: 'Cũ', html: '<p>nội dung cũ</p>', text: '' };
+    expect((await compose(id, { instruction: 'rút gọn', mode: 'revise', variables, current })).status).toBe(200);
+    expect(ai.calls.at(-1)!.map((m) => m.content).join('\n')).toContain('<p>nội dung cũ</p>');
+    expect((await compose(id, { instruction: 'rút gọn', mode: 'revise', variables })).status).toBe(422);
+  });
+
+  it('AI trả không phải JSON -> 502 AI_PROVIDER_ERROR', async () => {
+    const id = await createTemplate('AI hỏng');
+    ai.reply = 'Xin lỗi, tôi không làm được.';
+    const res = await compose(id, { instruction: 'x', mode: 'new', variables: [] });
+    expect(res.status).toBe(502);
+    expect(res.body['code']).toBe('AI_PROVIDER_ERROR');
+  });
+
+  it('chưa cấu hình AI -> 503 AI_NOT_CONFIGURED; template app khác -> 404; đã lưu trữ -> 409', async () => {
+    const id = await createTemplate('AI ranh giới');
+    ai.configured = false;
+    try {
+      const res = await compose(id, { instruction: 'x', mode: 'new' });
+      expect(res.status).toBe(503);
+      expect(res.body['code']).toBe('AI_NOT_CONFIGURED');
+    } finally {
+      ai.configured = true;
+    }
+    expect((await http('POST', `/admin/apps/${other.appId}/templates/${id}/ai-compose`, { token: ADMIN_TOKEN, body: { instruction: 'x', mode: 'new' } })).status).toBe(404);
+    await admin('POST', `${base()}/${id}/archive`);
+    expect((await compose(id, { instruction: 'x', mode: 'new' })).body['code']).toBe('TEMPLATE_ARCHIVED');
+  });
+
+  it('quá 10 lần/phút cho MỘT admin -> 429 AI_RATE_LIMITED; admin khác vẫn gọi được', async () => {
+    const id = await createTemplate('AI giới hạn');
+    ai.reply = '{"subject":"S","html":"<p>H</p>"}';
+    const busy = (await signInAdmin(application, api.url)).token;
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i += 1) statuses.push((await compose(id, { instruction: 'x', mode: 'new' }, busy)).status);
+    expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
+    expect(statuses[10]).toBe(429);
+    expect((await compose(id, { instruction: 'x', mode: 'new' }, (await signInAdmin(application, api.url)).token)).status).toBe(200);
   });
 });

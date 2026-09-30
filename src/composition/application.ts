@@ -1,5 +1,6 @@
 import type { AdminAuthenticator, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
+import type { TemplateAiWriter } from '../modules/templates/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
 import type { ConsumerRegistration } from './consumer-registry.ts';
 import type { Container } from './container.ts';
@@ -31,6 +32,8 @@ export interface Application {
 export interface ApplicationOverrides {
   /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
   emailProvider?: EmailProvider | undefined;
+  /** Test thay nhà cung cấp AI bằng bản giả — không gọi ra ngoài. */
+  templateAiWriter?: TemplateAiWriter | undefined;
 }
 
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
@@ -43,7 +46,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     findUser: directory.findUser,
     setOptedOutOptional: subscriptions.setOptedOutOptional,
   });
-  const templates = templatesModule(container, { appQueries: apps.appQueries });
+  const templates = templatesModule(container, { appQueries: apps.appQueries, aiWriter: overrides.templateAiWriter });
   const delivery = deliveryModule(container, overrides);
   const notifications = notificationsModule(container, {
     findUser: directory.findUser,

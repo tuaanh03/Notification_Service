@@ -56,6 +56,13 @@ const EnvSchema = z.object({
    * không biết Graph đã nhận chưa thì KHÔNG gửi lại). Mặc định 10 phút.
    */
   EMAIL_STUCK_SENDING_AFTER_MS: z.coerce.number().int().min(60_000).default(600_000),
+  /**
+   * AI soạn template (ADR-0020 §7): endpoint `…/chat/completions` chuẩn tương thích OpenAI — đổi nhà
+   * cung cấp chỉ là đổi 3 biến này. `AI_API_KEY` trống = AI tắt (route trả 503 AI_NOT_CONFIGURED).
+   */
+  AI_API_URL: optional(z.url()),
+  AI_API_KEY: optional(z.string().min(1)),
+  AI_MODEL: optional(z.string().min(1)),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -75,10 +82,18 @@ export class ConfigError extends Error {
 
 /** Ràng buộc giữa các biến: chọn `graph` thì phải đủ thông tin kết nối — thiếu là dừng khởi động. */
 const REQUIRED_FOR_GRAPH = ['EMAIL_SENDER_ADDRESS', 'GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID', 'GRAPH_CLIENT_SECRET'] as const;
+/** Có khoá AI thì phải có nơi gọi và model — thiếu là dừng khởi động, không đợi tới lúc bấm nút. */
+const REQUIRED_FOR_AI = ['AI_API_URL', 'AI_MODEL'] as const;
 const CheckedEnvSchema = EnvSchema.superRefine((env, ctx) => {
-  if (env.EMAIL_PROVIDER !== 'graph') return;
-  for (const key of REQUIRED_FOR_GRAPH) {
-    if (env[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'required when EMAIL_PROVIDER=graph' });
+  if (env.EMAIL_PROVIDER === 'graph') {
+    for (const key of REQUIRED_FOR_GRAPH) {
+      if (env[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'required when EMAIL_PROVIDER=graph' });
+    }
+  }
+  if (env.AI_API_KEY !== undefined) {
+    for (const key of REQUIRED_FOR_AI) {
+      if (env[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'required when AI_API_KEY is set' });
+    }
   }
 });
 

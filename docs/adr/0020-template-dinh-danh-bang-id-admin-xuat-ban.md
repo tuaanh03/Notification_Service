@@ -71,6 +71,25 @@ khi xoá cũ vì FK `app_id` đang dựa vào index cũ. `template_versions`: `h
   dữ liệu cá nhân. Lịch sử gửi chỉ có `template: { id, name, version }`, tra nhãn theo lô.
 - Trùng `idempotencyKey` trả bản cũ TRƯỚC khi đổ biến — không đổ lại, không gửi lại.
 
-## 7. Chưa làm
+## 7. Nhờ AI soạn — gọi AI ở BACKEND
 
-Gửi thử · `user.tags.*` · app tự tạo template qua `/v1` · binding theo topic.
+`POST /admin/apps/:appId/templates/:templateId/ai-compose` trả **đề xuất** `{ subject, html, text, issues }`.
+Không ghi DB, không tạo nháp: người soạn bấm "Dùng bản này" mới điền vào khung soạn rồi tự Lưu / Xuất bản.
+
+- **Vì sao ở backend, không ở console:** khoá AI nằm cùng các bí mật khác và được env kiểm lúc khởi
+  động; route đi qua phiên đăng nhập `/admin` (route cũ của console không kiểm đăng nhập); kết quả AI
+  kiểm bằng CHÍNH `TemplateVersion.validate()`; giới hạn số lần gọi dùng chung Redis.
+- **Chuẩn tương thích OpenAI** (`…/chat/completions`): đổi nhà cung cấp = đổi 3 biến `AI_API_URL`,
+  `AI_API_KEY`, `AI_MODEL`. `AI_API_KEY` trống = AI tắt (503 `AI_NOT_CONFIGURED`); có khoá mà thiếu URL /
+  model thì dừng khởi động. Không gửi `response_format` (nhiều bên không hỗ trợ) — câu lệnh đòi JSON,
+  `parseAiComposeOutput` bóc JSON ra (chịu được khung ```json).
+- **Chỉ dùng biến đã khai.** Gửi ra ngoài: mô tả, tên + mô tả biến, nội dung đang soạn (khi `revise`) —
+  KHÔNG gửi giá trị mẫu. AI vẫn dùng biến lạ thì trả về trong `issues`, không xoá âm thầm.
+- **Cố định trong code, không qua env:** chờ nhà cung cấp 60 giây; 10 lần/phút cho MỖI admin (429
+  `AI_RATE_LIMITED`). Mọi lỗi phía nhà cung cấp (lỗi HTTP, quá giờ, không phải JSON) = 502 `AI_PROVIDER_ERROR`.
+- **Log** mỗi lần gọi (admin, model, thời gian, token, kết cục) — không log nội dung. Chưa ghi audit.
+
+## 8. Chưa làm
+
+Gửi thử · `user.tags.*` · app tự tạo template qua `/v1` · binding theo topic · audit cho lần gọi AI ·
+cờ `ai_generated` khi lưu nháp có nội dung từ AI.

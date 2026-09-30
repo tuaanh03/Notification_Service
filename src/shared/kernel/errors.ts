@@ -91,6 +91,26 @@ export class ConflictError extends DomainError {
   }
 }
 
+/**
+ * Dịch vụ bên ngoài (nhà cung cấp AI…) không làm được việc: chưa cấu hình (503) hoặc trả lỗi / quá giờ /
+ * trả sai định dạng (502). `status` đi theo lỗi — HTTP map thẳng, không suy đoán.
+ */
+export class UpstreamError extends DomainError {
+  readonly status: 502 | 503;
+
+  constructor(code: string, message: string, status: 502 | 503 = 502) {
+    super(code, message);
+    this.status = status;
+  }
+}
+
+/** Vượt giới hạn số lần trong một khoảng thời gian. HTTP 429. */
+export class RateLimitedError extends DomainError {
+  constructor(code: string, message: string) {
+    super(code, message);
+  }
+}
+
 /** Chuyển trạng thái không có trong bảng transitions. */
 export class InvalidTransitionError extends DomainError {
   constructor(aggregate: string, from: string, event: string) {

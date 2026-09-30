@@ -5,3 +5,4 @@ export * from './lock-template.ts';
 export * from './publish-version.ts';
 export * from './rename-template.ts';
 export * from './save-draft.ts';
+export * from './compose-template-draft.ts';

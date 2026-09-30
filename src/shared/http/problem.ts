@@ -9,6 +9,8 @@ import {
   InvalidTransitionError,
   NotFoundError,
   PermissionDeniedError,
+  RateLimitedError,
+  UpstreamError,
   ValidationError,
   type Issue,
 } from '../kernel/errors.ts';
@@ -40,6 +42,7 @@ const HTTP_TITLES: Readonly<Record<number, string>> = {
   422: 'Unprocessable Content',
   429: 'Too Many Requests',
   500: 'Internal Server Error',
+  502: 'Bad Gateway',
   503: 'Service Unavailable',
 };
 
@@ -58,6 +61,8 @@ function statusOfDomainError(err: DomainError): number {
   if (err instanceof NotFoundError) return 404;
   if (err instanceof ConflictError) return 409;
   if (err instanceof InvalidTransitionError || err instanceof ConcurrentTransitionError) return 409;
+  if (err instanceof RateLimitedError) return 429;
+  if (err instanceof UpstreamError) return err.status;
   return 422; // ValidationError và mọi invariant khác: request đúng cú pháp nhưng vi phạm nghiệp vụ
 }
 

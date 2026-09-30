@@ -18,6 +18,10 @@ x-app-env: &app-env
   GRAPH_TENANT_ID: ${GRAPH_TENANT_ID:-}
   GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
   GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET:-}
+  # AI soạn template (tuỳ chọn) — AI_API_KEY trống = tắt.
+  AI_API_URL: ${AI_API_URL:-}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_MODEL: ${AI_MODEL:-}
 
 # Cùng một image cho mọi process; `pull_policy: build` để compose dựng tại chỗ thay vì đi pull
 # một image không có trên registry.
