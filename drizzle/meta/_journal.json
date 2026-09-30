@@ -43,6 +43,13 @@
       "when": 1790158834911,
       "tag": "0005_admin_login_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1790741672241,
+      "tag": "0006_templates_by_id",
+      "breakpoints": true
     }
   ]
 }

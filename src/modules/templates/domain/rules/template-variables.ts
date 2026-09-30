@@ -100,6 +100,80 @@ export function validateBody(body: string, schema: readonly VariableSpec[]): Iss
   return issues;
 }
 
+/**
+ * Biến `user.*` đã có dữ liệu để đổ lúc gửi. `user.tags.*` CHƯA: app chưa có đường ghi tag
+ * (plan §12), để lọt qua publish thì thư gửi đi sẽ trống đúng chỗ đó — chặn ngay từ publish.
+ */
+export const SUPPORTED_USER_VARIABLES: readonly string[] = ['user.external_id'];
+
+/** `payload.<key>` một cấp — `missingRequiredPayloadKeys` tra `key in payload`, không đi sâu vào object. */
+const PAYLOAD_VARIABLE_RE = /^payload\.[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Kiểm tra lúc PUBLISH: chính danh sách biến khai trong schema. */
+export function validateSchema(schema: readonly VariableSpec[]): Issue[] {
+  const issues: Issue[] = [];
+  const seen = new Set<string>();
+  for (const spec of schema) {
+    if (seen.has(spec.name)) {
+      issues.push(issue('DUPLICATE_VARIABLE', `variable ${spec.name} is declared more than once`, spec.name));
+      continue;
+    }
+    seen.add(spec.name);
+    if (!spec.name.startsWith(`${spec.source}.`)) {
+      issues.push(
+        issue('VARIABLE_SOURCE_MISMATCH', `variable ${spec.name} must start with "${spec.source}."`, spec.name),
+      );
+    } else if (spec.source === 'payload' && !PAYLOAD_VARIABLE_RE.test(spec.name)) {
+      issues.push(
+        issue(
+          'INVALID_VARIABLE_NAME',
+          `variable ${spec.name} must be payload.<key> with letters, digits and _ only`,
+          spec.name,
+        ),
+      );
+    } else if (spec.source === 'user' && !SUPPORTED_USER_VARIABLES.includes(spec.name)) {
+      issues.push(unsupportedUserVariable(spec.name));
+    }
+  }
+  return issues;
+}
+
+/** Kiểm tra lúc PUBLISH: biến `user.*` dùng trong nội dung phải là loại đã đổ được. */
+export function validateSupportedVariables(body: string): Issue[] {
+  return parseVariables(body)
+    .filter((v) => v.path.startsWith('user.') && !SUPPORTED_USER_VARIABLES.includes(v.path))
+    .map((v) => unsupportedUserVariable(v.path));
+}
+
+function unsupportedUserVariable(path: string): Issue {
+  return issue(
+    'USER_VARIABLE_NOT_SUPPORTED',
+    `variable ${path} is not supported yet; supported user variables: ${SUPPORTED_USER_VARIABLES.join(', ')}`,
+    path,
+  );
+}
+
+const HREF_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+const ALLOWED_LINK_RE = /^(https:\/\/|mailto:)/i;
+/** Link bắt đầu bằng biến (`{{ payload.action_url }}`): chưa biết giá trị — kiểm lại sau khi đổ biến lúc gửi. */
+const VARIABLE_LINK_RE = /^\{\{/;
+
+/**
+ * Kiểm tra lúc PUBLISH: link trong thư chỉ được `https://` hoặc `mailto:`.
+ * `javascript:`, `data:`, `http://` và link tương đối (vô nghĩa trong hộp thư) đều bị chặn.
+ */
+export function validateLinks(html: string): Issue[] {
+  const issues: Issue[] = [];
+  for (const match of html.matchAll(HREF_RE)) {
+    const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+    if (ALLOWED_LINK_RE.test(value) || VARIABLE_LINK_RE.test(value)) continue;
+    issues.push(
+      issue('LINK_SCHEME_NOT_ALLOWED', `link "${value}" is not allowed: only https:// and mailto: links are accepted`, 'html'),
+    );
+  }
+  return issues;
+}
+
 /** Kiểm tra lúc NHẬN GỬI: payload phải có đủ mọi biến required. */
 export function missingRequiredPayloadKeys(
   payload: Record<string, unknown>,

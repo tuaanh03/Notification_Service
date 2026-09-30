@@ -333,7 +333,9 @@ Nên giới hạn App Registration chỉ gửi được từ đúng mailbox này
 ## 12. Sau MVP (thứ tự gợi ý)
 
 1. Xử lý bounce: đọc NDR từ hộp thư người gửi -> subscription `invalid` (`hard_bounce`).
-2. `templates` (cú pháp `{{ payload.x }}` / `{{ user.tags.x }}` đã chốt trong `template-variables.ts`).
+2. `templates` (cú pháp `{{ payload.x }}` / `{{ user.tags.x }}` đã chốt trong `template-variables.ts`) — ADR-0020.
+   GĐ 1 xong: admin soạn / xuất bản dưới `/admin/apps/:appId/templates`. Còn: GĐ 2 gửi bằng
+   `templateId` + `payload` qua `/v1/notifications`, GĐ 3 nối màn Templates của console.
 3. Link "Quản lý thông báo" + trang `/u/:token` (bắt buộc khi gửi ra ngoài công ty).
 4. ~~Đăng nhập admin thay `ADMIN_TOKEN`~~ — xong (ADR-0019: phiên mờ trong `admin_sessions`, CLI
    `admin-cli` tạo admin đầu tiên). Còn lại của việc này: **RBAC** theo `admin_app_roles`

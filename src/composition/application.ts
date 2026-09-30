@@ -10,6 +10,7 @@ import { deliveryModule } from './modules/delivery.module.ts';
 import { notificationsModule } from './modules/notifications.module.ts';
 import { directoryModule } from './modules/directory.module.ts';
 import { subscriptionsModule } from './modules/subscriptions.module.ts';
+import { templatesModule } from './modules/templates.module.ts';
 import { topicsModule } from './modules/topics.module.ts';
 import { tenancyModule, type AdminOps } from './modules/tenancy.module.ts';
 
@@ -25,7 +26,7 @@ export interface Application {
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
  * Thứ tự dựng theo phụ thuộc: tenancy -> apps (cần findOrganization); subscriptions -> directory
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
- * -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, delivery).
+ * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, delivery).
  */
 export interface ApplicationOverrides {
   /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
@@ -42,6 +43,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     findUser: directory.findUser,
     setOptedOutOptional: subscriptions.setOptedOutOptional,
   });
+  const templates = templatesModule(container, { appQueries: apps.appQueries });
   const delivery = deliveryModule(container, overrides);
   const notifications = notificationsModule(container, {
     findUser: directory.findUser,
@@ -59,6 +61,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
       subscriptions.definition,
       directory.definition,
       topics.definition,
+      templates,
       delivery.definition,
       notifications.definition,
       audit,

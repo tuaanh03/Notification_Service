@@ -51,9 +51,10 @@ bằng mảng `as const` trong `src/shared/kernel/enums.ts`, vừa suy ra union 
 trước khi code.** Phạm vi đã rút gọn: chỉ email, gửi từng người theo `external_id`, at-most-once,
 nội dung trực tiếp (chưa template), consent kiểm ở worker. Xong GĐ 0 (nền), GĐ 1 (user + email),
 GĐ 2 (topic + preference), GĐ 3 (gửi end-to-end bằng `MockEmailProvider`), GĐ 4 (provider
-Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Tiếp theo: mục 12 "Sau MVP" của plan.
+Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm mục 12 "Sau MVP" của plan:
+`templates` (ADR-0020) — xong GĐ 1 (admin soạn / xuất bản), tiếp theo GĐ 2 (app gửi bằng `templateId` + `payload`) rồi GĐ 3 (nối console).
 
-Có trong repo: domain model 10 module · schema MySQL + 4 migration · hạ tầng dùng chung (config, db,
+Có trong repo: domain model 10 module · schema MySQL + 7 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
@@ -67,8 +68,9 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `GraphEmailProvider` + `MockEmailProvider` (chọn bằng `EMAIL_PROVIDER`), port `SendRateLimiter` (`EMAIL_MAX_PER_MINUTE`, đếm chung trên Redis) |
 | `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
+| `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản. Chưa có đường gửi bằng template ở `/v1` |
 
-`segments` và `templates` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
+`segments` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
 (`/auth/login` -> token mờ lưu băm trong `admin_sessions`); admin đầu tiên tạo bằng `admin-cli` chạy trong
 container, KHÔNG qua HTTP (ADR-0019 thay §4 của ADR-0015).
 
@@ -101,6 +103,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0017` | **READ COMMITTED** cho mọi connection — REPEATABLE READ phá mẫu "khoá rồi mới đọc" của ADR-0009 |
 | `0018` | Provider Microsoft Graph (client credentials, phân loại kết quả) + giới hạn tốc độ gửi trên Redis, chờ lượt trước tx1 |
 | `0019` | **Đăng nhập admin bằng phiên** (`admin_sessions`, token mờ + scrypt cho mật khẩu), bỏ `ADMIN_TOKEN`, admin đầu tiên tạo bằng `admin-cli` — **thay §4 của ADR-0015** |
+| `0020` | **Template**: app gửi bằng `templateId` (bỏ `key`), tên không trùng trong app, không binding topic, đổ biến lúc API nhận request, nháp lỏng / xuất bản chặt |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
