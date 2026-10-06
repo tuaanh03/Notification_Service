@@ -22,6 +22,11 @@ x-app-env: &app-env
   AI_API_URL: ${AI_API_URL:-}
   AI_API_KEY: ${AI_API_KEY:-}
   AI_MODEL: ${AI_MODEL:-}
+  # Đăng nhập console bằng Microsoft 365 (tuỳ chọn, ADR-0021) — đủ cả 4 hoặc trống cả 4.
+  M365_TENANT_ID: ${M365_TENANT_ID:-}
+  M365_CLIENT_ID: ${M365_CLIENT_ID:-}
+  M365_CLIENT_SECRET: ${M365_CLIENT_SECRET:-}
+  M365_REDIRECT_URI: ${M365_REDIRECT_URI:-}
 
 # Cùng một image cho mọi process; `pull_policy: build` để compose dựng tại chỗ thay vì đi pull
 # một image không có trên registry.

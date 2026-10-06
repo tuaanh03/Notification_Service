@@ -43,11 +43,18 @@ export const admins = mysqlTable(
      * — lùi image về bản cũ không cần lùi database.
      */
     passwordHash: varchar('password_hash', { length: 255 }),
+    /**
+     * Object ID (`oid`) của tài khoản Microsoft 365 đã gắn — NULL = chưa đăng nhập M365 lần nào (ADR-0021).
+     * Gắn ở lần đăng nhập M365 đầu tiên (khớp theo email), từ đó tra theo `oid`: email có thể đổi, `oid` thì không.
+     */
+    microsoftOid: varchar('microsoft_oid', { length: 36 }),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },
   (t) => [
     uniqueIndex('uq_admins_account_email').on(t.accountId, t.email),
+    // Một tài khoản Microsoft gắn với tối đa một admin. NULL lặp lại được (MySQL không coi NULL là trùng).
+    uniqueIndex('uq_admins_microsoft_oid').on(t.microsoftOid),
     // BẮT BUỘC: đích của composite FK (admin_id, account_id) trên admin_app_roles (ADR-0011).
     uniqueIndex('uq_admins_admin_account').on(t.adminId, t.accountId),
   ],

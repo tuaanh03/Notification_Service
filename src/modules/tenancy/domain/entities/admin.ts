@@ -1,6 +1,7 @@
 import {
   BaseEntity,
   normalizeEmail,
+  PermissionDeniedError,
   type AccountId,
   type AdminId,
   type AdminRole,
@@ -18,6 +19,8 @@ export interface AdminProps extends TimestampInput {
    * `null` = chưa đặt mật khẩu -> KHÔNG đăng nhập được. Khác hẳn "mật khẩu rỗng".
    */
   passwordHash?: string | null | undefined;
+  /** `oid` của tài khoản Microsoft 365 đã gắn (ADR-0021). `null` = chưa gắn. */
+  microsoftOid?: string | null | undefined;
 }
 
 /**
@@ -29,6 +32,7 @@ export class Admin extends BaseEntity<AdminId> {
   readonly email: NormalizedEmail;
   role: AdminRole;
   passwordHash: string | null;
+  microsoftOid: string | null;
 
   constructor(props: AdminProps) {
     super(props.id, props);
@@ -36,6 +40,7 @@ export class Admin extends BaseEntity<AdminId> {
     this.email = normalizeEmail(props.email);
     this.role = props.role;
     this.passwordHash = props.passwordHash ?? null;
+    this.microsoftOid = props.microsoftOid ?? null;
   }
 
   /** Chưa đặt mật khẩu thì không có đường đăng nhập nào — đặt bằng CLI (`admin-cli`). */
@@ -45,6 +50,18 @@ export class Admin extends BaseEntity<AdminId> {
 
   /** Gọi sau khi gán `passwordHash` mới: `updatedAt` là mốc đổi mật khẩu gần nhất. */
   markPasswordChanged(at: Date): void {
+    this.touch(at);
+  }
+
+  /**
+   * Gắn tài khoản Microsoft ở lần đăng nhập M365 đầu tiên. Đã gắn với tài khoản KHÁC thì không đè:
+   * email trùng chưa đủ để chuyển quyền sang một danh tính Microsoft khác (ADR-0021).
+   */
+  linkMicrosoft(oid: string, at: Date): void {
+    if (this.microsoftOid !== null && this.microsoftOid !== oid) {
+      throw new PermissionDeniedError('M365_ACCOUNT_MISMATCH', 'admin is linked to a different Microsoft account');
+    }
+    this.microsoftOid = oid;
     this.touch(at);
   }
 

@@ -80,4 +80,37 @@ describe('loadEnv — fail-fast', () => {
   it('kết quả bị freeze — không ai sửa cấu hình lúc đang chạy', () => {
     expect(Object.isFrozen(loadEnv(REQUIRED))).toBe(true);
   });
+
+  describe('đăng nhập M365 — đủ cả bốn biến hoặc trống cả bốn', () => {
+    const M365 = {
+      M365_TENANT_ID: '11111111-2222-3333-4444-555555555555',
+      M365_CLIENT_ID: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      M365_CLIENT_SECRET: 'x',
+      M365_REDIRECT_URI: 'https://console.test/auth/callback/microsoft',
+    };
+    const failingFields = (source: Record<string, string>) => {
+      try {
+        loadEnv({ ...REQUIRED, ...source });
+        return [];
+      } catch (err) {
+        return (err as ConfigError).issues.map((i) => i.split(':')[0]);
+      }
+    };
+
+    it('đủ cả bốn -> hợp lệ; trống cả bốn (chuỗi rỗng) -> tắt, cũng hợp lệ', () => {
+      expect(failingFields(M365)).toEqual([]);
+      expect(failingFields({ M365_TENANT_ID: '', M365_CLIENT_ID: '', M365_CLIENT_SECRET: '', M365_REDIRECT_URI: '' })).toEqual([]);
+    });
+
+    it('điền thiếu -> dừng khởi động, nêu đúng biến thiếu', () => {
+      expect(failingFields({ M365_TENANT_ID: M365.M365_TENANT_ID, M365_CLIENT_ID: M365.M365_CLIENT_ID })).toEqual([
+        'M365_CLIENT_SECRET',
+        'M365_REDIRECT_URI',
+      ]);
+    });
+
+    it('tenant ID phải là GUID, không nhận tên miền', () => {
+      expect(failingFields({ ...M365, M365_TENANT_ID: 'company.onmicrosoft.com' })).toEqual(['M365_TENANT_ID']);
+    });
+  });
 });

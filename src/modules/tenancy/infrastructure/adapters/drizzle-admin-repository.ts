@@ -1,4 +1,4 @@
-import { count, eq } from 'drizzle-orm';
+import { and, count, eq, isNull } from 'drizzle-orm';
 import type { TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AccountId,
@@ -10,6 +10,8 @@ import {
 import type { AdminRepository } from '../../application/ports/index.ts';
 import { Admin } from '../../domain/entities/admin.ts';
 import { admins } from '../db/schema.ts';
+
+type UpdateResult = [{ affectedRows: number }, unknown];
 
 export class DrizzleAdminRepository implements AdminRepository {
   private readonly transactions: TransactionContext;
@@ -28,6 +30,11 @@ export class DrizzleAdminRepository implements AdminRepository {
     return row ? toEntity(row) : null;
   }
 
+  async findByMicrosoftOid(oid: string): Promise<Admin | null> {
+    const [row] = await this.transactions.executor().select().from(admins).where(eq(admins.microsoftOid, oid));
+    return row ? toEntity(row) : null;
+  }
+
   async insert(admin: Admin): Promise<void> {
     await this.transactions.executor().insert(admins).values({
       adminId: admin.id,
@@ -35,6 +42,7 @@ export class DrizzleAdminRepository implements AdminRepository {
       email: admin.email,
       role: admin.role,
       passwordHash: admin.passwordHash,
+      microsoftOid: admin.microsoftOid,
       createdAt: admin.createdAt,
       updatedAt: admin.updatedAt,
     });
@@ -46,6 +54,15 @@ export class DrizzleAdminRepository implements AdminRepository {
       .update(admins)
       .set({ passwordHash: admin.passwordHash, updatedAt: admin.updatedAt })
       .where(eq(admins.adminId, admin.id));
+  }
+
+  async linkMicrosoft(admin: Admin): Promise<boolean> {
+    const [result] = (await this.transactions
+      .executor()
+      .update(admins)
+      .set({ microsoftOid: admin.microsoftOid, updatedAt: admin.updatedAt })
+      .where(and(eq(admins.adminId, admin.id), isNull(admins.microsoftOid)))) as unknown as UpdateResult;
+    return result.affectedRows === 1;
   }
 
   async countByAccount(accountId: AccountIdType): Promise<number> {
@@ -65,6 +82,7 @@ function toEntity(row: typeof admins.$inferSelect): Admin {
     email: row.email,
     role: row.role,
     passwordHash: row.passwordHash,
+    microsoftOid: row.microsoftOid,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

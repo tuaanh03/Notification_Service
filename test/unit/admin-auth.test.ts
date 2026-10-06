@@ -53,10 +53,16 @@ class FakeAdmins implements AdminRepository {
   async findByEmail(email: NormalizedEmail): Promise<Admin | null> {
     return this.rows.find((a) => a.email === email) ?? null;
   }
+  async findByMicrosoftOid(oid: string): Promise<Admin | null> {
+    return this.rows.find((a) => a.microsoftOid === oid) ?? null;
+  }
   async insert(admin: Admin): Promise<void> {
     this.rows.push(admin);
   }
   async updatePassword(): Promise<void> {}
+  async linkMicrosoft(): Promise<boolean> {
+    return true;
+  }
   async countByAccount(): Promise<number> {
     return this.rows.length;
   }

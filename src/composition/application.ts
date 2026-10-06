@@ -1,6 +1,7 @@
 import type { AdminAuthenticator, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
 import type { TemplateAiWriter } from '../modules/templates/application/index.ts';
+import type { MicrosoftIdentity } from '../modules/tenancy/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
 import type { ConsumerRegistration } from './consumer-registry.ts';
 import type { Container } from './container.ts';
@@ -34,10 +35,12 @@ export interface ApplicationOverrides {
   emailProvider?: EmailProvider | undefined;
   /** Test thay nhà cung cấp AI bằng bản giả — không gọi ra ngoài. */
   templateAiWriter?: TemplateAiWriter | undefined;
+  /** Test thay đăng nhập Microsoft bằng bản trỏ vào Microsoft giả. */
+  microsoftIdentity?: MicrosoftIdentity | undefined;
 }
 
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
-  const tenancy = tenancyModule(container);
+  const tenancy = tenancyModule(container, { microsoftIdentity: overrides.microsoftIdentity });
   const apps = appsModule(container, { findOrganization: tenancy.findOrganization });
   const subscriptions = subscriptionsModule(container);
   const directory = directoryModule(container, subscriptions);

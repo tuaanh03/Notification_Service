@@ -4,3 +4,6 @@ export * from './create-organization.ts';
 export * from './login-admin.ts';
 export * from './logout-admin.ts';
 export * from './set-admin-password.ts';
+export * from './issue-admin-session.ts';
+export * from './login-admin-with-microsoft.ts';
+export * from './start-microsoft-login.ts';

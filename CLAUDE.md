@@ -27,6 +27,7 @@ npm run email:test -- ban@company.com   # gửi MỘT thư thử qua EMAIL_PROVI
 
 docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
 docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin --email ban@company.com --account-name "EWS"
+docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin --email nv@company.com --login m365   # chỉ đăng nhập M365
 npx tsx --env-file-if-exists=.env src/entrypoints/admin-cli/main.ts list-accounts   # bản chạy từ source
 docker compose up -d --scale worker=3   # thêm worker
 docker compose up -d mysql redis # chỉ hạ tầng, để chạy `npm run dev` trên máy
@@ -72,7 +73,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản; `POST …/ai-compose` trả đề xuất của AI (không ghi DB, chỉ biến đã khai, 10 lần/phút/admin — ADR-0020 §7); `RenderTemplate` (đổ `payload` vào bản đang xuất bản) + `TemplateQueries.labelsOf` cho module khác |
 
 `segments` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
-(`/auth/login` -> token mờ lưu băm trong `admin_sessions`); admin đầu tiên tạo bằng `admin-cli` chạy trong
+(`/auth/login` hoặc Microsoft 365 qua `/auth/m365/*` — ADR-0021 -> token mờ lưu băm trong `admin_sessions`); admin đầu tiên tạo bằng `admin-cli` chạy trong
 container, KHÔNG qua HTTP (ADR-0019 thay §4 của ADR-0015).
 
 Phase 1 làm theo 4 lượt, mỗi lượt dừng để người dùng review:
@@ -105,6 +106,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0018` | Provider Microsoft Graph (client credentials, phân loại kết quả) + giới hạn tốc độ gửi trên Redis, chờ lượt trước tx1 |
 | `0019` | **Đăng nhập admin bằng phiên** (`admin_sessions`, token mờ + scrypt cho mật khẩu), bỏ `ADMIN_TOKEN`, admin đầu tiên tạo bằng `admin-cli` — **thay §4 của ADR-0015** |
 | `0020` | **Template**: app gửi bằng `templateId` (bỏ `key`), tên không trùng trong app, không binding topic, đổ biến lúc API nhận request (qua `RenderTemplate`, worker không đổi), nháp lỏng / xuất bản chặt, lỗi template đều 422; AI soạn gọi ở backend, chuẩn tương thích OpenAI, 3 biến `AI_*` |
+| `0021` | **Đăng nhập console bằng Microsoft 365**: OIDC + PKCE, backend giữ secret, App registration riêng (không dùng lại `GRAPH_*`), callback ở domain console, chỉ admin đã có (khớp email rồi gắn `microsoft_oid`); mật khẩu giữ làm dự phòng |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
 import { bearerToken, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
-import type { LoginAdmin, LogoutAdmin } from '../../application/commands/index.ts';
+import type { LoginAdmin, LoginAdminWithMicrosoft, LogoutAdmin, StartMicrosoftLogin } from '../../application/commands/index.ts';
 import type { AuthenticateAdminSession } from '../../application/queries/index.ts';
 
 const loginBody = z
@@ -10,6 +10,14 @@ const loginBody = z
     // Cố ý KHÔNG dùng z.email(): email sai định dạng cũng phải trả 401 như email không tồn tại.
     // Trả 422 ở đây là xác nhận hộ người dò rằng định dạng kia "hợp lệ nhưng không có trong hệ thống".
     password: z.string().min(1).max(200),
+  })
+  .strict();
+
+/** Microsoft trả `code` / `state` qua URL callback của console; console chuyển nguyên về đây. */
+const microsoftCallbackBody = z
+  .object({
+    code: z.string().min(1).max(4096),
+    state: z.string().min(1).max(200),
   })
   .strict();
 
@@ -27,6 +35,8 @@ export function authRoutes(useCases: {
   loginAdmin: LoginAdmin;
   logoutAdmin: LogoutAdmin;
   authenticateAdminSession: AuthenticateAdminSession;
+  startMicrosoftLogin: StartMicrosoftLogin;
+  loginAdminWithMicrosoft: LoginAdminWithMicrosoft;
 }): HttpRoutes {
   return (app) => {
     app.post('/auth/login', async (request, reply) => {
@@ -50,6 +60,24 @@ export function authRoutes(useCases: {
       const ctx: CommandContext = { actor: { id: adminId ?? 'unknown', type: 'admin' }, source: 'admin_api' };
       await useCases.logoutAdmin.execute({ token }, ctx);
       return reply.status(204).send();
+    });
+
+    // Đăng nhập Microsoft 365 (ADR-0021). Console hỏi trước để biết có hiện nút hay không.
+    app.get('/auth/m365', async (_request, reply) =>
+      reply.header('cache-control', 'no-store').send({ enabled: useCases.startMicrosoftLogin.configured }),
+    );
+
+    app.post('/auth/m365/start', async (_request, reply) => {
+      const result = await useCases.startMicrosoftLogin.execute();
+      return reply.header('cache-control', 'no-store').send(result);
+    });
+
+    app.post('/auth/m365/callback', async (request, reply) => {
+      const body = parseInput(microsoftCallbackBody, request.body);
+      // Chưa biết là ai cho tới khi Microsoft trả danh tính — use case tự thay actor bằng admin thật.
+      const ctx: CommandContext = { actor: { id: 'microsoft', type: 'admin' }, source: 'admin_api' };
+      const result = await useCases.loginAdminWithMicrosoft.execute(body, ctx);
+      return reply.header('cache-control', 'no-store').send(result);
     });
 
     app.get('/auth/me', async (request, reply) => {

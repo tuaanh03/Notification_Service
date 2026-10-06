@@ -18,8 +18,8 @@ const entries: [string, string][] = readFileSync(FILE, 'utf8')
   });
 const values = new Map(entries);
 
-/** Tên biến mang bí mật / định danh tổ chức — giá trị thật chỉ được ở `.env`. */
-const SENSITIVE = /SECRET|TOKEN|PASSWORD|PASS|CREDENTIAL|PRIVATE|_KEY$|^GRAPH_/;
+/** Tên biến mang bí mật / định danh tổ chức (GRAPH_*, M365_* mang tenant / client id) — giá trị thật chỉ được ở `.env`. */
+const SENSITIVE = /SECRET|TOKEN|PASSWORD|PASS|CREDENTIAL|PRIVATE|_KEY$|^GRAPH_|^M365_/;
 const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Chuỗi dài liền mạch kiểu secret / token (không phải URL, không có khoảng trắng). */
 const SECRET_LIKE = /^[A-Za-z0-9~_\-.+/=]{24,}$/;

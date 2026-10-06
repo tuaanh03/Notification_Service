@@ -35,11 +35,12 @@ export class CreateAdmin {
   }
 
   async execute(
-    input: { accountId: AccountId; email: string; password: string; role: AdminRole },
+    /** `password: null` = chỉ đăng nhập bằng Microsoft 365 (ADR-0021) — không có mật khẩu nào để đoán. */
+    input: { accountId: AccountId; email: string; password: string | null; role: AdminRole },
     ctx: CommandContext,
   ): Promise<AdminDto> {
     const { uow, outbox, clock, accounts, admins, passwords } = this.deps;
-    assertPasswordAllowed(input.password);
+    if (input.password !== null) assertPasswordAllowed(input.password);
 
     const email = normalizeEmail(input.email);
     if ((await accounts.findById(input.accountId)) === null) throw new NotFoundError('Account', input.accountId);
@@ -53,7 +54,7 @@ export class CreateAdmin {
       accountId: input.accountId,
       email,
       role: input.role,
-      passwordHash: await passwords.hash(input.password),
+      passwordHash: input.password === null ? null : await passwords.hash(input.password),
       createdAt: clock.now(),
     });
 
@@ -64,7 +65,7 @@ export class CreateAdmin {
           aggregateType: 'Admin',
           aggregateId: admin.id,
           eventType: 'AdminCreated',
-          payload: audited(ctx, { after: { email: admin.email, role: admin.role } }),
+          payload: audited(ctx, { after: { email: admin.email, role: admin.role, hasPassword: admin.passwordHash !== null } }),
         },
       ]);
       return toAdminDto(admin);

@@ -63,6 +63,17 @@ const EnvSchema = z.object({
   AI_API_URL: optional(z.url()),
   AI_API_KEY: optional(z.string().min(1)),
   AI_MODEL: optional(z.string().min(1)),
+  /**
+   * Đăng nhập console bằng Microsoft 365 (ADR-0021): App registration RIÊNG, chỉ quyền delegated
+   * `openid profile email` — KHÔNG dùng chung app `GRAPH_*` (app đó giữ quyền application Mail.Send).
+   * Bốn biến đi cùng nhau; để trống cả bốn = tắt, console chỉ còn đăng nhập mật khẩu.
+   */
+  /** Directory (tenant) ID dạng GUID — KHÔNG phải tên miền: token được so `tid` / `iss` theo đúng GUID này. */
+  M365_TENANT_ID: optional(z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'must be the Directory (tenant) ID GUID')),
+  M365_CLIENT_ID: optional(z.string().min(1)),
+  M365_CLIENT_SECRET: optional(z.string().min(1)),
+  /** Trang callback của CONSOLE (`https://<console>/auth/callback/microsoft`) — khớp từng ký tự với bản đăng ký trên Entra ID. */
+  M365_REDIRECT_URI: optional(z.url()),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -84,6 +95,8 @@ export class ConfigError extends Error {
 const REQUIRED_FOR_GRAPH = ['EMAIL_SENDER_ADDRESS', 'GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID', 'GRAPH_CLIENT_SECRET'] as const;
 /** Có khoá AI thì phải có nơi gọi và model — thiếu là dừng khởi động, không đợi tới lúc bấm nút. */
 const REQUIRED_FOR_AI = ['AI_API_URL', 'AI_MODEL'] as const;
+/** Đăng nhập M365 cần đủ cả bốn biến — thiếu một là dừng khởi động, không để nút bấm hỏng giữa chừng. */
+const M365_KEYS = ['M365_TENANT_ID', 'M365_CLIENT_ID', 'M365_CLIENT_SECRET', 'M365_REDIRECT_URI'] as const;
 const CheckedEnvSchema = EnvSchema.superRefine((env, ctx) => {
   if (env.EMAIL_PROVIDER === 'graph') {
     for (const key of REQUIRED_FOR_GRAPH) {
@@ -93,6 +106,11 @@ const CheckedEnvSchema = EnvSchema.superRefine((env, ctx) => {
   if (env.AI_API_KEY !== undefined) {
     for (const key of REQUIRED_FOR_AI) {
       if (env[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'required when AI_API_KEY is set' });
+    }
+  }
+  if (M365_KEYS.some((key) => env[key] !== undefined)) {
+    for (const key of M365_KEYS) {
+      if (env[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'required when any M365_* is set' });
     }
   }
 });

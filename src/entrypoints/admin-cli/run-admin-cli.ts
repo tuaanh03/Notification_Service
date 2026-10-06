@@ -17,10 +17,13 @@ import type { Env } from '../../shared/config/index.ts';
 const USAGE = `admin-cli — quản trị admin, chạy trong container
 
   create-admin   --email <email> [--account <id>] [--account-name <tên>] [--role super_admin|app_admin]
+                 [--login password|m365]
   reset-password --email <email>
   list-accounts
 
 Mật khẩu nhập qua stdin (nhắc 2 lần), không truyền bằng tham số.
+--login m365: không đặt mật khẩu — người này chỉ đăng nhập bằng Microsoft 365 (khớp theo email).
+Đặt mật khẩu sau được bằng reset-password.
 Chưa có account nào thì create-admin cần --account-name để tạo account đầu tiên.
 Có đúng một account thì tự chọn account đó, không cần --account.`;
 
@@ -144,10 +147,15 @@ export async function runAdminCli(env: Env, argv: readonly string[]): Promise<nu
         const email = flags.get('email');
         if (email === undefined) throw new Error('thiếu --email');
         const role = parseRole(flags.get('role'));
-        const password = await readValidPassword(app);
+        const login = flags.get('login') ?? 'password';
+        if (login !== 'password' && login !== 'm365') throw new Error('--login phải là password | m365');
+        const password = login === 'm365' ? null : await readValidPassword(app);
         const accountId = await resolveAccount(app, flags);
         const admin = await app.adminOps.createAdmin.execute({ accountId, email, password, role }, ctx);
-        process.stdout.write(`đã tạo admin ${admin.email} (${admin.role}) trong account ${admin.accountId}\n`);
+        process.stdout.write(
+          `đã tạo admin ${admin.email} (${admin.role}) trong account ${admin.accountId}` +
+            (password === null ? ' — chỉ đăng nhập bằng Microsoft 365\n' : '\n'),
+        );
         return 0;
       }
       case 'reset-password': {

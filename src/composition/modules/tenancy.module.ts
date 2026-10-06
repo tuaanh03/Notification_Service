@@ -8,15 +8,21 @@ import {
   FindOrganization,
   ListAccounts,
   LoginAdmin,
+  LoginAdminWithMicrosoft,
   LogoutAdmin,
   SetAdminPassword,
+  StartMicrosoftLogin,
+  type MicrosoftIdentity,
 } from '../../modules/tenancy/application/index.ts';
 import {
   DrizzleAccountRepository,
   DrizzleAdminRepository,
   DrizzleAdminSessionRepository,
   DrizzleOrganizationRepository,
+  DisabledMicrosoftIdentity,
+  EntraIdMicrosoftIdentity,
   RandomSessionTokenFactory,
+  RedisLoginStateStore,
   ScryptPasswordHasher,
 } from '../../modules/tenancy/infrastructure/adapters/index.ts';
 import { adminTenancyRoutes, authRoutes, SessionAdminAuthenticator } from '../../modules/tenancy/interface/index.ts';
@@ -29,6 +35,8 @@ import type { ModuleDefinition } from '../module-definition.ts';
  * để mỗi môi trường tự chỉnh. Đổi thì đổi ở đây, có lịch sử git.
  */
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+/** Chờ Microsoft tối đa 8 giây mỗi lời gọi — dưới hạn 10 giây console chờ backend. */
+const M365_TIMEOUT_MS = 8_000;
 
 /**
  * Việc chỉ CLI gọi — KHÔNG có route HTTP nào (`entrypoints/admin-cli`).
@@ -54,7 +62,10 @@ export interface AdminOps {
  *   `adminAuthenticator` — xác thực MỌI route `/admin/*`.
  *   `adminOps`           — use case cho CLI.
  */
-export function tenancyModule(container: Container): {
+export function tenancyModule(
+  container: Container,
+  dependencies: { microsoftIdentity?: MicrosoftIdentity | undefined } = {},
+): {
   definition: ModuleDefinition;
   findOrganization: FindOrganization;
   adminAuthenticator: SessionAdminAuthenticator;
@@ -77,6 +88,8 @@ export function tenancyModule(container: Container): {
 
   const authenticateAdminSession = new AuthenticateAdminSession({ clock, admins, sessions, tokens });
   const createAccount = new CreateAccount({ uow, outbox, clock, accounts });
+  const sessionDeps = { uow, outbox, clock, sessions, tokens, sessionTtlMs: SESSION_TTL_MS };
+  const microsoftIdentity = dependencies.microsoftIdentity ?? selectMicrosoftIdentity(container);
 
   return {
     findOrganization,
@@ -107,6 +120,8 @@ export function tenancyModule(container: Container): {
             }),
             logoutAdmin: new LogoutAdmin({ uow, outbox, sessions, tokens }),
             authenticateAdminSession,
+            startMicrosoftLogin: new StartMicrosoftLogin({ identity: microsoftIdentity }),
+            loginAdminWithMicrosoft: new LoginAdminWithMicrosoft({ ...sessionDeps, identity: microsoftIdentity, admins }),
           }),
         ],
         admin: [
@@ -119,4 +134,21 @@ export function tenancyModule(container: Container): {
       },
     },
   };
+}
+
+/** Đủ bốn biến `M365_*` (env đã ép đủ-hoặc-trống) -> Entra ID; trống -> tắt, console chỉ còn mật khẩu. */
+function selectMicrosoftIdentity(container: Container): MicrosoftIdentity {
+  const { M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_REDIRECT_URI } = container.env;
+  if (!M365_TENANT_ID || !M365_CLIENT_ID || !M365_CLIENT_SECRET || !M365_REDIRECT_URI) return new DisabledMicrosoftIdentity();
+  return new EntraIdMicrosoftIdentity({
+    config: {
+      tenantId: M365_TENANT_ID,
+      clientId: M365_CLIENT_ID,
+      clientSecret: M365_CLIENT_SECRET,
+      redirectUri: M365_REDIRECT_URI,
+      timeoutMs: M365_TIMEOUT_MS,
+    },
+    states: new RedisLoginStateStore({ redis: container.infra.redis.client }),
+    clock: container.ports.clock,
+  });
 }
