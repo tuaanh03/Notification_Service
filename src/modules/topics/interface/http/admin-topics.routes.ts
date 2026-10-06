@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { adminCaller, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
-import { AppId, TOPIC_DEFAULT_MODES } from '../../../../shared/kernel/index.ts';
+import { access, adminCaller, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { AppId, TOPIC_DEFAULT_MODES, type Permission } from '../../../../shared/kernel/index.ts';
 import type { CreateTopic, GetUserPreferences, TopicQueries, TransitionTopic } from '../../application/index.ts';
 
 /** Key dùng trong API gửi (`topic: "order_updates"`): chữ thường, số, `_ . -`, bắt đầu bằng chữ. */
@@ -19,6 +19,13 @@ const createBody = z
   })
   .strict();
 
+/**
+ * Topic bắt buộc bỏ qua quyền tắt thư của người nhận -> chỉ Super Admin đặt được (ADR-0022).
+ * Đội app tạo topic thường; yêu cầu bật bắt buộc qua Super Admin (task RBAC GĐ 3).
+ */
+const createPermission = (request: { body: unknown }): Permission =>
+  (request.body as { mandatory?: unknown } | undefined)?.mandatory === true ? 'topic.mandatory' : 'app.manage';
+
 /** `/admin/apps/:appId/topics` — CHỈ admin tạo topic và đặt `mandatory` (ADR-0016 D6). */
 export function adminTopicsRoutes(useCases: {
   createTopic: CreateTopic;
@@ -32,18 +39,18 @@ export function adminTopicsRoutes(useCases: {
       source: 'admin_api',
     });
 
-    app.post('/apps/:appId/topics', async (request, reply) => {
+    app.post('/apps/:appId/topics', { config: access(createPermission) }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const body = parseInput(createBody, request.body);
       return reply.status(201).send(await useCases.createTopic.execute({ appId: AppId.parse(appId), ...body }, ctx(request)));
     });
 
-    app.get('/apps/:appId/topics', async (request) => {
+    app.get('/apps/:appId/topics', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.queries.listForAdmin(AppId.parse(appId));
     });
 
-    app.post('/apps/:appId/topics/:key/:action', async (request) => {
+    app.post('/apps/:appId/topics/:key/:action', { config: access('app.manage') }, async (request) => {
       const { appId, key, action } = parseInput(actionParams, request.params);
       return useCases.transitionTopic.execute({ appId: AppId.parse(appId), key, transition: action }, ctx(request));
     });
@@ -57,7 +64,7 @@ export function adminTopicsRoutes(useCases: {
      *
      * KHÔNG có bản PUT ở đây: admin không sửa consent hộ người dùng.
      */
-    app.get('/apps/:appId/users/:externalId/preferences', async (request) => {
+    app.get('/apps/:appId/users/:externalId/preferences', { config: access('app.read') }, async (request) => {
       const { appId, externalId } = parseInput(userParams, request.params);
       return useCases.getUserPreferences.execute({ appId: AppId.parse(appId), externalId });
     });

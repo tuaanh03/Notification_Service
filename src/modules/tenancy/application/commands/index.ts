@@ -7,3 +7,4 @@ export * from './set-admin-password.ts';
 export * from './issue-admin-session.ts';
 export * from './login-admin-with-microsoft.ts';
 export * from './start-microsoft-login.ts';
+export * from './set-org-member.ts';

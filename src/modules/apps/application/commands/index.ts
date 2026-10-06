@@ -5,3 +5,4 @@ export * from './issue-app-secret.ts';
 export * from './manage-network-rules.ts';
 export * from './revoke-app-secret.ts';
 export * from './transition-app.ts';
+export * from './grant-app-role.ts';

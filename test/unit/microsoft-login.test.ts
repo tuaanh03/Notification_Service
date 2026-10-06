@@ -88,7 +88,7 @@ const copy = (a: Admin, microsoftOid: string | null) =>
   new Admin({ id: a.id, accountId: a.accountId, email: a.email, role: a.role, microsoftOid, createdAt: NOW });
 
 const admin = (email: string, microsoftOid: string | null = null) =>
-  new Admin({ id: AdminId.create(), accountId: AccountId.create(), email, role: 'app_admin', microsoftOid, createdAt: NOW });
+  new Admin({ id: AdminId.create(), accountId: AccountId.create(), email, role: 'user', microsoftOid, createdAt: NOW });
 
 const identityReturning = (profile: MicrosoftProfile): MicrosoftIdentity => ({
   configured: true,

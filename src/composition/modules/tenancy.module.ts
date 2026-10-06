@@ -6,11 +6,13 @@ import {
   CreateOrganization,
   DUMMY_PASSWORD,
   FindOrganization,
+  FindOrgMemberships,
   ListAccounts,
   LoginAdmin,
   LoginAdminWithMicrosoft,
   LogoutAdmin,
   SetAdminPassword,
+  SetOrgMember,
   StartMicrosoftLogin,
   type MicrosoftIdentity,
 } from '../../modules/tenancy/application/index.ts';
@@ -19,6 +21,7 @@ import {
   DrizzleAdminRepository,
   DrizzleAdminSessionRepository,
   DrizzleOrganizationRepository,
+  DrizzleOrgMemberRepository,
   DisabledMicrosoftIdentity,
   EntraIdMicrosoftIdentity,
   RandomSessionTokenFactory,
@@ -54,11 +57,14 @@ export interface AdminOps {
   listAccounts: ListAccounts;
   createAdmin: CreateAdmin;
   setAdminPassword: SetAdminPassword;
+  /** Thêm người vào org / đổi vai (ADR-0022). Màn Thành viên trên console là task 1.5. */
+  setOrgMember: SetOrgMember;
 }
 
 /**
- * Ghép module tenancy. Trả thêm ba cửa công khai:
+ * Ghép module tenancy. Trả thêm bốn cửa công khai:
  *   `findOrganization`   — cho module apps (qua adapter của nó).
+ *   `findOrgMemberships` — vai trong org, cho lớp kiểm quyền của module apps (ADR-0022).
  *   `adminAuthenticator` — xác thực MỌI route `/admin/*`.
  *   `adminOps`           — use case cho CLI.
  */
@@ -68,6 +74,7 @@ export function tenancyModule(
 ): {
   definition: ModuleDefinition;
   findOrganization: FindOrganization;
+  findOrgMemberships: FindOrgMemberships;
   adminAuthenticator: SessionAdminAuthenticator;
   adminOps: AdminOps;
 } {
@@ -80,6 +87,7 @@ export function tenancyModule(
   const sessions = new DrizzleAdminSessionRepository({ transactions });
   const passwords = new ScryptPasswordHasher();
   const tokens = new RandomSessionTokenFactory();
+  const members = new DrizzleOrgMemberRepository({ transactions });
   const findOrganization = new FindOrganization({ organizations });
 
   // Băm MỘT lần lúc khởi động để `LoginAdmin` luôn tốn chừng đó thời gian, kể cả khi email không
@@ -93,6 +101,7 @@ export function tenancyModule(
 
   return {
     findOrganization,
+    findOrgMemberships: new FindOrgMemberships({ members, admins }),
     adminAuthenticator: new SessionAdminAuthenticator({ authenticateAdminSession }),
     adminOps: {
       assertPasswordAllowed,
@@ -100,6 +109,7 @@ export function tenancyModule(
       listAccounts: new ListAccounts({ accounts }),
       createAdmin: new CreateAdmin({ uow, outbox, clock, accounts, admins, passwords }),
       setAdminPassword: new SetAdminPassword({ uow, outbox, clock, admins, sessions, passwords }),
+      setOrgMember: new SetOrgMember({ uow, outbox, clock, organizations, admins, members }),
     },
     definition: {
       name: 'tenancy',

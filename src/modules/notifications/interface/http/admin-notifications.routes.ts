@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AppId, NOTIFICATION_STATUSES } from '../../../../shared/kernel/index.ts';
 import { MAX_NOTIFICATION_PAGE, type GetAppOverview, type ListNotifications } from '../../application/index.ts';
 
@@ -25,13 +25,13 @@ const listQuery = z.object({
  */
 export function adminNotificationsRoutes(useCases: { list: ListNotifications; overview: GetAppOverview }): HttpRoutes {
   return (app) => {
-    app.get('/apps/:appId/notifications', async (request) => {
+    app.get('/apps/:appId/notifications', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       const { limit, offset, status, topic, externalId } = parseInput(listQuery, request.query);
       return useCases.list.execute({ appId: AppId.parse(appId), limit, offset, status, topic, externalId });
     });
 
-    app.get('/apps/:appId/overview', async (request) => {
+    app.get('/apps/:appId/overview', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.overview.execute({ appId: AppId.parse(appId) });
     });

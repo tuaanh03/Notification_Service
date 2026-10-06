@@ -1,13 +1,15 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, adminAccess, adminCaller, parseInput, type HttpRoutes, type RouteTarget } from '../../../../shared/http/index.ts';
 import {
   APP_ORIGINS,
   AppId,
   AppSecretId,
   CHANNELS,
+  decide,
   NETWORK_RULE_KINDS,
   OrgId,
+  type Permission,
 } from '../../../../shared/kernel/index.ts';
 import type {
   AddNetworkRule,
@@ -52,6 +54,16 @@ const approveBody = z
     maxRecipientsPerEvent: z.number().int().positive().default(1000),
   })
   .strict();
+/** Gửi duyệt là việc của đội app; duyệt / từ chối / tạm ngưng / mở lại / thu hồi là của Super Admin. */
+const transitionPermission = (request: { params: unknown }): Permission =>
+  (request.params as { action?: string }).action === 'submit' ? 'app.manage' : 'app.review';
+/** Org nằm ở query (`GET /apps?orgId=`) hoặc body (`POST /apps`), không ở path. */
+const orgFrom =
+  (where: 'query' | 'body') =>
+  (request: { query: unknown; body: unknown }): RouteTarget => {
+    const orgId = (request[where] as { orgId?: unknown } | undefined)?.orgId;
+    return typeof orgId === 'string' ? { kind: 'org', orgId } : { kind: 'none' };
+  };
 const ruleBody = z.object({ kind: z.enum(NETWORK_RULE_KINDS), value: z.string().trim().min(1).max(255) }).strict();
 
 export interface AdminAppsUseCases {
@@ -76,29 +88,32 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
       source: 'admin_api',
     });
 
-    app.post('/apps', async (request, reply) => {
+    app.post('/apps', { config: access('app.create', orgFrom('body')) }, async (request, reply) => {
       const body = parseInput(createBody, request.body);
       const created = await useCases.createApp.execute({ ...body, orgId: OrgId.parse(body.orgId) }, ctx(request));
       return reply.status(201).send(created);
     });
 
-    app.get('/apps', async (request) => {
+    // Owner / Org Admin thấy mọi app của org; Member chỉ thấy app mình được cấp vai.
+    app.get('/apps', { config: access('org.read', orgFrom('query')) }, async (request) => {
       const { orgId } = parseInput(listQuery, request.query);
-      return useCases.queries.listByOrg(OrgId.parse(orgId));
+      const visible = adminAccess(request);
+      const apps = await useCases.queries.listByOrg(OrgId.parse(orgId));
+      return apps.filter((a) => decide(visible, 'app.read', { orgId, appId: a.id }) === 'allow');
     });
 
-    app.get('/apps/:appId', async (request) => {
+    app.get('/apps/:appId', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.queries.get(AppId.parse(appId));
     });
 
-    app.post('/apps/:appId/approve', async (request) => {
+    app.post('/apps/:appId/approve', { config: access('app.review') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       const grant = parseInput(approveBody, request.body);
       return useCases.approveApp.execute({ appId: AppId.parse(appId), grant }, ctx(request));
     });
 
-    app.post('/apps/:appId/:action', async (request) => {
+    app.post('/apps/:appId/:action', { config: access(transitionPermission) }, async (request) => {
       const { appId, action } = parseInput(transitionParams, request.params);
       const { reason } = parseInput(reasonBody, request.body ?? {});
       return useCases.transitionApp.execute(
@@ -107,19 +122,19 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
       );
     });
 
-    app.get('/apps/:appId/secrets', async (request) => {
+    app.get('/apps/:appId/secrets', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.queries.listSecrets(AppId.parse(appId));
     });
 
     // Response DUY NHẤT chứa plaintext API key (UC-001 BR-4) — không cache.
-    app.post('/apps/:appId/secrets', async (request, reply) => {
+    app.post('/apps/:appId/secrets', { config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const issued = await useCases.issueAppSecret.execute({ appId: AppId.parse(appId) }, ctx(request));
       return reply.status(201).header('cache-control', 'no-store').send(issued);
     });
 
-    app.delete('/apps/:appId/secrets/:secretId', async (request) => {
+    app.delete('/apps/:appId/secrets/:secretId', { config: access('app.manage') }, async (request) => {
       const { appId, secretId } = parseInput(secretParams, request.params);
       return useCases.revokeAppSecret.execute(
         { appId: AppId.parse(appId), secretId: AppSecretId.parse(secretId) },
@@ -127,18 +142,18 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
       );
     });
 
-    app.get('/apps/:appId/network-rules', async (request) => {
+    app.get('/apps/:appId/network-rules', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.queries.listNetworkRules(AppId.parse(appId));
     });
 
-    app.post('/apps/:appId/network-rules', async (request, reply) => {
+    app.post('/apps/:appId/network-rules', { config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const rule = parseInput(ruleBody, request.body);
       return reply.status(201).send(await useCases.addNetworkRule.execute({ appId: AppId.parse(appId), ...rule }, ctx(request)));
     });
 
-    app.delete('/apps/:appId/network-rules', async (request, reply) => {
+    app.delete('/apps/:appId/network-rules', { config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const rule = parseInput(ruleBody, request.query);
       await useCases.removeNetworkRule.execute({ appId: AppId.parse(appId), ...rule }, ctx(request));

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AccountId, NotFoundError, OrgId } from '../../../../shared/kernel/index.ts';
 import type { CreateAccount, CreateOrganization, FindOrganization } from '../../application/index.ts';
 
@@ -23,12 +23,12 @@ export function adminTenancyRoutes(useCases: {
       source: 'admin_api',
     });
 
-    app.post('/accounts', async (request, reply) => {
+    app.post('/accounts', { config: access('platform.manage') }, async (request, reply) => {
       const body = parseInput(nameBody, request.body);
       return reply.status(201).send(await useCases.createAccount.execute(body, ctx(request)));
     });
 
-    app.post('/accounts/:accountId/organizations', async (request, reply) => {
+    app.post('/accounts/:accountId/organizations', { config: access('platform.manage') }, async (request, reply) => {
       const { accountId } = parseInput(accountParams, request.params);
       const body = parseInput(nameBody, request.body);
       const org = await useCases.createOrganization.execute(
@@ -38,7 +38,7 @@ export function adminTenancyRoutes(useCases: {
       return reply.status(201).send(org);
     });
 
-    app.get('/organizations/:orgId', async (request) => {
+    app.get('/organizations/:orgId', { config: access('org.read') }, async (request) => {
       const { orgId } = parseInput(orgParams, request.params);
       const org = await useCases.findOrganization.execute(OrgId.parse(orgId));
       if (!org) throw new NotFoundError('organization', orgId);

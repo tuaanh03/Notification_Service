@@ -3,3 +3,5 @@ export * from './drizzle-app-repository.ts';
 export * from './drizzle-app-secret-repository.ts';
 export * from './drizzle-network-rule-repository.ts';
 export * from './tenancy-organization-lookup.ts';
+export * from './drizzle-admin-app-role-repository.ts';
+export * from './tenancy-membership-lookup.ts';

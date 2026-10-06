@@ -33,6 +33,7 @@ export async function startApi(
       { name: 'redis', check: () => pingRedis(redis) },
     ],
     authenticators: application.authenticators,
+    adminAuthorizer: application.adminAuthorizer,
     surfaces: {
       public: [...surfaces.public, ...(extra.public ?? [])],
       admin: [...surfaces.admin, ...(extra.admin ?? [])],

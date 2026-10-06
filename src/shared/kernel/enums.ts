@@ -74,8 +74,20 @@ export const PREFERENCE_SOURCES = [
 ] as const;
 export type PreferenceSource = (typeof PREFERENCE_SOURCES)[number];
 
-export const ADMIN_ROLES = ['super_admin', 'app_admin'] as const;
+/**
+ * Vai trò trên TOÀN HỆ THỐNG (cột `admins.role`, ADR-0022). Chỉ Super Admin có quyền hệ thống;
+ * mọi người khác là `user` — quyền của họ đến từ vai trong org (`ORG_ROLES`) và trong app (`APP_ROLES`).
+ */
+export const ADMIN_ROLES = ['super_admin', 'user'] as const;
 export type AdminRole = (typeof ADMIN_ROLES)[number];
+
+/** Vai trong một org (`org_members.role`), cao xuống thấp. Org luôn còn ít nhất một `owner`. */
+export const ORG_ROLES = ['owner', 'org_admin', 'member'] as const;
+export type OrgRole = (typeof ORG_ROLES)[number];
+
+/** Vai trên một app (`admin_app_roles.role`) — chỉ cấp được cho thành viên của org sở hữu app. */
+export const APP_ROLES = ['app_admin', 'app_viewer'] as const;
+export type AppRole = (typeof APP_ROLES)[number];
 
 export const USER_SOURCES = ['directory', 'import', 'self', 'api'] as const;
 export type UserSource = (typeof USER_SOURCES)[number];

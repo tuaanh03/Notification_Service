@@ -76,7 +76,7 @@ beforeAll(async () => {
   const account = await application.adminOps.createAccount.execute({ name: 'M365' }, ctx);
   // Chỉ M365, không mật khẩu — đúng đường `admin-cli create-admin --login m365`.
   await application.adminOps.createAdmin.execute(
-    { accountId: AccountId.parse(account.id), email: 'An@Company.com', password: null, role: 'app_admin' },
+    { accountId: AccountId.parse(account.id), email: 'An@Company.com', password: null, role: 'user' },
     ctx,
   );
 });

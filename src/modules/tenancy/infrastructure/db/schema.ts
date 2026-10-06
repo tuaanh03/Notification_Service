@@ -1,5 +1,5 @@
-import { index, mysqlEnum, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
-import { ADMIN_ROLES } from '../../../../shared/kernel/enums.ts';
+import { foreignKey, index, mysqlEnum, mysqlTable, primaryKey, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { ADMIN_ROLES, ORG_ROLES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 
 export const accounts = mysqlTable('accounts', {
@@ -36,7 +36,7 @@ export const admins = mysqlTable(
       .notNull()
       .references(() => accounts.accountId),
     email: varchar('email', { length: 320 }).notNull(),
-    role: mysqlEnum('role', ADMIN_ROLES).notNull().default('app_admin'),
+    role: mysqlEnum('role', ADMIN_ROLES).notNull().default('user'),
     /**
      * NULL = chưa đặt mật khẩu -> không đăng nhập được. Cho phép NULL là CÓ CHỦ ĐÍCH: migration
      * thêm cột này không phải bịa mật khẩu cho dòng cũ, và nhờ vậy migration chỉ THÊM, không sửa
@@ -57,6 +57,41 @@ export const admins = mysqlTable(
     uniqueIndex('uq_admins_microsoft_oid').on(t.microsoftOid),
     // BẮT BUỘC: đích của composite FK (admin_id, account_id) trên admin_app_roles (ADR-0011).
     uniqueIndex('uq_admins_admin_account').on(t.adminId, t.accountId),
+  ],
+);
+
+/**
+ * Thành viên của org và vai của họ (ADR-0022). Một người thuộc nhiều org được, mỗi org một vai.
+ *
+ * Hai composite FK cùng mẫu ADR-0011: org và admin phải cùng account, nếu không INSERT bị từ chối
+ * ngay ở DB. Đích là `uq_organizations_org_account` và `uq_admins_admin_account` — đừng xoá.
+ * "Org luôn còn ít nhất một owner" MySQL không ép được: command khoá dòng org rồi mới đếm (ADR-0009).
+ */
+export const orgMembers = mysqlTable(
+  'org_members',
+  {
+    orgId: uuid('org_id').notNull(),
+    adminId: uuid('admin_id').notNull(),
+    /** Denormalize để ép được hai composite FK bên dưới. */
+    accountId: uuid('account_id').notNull(),
+    role: mysqlEnum('role', ORG_ROLES).notNull(),
+    createdAt: tsNow('created_at'),
+    updatedAt: tsNow('updated_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.orgId, t.adminId] }),
+    // Mỗi request `/admin` tra mọi org của người gọi.
+    index('idx_org_members_admin').on(t.adminId),
+    foreignKey({
+      name: 'fk_org_members_org_account',
+      columns: [t.orgId, t.accountId],
+      foreignColumns: [organizations.orgId, organizations.accountId],
+    }),
+    foreignKey({
+      name: 'fk_org_members_admin_account',
+      columns: [t.adminId, t.accountId],
+      foreignColumns: [admins.adminId, admins.accountId],
+    }),
   ],
 );
 

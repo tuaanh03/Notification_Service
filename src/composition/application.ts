@@ -1,4 +1,4 @@
-import type { AdminAuthenticator, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
+import type { AdminAuthenticator, AdminAuthorizer, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
 import type { TemplateAiWriter } from '../modules/templates/application/index.ts';
 import type { MicrosoftIdentity } from '../modules/tenancy/application/index.ts';
@@ -15,13 +15,16 @@ import { subscriptionsModule } from './modules/subscriptions.module.ts';
 import { templatesModule } from './modules/templates.module.ts';
 import { topicsModule } from './modules/topics.module.ts';
 import { tenancyModule, type AdminOps } from './modules/tenancy.module.ts';
+import type { GrantAppRole } from '../modules/apps/application/index.ts';
 
 /** Toàn bộ nghiệp vụ đã ghép, sẵn sàng cắm vào process. */
 export interface Application {
   readonly modules: readonly ModuleDefinition[];
   readonly authenticators: { readonly apiKey: ApiKeyAuthenticator; readonly admin: AdminAuthenticator };
+  /** Kiểm quyền mọi route `/admin/*` (ADR-0022) — do module apps hiện thực. */
+  readonly adminAuthorizer: AdminAuthorizer;
   /** Việc quản trị KHÔNG có route HTTP — chỉ `entrypoints/admin-cli` gọi (tạo admin đầu tiên). */
-  readonly adminOps: AdminOps;
+  readonly adminOps: AdminOps & { grantAppRole: GrantAppRole };
 }
 
 /**
@@ -41,7 +44,7 @@ export interface ApplicationOverrides {
 
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
   const tenancy = tenancyModule(container, { microsoftIdentity: overrides.microsoftIdentity });
-  const apps = appsModule(container, { findOrganization: tenancy.findOrganization });
+  const apps = appsModule(container, { findOrganization: tenancy.findOrganization, findOrgMemberships: tenancy.findOrgMemberships });
   const subscriptions = subscriptionsModule(container);
   const directory = directoryModule(container, subscriptions);
   const topics = topicsModule(container, {
@@ -78,7 +81,8 @@ export function buildApplication(container: Container, overrides: ApplicationOve
       apiKey: apps.apiKeyAuthenticator,
       admin: tenancy.adminAuthenticator,
     },
-    adminOps: tenancy.adminOps,
+    adminAuthorizer: apps.adminAuthorizer,
+    adminOps: { ...tenancy.adminOps, grantAppRole: apps.grantAppRole },
   };
 }
 

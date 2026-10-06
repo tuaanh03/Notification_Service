@@ -3,7 +3,9 @@ import {
   AppQueries,
   ApproveApp,
   AuthenticateApiKey,
+  AuthorizeAdmin,
   CreateApp,
+  GrantAppRole,
   IssueAppSecret,
   RemoveNetworkRule,
   RevokeAppSecret,
@@ -11,25 +13,34 @@ import {
 } from '../../modules/apps/application/index.ts';
 import {
   CryptoApiKeyService,
+  DrizzleAdminAppRoleRepository,
   DrizzleAppRepository,
   DrizzleAppSecretRepository,
   DrizzleNetworkRuleRepository,
+  TenancyMembershipLookup,
   TenancyOrganizationLookup,
 } from '../../modules/apps/infrastructure/adapters/index.ts';
-import { adminAppsRoutes, AppsApiKeyAuthenticator, v1AppsRoutes } from '../../modules/apps/interface/index.ts';
-import type { FindOrganization } from '../../modules/tenancy/application/index.ts';
-import type { ApiKeyAuthenticator } from '../../shared/http/index.ts';
+import { adminAppsRoutes, AppsAdminAuthorizer, AppsApiKeyAuthenticator, v1AppsRoutes } from '../../modules/apps/interface/index.ts';
+import type { FindOrganization, FindOrgMemberships } from '../../modules/tenancy/application/index.ts';
+import type { AdminAuthorizer, ApiKeyAuthenticator } from '../../shared/http/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
 
 /**
  * Ghép module apps: adapter -> use case -> route. Ngoài route, apps còn cung cấp `apiKeyAuthenticator`
- * — cổng xác thực cho TOÀN BỘ bề mặt `/v1`, của mọi module.
+ * — cổng xác thực cho TOÀN BỘ bề mặt `/v1` — và `adminAuthorizer` — cổng kiểm quyền cho TOÀN BỘ
+ * bề mặt `/admin` (ADR-0022), của mọi module. `grantAppRole` chỉ cho CLI.
  */
 export function appsModule(
   container: Container,
-  dependencies: { findOrganization: FindOrganization },
-): { definition: ModuleDefinition; apiKeyAuthenticator: ApiKeyAuthenticator; appQueries: AppQueries } {
+  dependencies: { findOrganization: FindOrganization; findOrgMemberships: FindOrgMemberships },
+): {
+  definition: ModuleDefinition;
+  apiKeyAuthenticator: ApiKeyAuthenticator;
+  adminAuthorizer: AdminAuthorizer;
+  appQueries: AppQueries;
+  grantAppRole: GrantAppRole;
+} {
   const { uow, outbox, clock } = container.ports;
   const { transactions } = container.infra;
 
@@ -39,9 +50,13 @@ export function appsModule(
   const apiKeys = new CryptoApiKeyService();
   const organizations = new TenancyOrganizationLookup({ findOrganization: dependencies.findOrganization });
   const queries = new AppQueries({ apps, secrets, networkRules });
+  const roles = new DrizzleAdminAppRoleRepository({ transactions });
+  const memberships = new TenancyMembershipLookup({ memberships: dependencies.findOrgMemberships });
 
   return {
     appQueries: queries,
+    adminAuthorizer: new AppsAdminAuthorizer({ authorizeAdmin: new AuthorizeAdmin({ apps, roles, memberships }) }),
+    grantAppRole: new GrantAppRole({ uow, outbox, clock, apps, roles, memberships }),
     apiKeyAuthenticator: new AppsApiKeyAuthenticator({
       authenticateApiKey: new AuthenticateApiKey({ apps, secrets, networkRules, apiKeys }),
     }),

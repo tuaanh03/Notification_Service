@@ -26,8 +26,10 @@ npm run db:migrate:prod   # bản đã build, chính là lệnh job `migrate` tr
 npm run email:test -- ban@company.com   # gửi MỘT thư thử qua EMAIL_PROVIDER đang cấu hình (đọc .env)
 
 docker compose up --build   # mysql + redis + migrate + api (:4002) + worker + scheduler
-docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin --email ban@company.com --account-name "EWS"
-docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin --email nv@company.com --login m365   # chỉ đăng nhập M365
+docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin --email ban@company.com --role super_admin --account-name "EWS"
+docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin --email nv@company.com --role user --login m365   # chỉ đăng nhập M365
+docker compose exec api node dist/src/entrypoints/admin-cli/main.js set-member --org <orgId> --email nv@company.com --role owner   # ADR-0022
+docker compose exec api node dist/src/entrypoints/admin-cli/main.js grant-app-role --app <appId> --email nv@company.com --role app_admin
 npx tsx --env-file-if-exists=.env src/entrypoints/admin-cli/main.ts list-accounts   # bản chạy từ source
 docker compose up -d --scale worker=3   # thêm worker
 docker compose up -d mysql redis # chỉ hạ tầng, để chạy `npm run dev` trên máy
@@ -73,7 +75,8 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản; `POST …/ai-compose` trả đề xuất của AI (không ghi DB, chỉ biến đã khai, 10 lần/phút/admin — ADR-0020 §7); `RenderTemplate` (đổ `payload` vào bản đang xuất bản) + `TemplateQueries.labelsOf` cho module khác |
 
 `segments` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
-(`/auth/login` hoặc Microsoft 365 qua `/auth/m365/*` — ADR-0021 -> token mờ lưu băm trong `admin_sessions`); admin đầu tiên tạo bằng `admin-cli` chạy trong
+(`/auth/login` hoặc Microsoft 365 qua `/auth/m365/*` — ADR-0021 -> token mờ lưu băm trong `admin_sessions`)
+và **RBAC đa tenant** (ADR-0022 — người ngoài org nhận 404); admin đầu tiên tạo bằng `admin-cli` chạy trong
 container, KHÔNG qua HTTP (ADR-0019 thay §4 của ADR-0015).
 
 Phase 1 làm theo 4 lượt, mỗi lượt dừng để người dùng review:
@@ -107,6 +110,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0019` | **Đăng nhập admin bằng phiên** (`admin_sessions`, token mờ + scrypt cho mật khẩu), bỏ `ADMIN_TOKEN`, admin đầu tiên tạo bằng `admin-cli` — **thay §4 của ADR-0015** |
 | `0020` | **Template**: app gửi bằng `templateId` (bỏ `key`), tên không trùng trong app, không binding topic, đổ biến lúc API nhận request (qua `RenderTemplate`, worker không đổi), nháp lỏng / xuất bản chặt, lỗi template đều 422; AI soạn gọi ở backend, chuẩn tương thích OpenAI, 3 biến `AI_*` |
 | `0021` | **Đăng nhập console bằng Microsoft 365**: OIDC + PKCE, backend giữ secret, App registration riêng (không dùng lại `GRAPH_*`), callback ở domain console, chỉ admin đã có (khớp email rồi gắn `microsoft_oid`); mật khẩu giữ làm dự phòng |
+| `0022` | **RBAC đa tenant**: Super Admin (vai hệ thống duy nhất) · Owner > Org Admin > Member · App Admin / App Viewer; người ngoài org 404, thiếu vai 403; luật thuần `decide()` ở kernel; MỌI route `/admin` khai `{ config: access(...) }` — thiếu là server không khởi động |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
@@ -228,9 +232,10 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
 - **Mức cô lập READ COMMITTED** (ADR-0017), đặt ở `shared/db/client.ts`. Đừng đổi về REPEATABLE READ
   mặc định: ở đó lệnh `SELECT` đầu tiên chốt snapshot, khoá xong vẫn đọc dữ liệu cũ — test race của
   `users-api.test.ts` sẽ đỏ. Cần giá trị không đổi giữa hai lần đọc thì khoá (`FOR UPDATE`).
-- **Ba composite FK chống cấp quyền chéo account** (ADR-0011): `fk_apps_org_account`,
-  `fk_admin_app_roles_admin_account`, `fk_admin_app_roles_app_account`. Đích bắt buộc:
-  `uq_organizations_org_account`, `uq_admins_admin_account`, `uq_apps_app_account`. Cùng lý do — đừng xoá.
+- **Năm composite FK chống cấp quyền chéo account** (ADR-0011, ADR-0022): `fk_apps_org_account`,
+  `fk_admin_app_roles_admin_account`, `fk_admin_app_roles_app_account`, `fk_org_members_org_account`,
+  `fk_org_members_admin_account`. Đích bắt buộc: `uq_organizations_org_account`, `uq_admins_admin_account`,
+  `uq_apps_app_account`. Cùng lý do — đừng xoá.
 
 ## Quy ước code
 
@@ -260,10 +265,13 @@ Chi tiết ở ADR-0002, ADR-0009 và ADR-0011. Những thứ hay quên nhất:
   executor bằng `transactions.executor()` (đọc) hoặc `transactions.require(op)` (bắt buộc trong tx:
   outbox, processed_messages, khoá dòng — gọi ngoài `run` ném `TransactionRequiredError`).
   `run` lồng nhau nhập vào transaction ngoài.
+- **Mọi route `/admin` khai quyền** (ADR-0022): `app.get(path, { config: access('app.read') }, …)`.
+  Thiếu là `buildHttpServer` ném lỗi lúc khởi động. Đối tượng mặc định lấy từ `:appId` rồi `:orgId`;
+  org nằm ở query / body thì khai `target` (xem `GET /apps`, `POST /apps`). Route danh sách lọc theo
+  `adminAccess(request)` + `decide()`. Thêm quyền mới = sửa `shared/kernel/access-policy.ts` + test.
 - **Bề mặt ĐỌC cho vận hành đặt dưới `/admin/apps/:appId/*`** (plan §5, ĐX-0004). `appId` trên URL
-  chứ không suy từ token: bảng `admin_app_roles` (vai `app_admin`) đã có sẵn, nên khi làm RBAC
-  (plan §12.4) chỉ cần thêm một lớp kiểm quyền trên chính tham số đó. Nhóm này **chỉ đọc** — admin
-  không sửa consent hộ người dùng; app service tự ghi qua `/v1` bằng khoá của nó.
+  chứ không suy từ token — lớp kiểm quyền (ADR-0022) tra app -> org từ chính tham số đó. Nhóm này
+  **chỉ đọc** — admin không sửa consent hộ người dùng; app service tự ghi qua `/v1` bằng khoá của nó.
 - **Đường `/admin` đọc nhiều bản ghi phải lấy dữ liệu liên quan theo LÔ.** `ListUsers` gọi
   `emails.findMany` (một truy vấn cho cả trang), `ListNotifications` gọi `recipients.findByNotifications`
   + `users.externalIds` + `topics.topicsByApp` (4 truy vấn mỗi trang), không gọi `find` từng dòng — màn danh sách mà

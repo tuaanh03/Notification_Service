@@ -3,3 +3,5 @@ export * from './app-repository.ts';
 export * from './app-secret-repository.ts';
 export * from './network-rule-repository.ts';
 export * from './organization-lookup.ts';
+export * from './admin-app-role-repository.ts';
+export * from './membership-lookup.ts';

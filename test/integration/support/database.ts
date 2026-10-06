@@ -16,7 +16,8 @@ export interface TestDatabase extends DatabaseHandle {
  * Tách database theo file để các file chạy song song không giẫm dữ liệu của nhau,
  * và để migration thật sự được chạy trên DB rỗng — chứ không phải giả định nó chạy được.
  */
-export async function createTestDatabase(options: { poolSize?: number } = {}): Promise<TestDatabase> {
+/** `migrationsFolder`: chỉ dùng cho test chuyển dữ liệu — dựng DB ở một mốc migration cũ. */
+export async function createTestDatabase(options: { poolSize?: number; migrationsFolder?: string } = {}): Promise<TestDatabase> {
   const rootUrl = inject('mysqlRootUrl');
   const name = `test_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
 
@@ -30,7 +31,7 @@ export async function createTestDatabase(options: { poolSize?: number } = {}): P
   const url = new URL(rootUrl);
   url.pathname = `/${name}`;
   const handle = createDatabase({ url: url.toString(), poolSize: options.poolSize ?? 10 });
-  await migrate(handle.db, { migrationsFolder: 'drizzle' });
+  await migrate(handle.db, { migrationsFolder: options.migrationsFolder ?? 'drizzle' });
   return { ...handle, name, url: url.toString() };
 }
 

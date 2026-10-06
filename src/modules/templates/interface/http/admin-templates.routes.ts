@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { adminCaller, LARGE_BODY_LIMIT_BYTES, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, adminCaller, LARGE_BODY_LIMIT_BYTES, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AppId, TemplateId, VARIABLE_SOURCES } from '../../../../shared/kernel/index.ts';
 import type {
   ArchiveTemplate,
@@ -99,7 +99,7 @@ export function adminTemplatesRoutes(useCases: {
       templateId: TemplateId.parse(params.templateId),
     });
 
-    app.post('/apps/:appId/templates', { bodyLimit: LARGE_BODY_LIMIT_BYTES }, async (request, reply) => {
+    app.post('/apps/:appId/templates', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const { name, variables, ...rest } = parseInput(createBody, request.body);
       const created = await useCases.createTemplate.execute(
@@ -109,47 +109,47 @@ export function adminTemplatesRoutes(useCases: {
       return reply.status(201).send(created);
     });
 
-    app.get('/apps/:appId/templates', async (request) => {
+    app.get('/apps/:appId/templates', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.queries.list(AppId.parse(appId));
     });
 
-    app.get('/apps/:appId/templates/:templateId', async (request) => {
+    app.get('/apps/:appId/templates/:templateId', { config: access('app.read') }, async (request) => {
       const { appId, templateId } = ids(parseInput(templateParams, request.params));
       return useCases.queries.get(appId, templateId);
     });
 
-    app.patch('/apps/:appId/templates/:templateId', async (request) => {
+    app.patch('/apps/:appId/templates/:templateId', { config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
       const { name } = parseInput(renameBody, request.body);
       return useCases.renameTemplate.execute({ ...params, name }, ctx(request));
     });
 
-    app.put('/apps/:appId/templates/:templateId/draft', { bodyLimit: LARGE_BODY_LIMIT_BYTES }, async (request) => {
+    app.put('/apps/:appId/templates/:templateId/draft', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
       const body = parseInput(draftBody, request.body);
       return useCases.saveDraft.execute({ ...params, content: toContent(body) }, ctx(request));
     });
 
-    app.post('/apps/:appId/templates/:templateId/draft/from/:version', async (request, reply) => {
+    app.post('/apps/:appId/templates/:templateId/draft/from/:version', { config: access('app.manage') }, async (request, reply) => {
       const { version, ...rest } = parseInput(versionParams, request.params);
       const created = await useCases.draftFromVersion.execute({ ...ids(rest), version }, ctx(request));
       return reply.status(201).send(created);
     });
 
-    app.post('/apps/:appId/templates/:templateId/publish', async (request) => {
+    app.post('/apps/:appId/templates/:templateId/publish', { config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
       return useCases.publishVersion.execute(params, ctx(request));
     });
 
     // Trả ĐỀ XUẤT của AI, không ghi gì (ADR-0020 §7). Có thể mất vài chục giây — chờ nhà cung cấp.
-    app.post('/apps/:appId/templates/:templateId/ai-compose', { bodyLimit: LARGE_BODY_LIMIT_BYTES }, async (request) => {
+    app.post('/apps/:appId/templates/:templateId/ai-compose', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
       const body = parseInput(aiComposeBody, request.body);
       return useCases.composeTemplateDraft.execute({ ...params, ...body }, ctx(request));
     });
 
-    app.post('/apps/:appId/templates/:templateId/archive', async (request) => {
+    app.post('/apps/:appId/templates/:templateId/archive', { config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
       return useCases.archiveTemplate.execute(params, ctx(request));
     });

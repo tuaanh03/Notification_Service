@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { TransactionContext } from '../../../../shared/db/index.ts';
+import { lockParentRow, type TransactionContext } from '../../../../shared/db/index.ts';
 import { AccountId, OrgId, type OrgId as OrgIdType } from '../../../../shared/kernel/index.ts';
 import type { OrganizationRepository } from '../../application/ports/index.ts';
 import { Organization } from '../../domain/entities/organization.ts';
@@ -37,5 +37,9 @@ export class DrizzleOrganizationRepository implements OrganizationRepository {
       createdAt: org.createdAt,
       updatedAt: org.updatedAt,
     });
+  }
+
+  lockForUpdate(id: OrgIdType): Promise<boolean> {
+    return lockParentRow(this.transactions.require('OrganizationRepository.lockForUpdate'), organizations, organizations.orgId, id);
   }
 }

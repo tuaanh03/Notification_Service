@@ -1,5 +1,14 @@
 import type { FastifyRequest } from 'fastify';
-import { AuthenticationError, type AccountId, type AppId, type Channel, type OrgId } from '../kernel/index.ts';
+import {
+  AuthenticationError,
+  type AccountId,
+  type AdminAccess,
+  type AdminRole,
+  type AppId,
+  type Channel,
+  type OrgId,
+  type Permission,
+} from '../kernel/index.ts';
 
 /**
  * Ai đang gọi — gắn vào request SAU khi xác thực, trước khi route chạy. Route đọc caller qua
@@ -22,7 +31,7 @@ export interface AppCaller {
 export interface AdminCaller {
   kind: 'admin';
   adminId: string;
-  role: 'super_admin' | 'app_admin';
+  role: AdminRole;
 }
 
 export type Caller = AppCaller | AdminCaller;
@@ -37,9 +46,45 @@ export interface AdminAuthenticator {
   authenticate(input: { bearerToken: string | null }): Promise<AdminCaller>;
 }
 
+/**
+ * Đối tượng route đang chạm — lớp kiểm quyền tự tra app -> org. `none` = việc cấp hệ thống.
+ * Giá trị là chuỗi THÔ lấy từ request: id sai định dạng thì lớp kiểm quyền coi như không tồn tại.
+ */
+export type RouteTarget = { kind: 'app'; appId: string } | { kind: 'org'; orgId: string } | { kind: 'none' };
+
+/**
+ * Quyền mà MỘT route `/admin` cần (ADR-0022). Route nào thiếu khai báo này thì server không khởi
+ * động (`buildHttpServer`) — không có route nào lọt lưới vì quên.
+ *
+ * `target` mặc định: `:appId` trên URL -> app, không có thì `:orgId` -> org, không có nữa -> `none`.
+ * `permission` là hàm khi quyền phụ thuộc request (vd. `/apps/:appId/:action`).
+ */
+export interface RouteAccess {
+  permission: Permission | ((request: FastifyRequest) => Permission);
+  target?: ((request: FastifyRequest) => RouteTarget) | undefined;
+}
+
+/** `{ config: access('app.read') }` — gắn quyền vào options của route. */
+export function access(
+  permission: RouteAccess['permission'],
+  target?: RouteAccess['target'],
+): { access: RouteAccess } {
+  return { access: { permission, target } };
+}
+
+/** Kiểm quyền `/admin/*` — hiện thực bởi module apps. Không được phép -> ném 404 / 403. */
+export interface AdminAuthorizer {
+  authorize(input: { caller: AdminCaller; permission: Permission; target: RouteTarget }): Promise<AdminAccess>;
+}
+
 declare module 'fastify' {
   interface FastifyRequest {
     caller: Caller | null;
+    /** Vai của admin đang gọi — có sau bước kiểm quyền; route danh sách dùng để lọc. */
+    adminAccess: AdminAccess | null;
+  }
+  interface FastifyContextConfig {
+    access?: RouteAccess | undefined;
   }
 }
 
@@ -59,4 +104,10 @@ export function appCaller(request: FastifyRequest): AppCaller {
 export function adminCaller(request: FastifyRequest): AdminCaller {
   if (request.caller?.kind !== 'admin') throw new AuthenticationError('ADMIN_CALLER_REQUIRED', 'admin credentials required');
   return request.caller;
+}
+
+/** Vai của admin đang gọi, đã tra ở bước kiểm quyền — route danh sách lọc theo nó. */
+export function adminAccess(request: FastifyRequest): AdminAccess {
+  if (request.adminAccess === null) throw new AuthenticationError('ADMIN_CALLER_REQUIRED', 'admin credentials required');
+  return request.adminAccess;
 }

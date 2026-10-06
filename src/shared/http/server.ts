@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from '../observability/logger.ts';
-import { bearerToken, type AdminAuthenticator, type ApiKeyAuthenticator } from './auth.ts';
+import { adminCaller, bearerToken, type AdminAuthenticator, type AdminAuthorizer, type ApiKeyAuthenticator, type RouteTarget } from './auth.ts';
 import { PROBLEM_CONTENT_TYPE, problem, toProblem } from './problem.ts';
 
 /** Một phụ thuộc mà `/health/ready` phải kiểm (MySQL, Redis...). Ném lỗi = chưa sẵn sàng. */
@@ -59,6 +59,8 @@ export async function buildHttpServer(options: {
   logger: Logger;
   readiness: readonly ReadinessCheck[];
   authenticators: { apiKey: ApiKeyAuthenticator; admin: AdminAuthenticator };
+  /** Kiểm quyền mọi route `/admin/*` (ADR-0022) — chạy SAU khi parse body, trước handler. */
+  adminAuthorizer: AdminAuthorizer;
   surfaces?: HttpSurfaces | undefined;
   /** Sau load balancer / reverse proxy: lấy IP thật từ X-Forwarded-For (cho allowlist IP). */
   trustProxy?: boolean | undefined;
@@ -154,6 +156,7 @@ export async function buildHttpServer(options: {
   });
 
   app.decorateRequest('caller', null);
+  app.decorateRequest('adminAccess', null);
   const { apiKey, admin } = options.authenticators;
   const surfaces = options.surfaces ?? {};
 
@@ -165,6 +168,21 @@ export async function buildHttpServer(options: {
     async (scope) => {
       scope.addHook('onRequest', async (request) => {
         request.caller = await admin.authenticate({ bearerToken: bearerToken(request) });
+      });
+      // Route thiếu khai báo quyền -> DỪNG KHỞI ĐỘNG, không âm thầm mở cho mọi admin (ADR-0022).
+      scope.addHook('onRoute', (route) => {
+        if (route.config?.access === undefined) {
+          throw new Error(`admin route ${String(route.method)} ${route.url} declares no access (use { config: access(...) })`);
+        }
+      });
+      // preHandler (không phải onRequest): body đã parse — `POST /apps` lấy org từ body.
+      scope.addHook('preHandler', async (request) => {
+        const rule = request.routeOptions.config.access!;
+        request.adminAccess = await options.adminAuthorizer.authorize({
+          caller: adminCaller(request),
+          permission: typeof rule.permission === 'function' ? rule.permission(request) : rule.permission,
+          target: rule.target ? rule.target(request) : defaultTarget(request.params),
+        });
       });
       for (const register of surfaces.admin ?? []) await register(scope);
     },
@@ -191,4 +209,12 @@ export async function buildHttpServer(options: {
       draining = true;
     },
   };
+}
+
+/** `:appId` -> app, không có thì `:orgId` -> org, không có nữa -> việc cấp hệ thống. */
+function defaultTarget(params: unknown): RouteTarget {
+  const p = (params ?? {}) as Record<string, unknown>;
+  if (typeof p['appId'] === 'string') return { kind: 'app', appId: p['appId'] };
+  if (typeof p['orgId'] === 'string') return { kind: 'org', orgId: p['orgId'] };
+  return { kind: 'none' };
 }

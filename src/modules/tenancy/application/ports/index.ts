@@ -5,3 +5,4 @@ export * from './organization-repository.ts';
 export * from './password-hasher.ts';
 export * from './session-token-factory.ts';
 export * from './microsoft-identity.ts';
+export * from './org-member-repository.ts';

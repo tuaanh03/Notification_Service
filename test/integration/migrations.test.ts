@@ -1,3 +1,6 @@
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/mysql2/migrator';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -14,10 +17,10 @@ afterAll(async () => {
 });
 
 describe('migration trên MySQL thật', () => {
-  it('dựng đủ 28 bảng nghiệp vụ + bảng theo dõi migration', async () => {
+  it('dựng đủ 29 bảng nghiệp vụ + bảng theo dõi migration', async () => {
     const tables = await tableNames(t.db);
     expect(tables).toContain('__drizzle_migrations');
-    expect(tables.filter((name) => name !== '__drizzle_migrations')).toHaveLength(28);
+    expect(tables.filter((name) => name !== '__drizzle_migrations')).toHaveLength(29);
   });
 
   it('chạy lại migrate trên DB đã migrate là no-op, không lỗi', async () => {
@@ -60,3 +63,55 @@ describe('UTC ở mọi tầng', () => {
     expect(row!.createdAt.toISOString()).toBe(at.toISOString());
   });
 });
+
+/**
+ * 0008 (RBAC, ADR-0022) CHUYỂN dữ liệu, không chỉ đổi cấu trúc: dựng DB ở mốc 0007 với dữ liệu kiểu
+ * cũ, rồi chạy tiếp tới bản mới nhất. MySQL strict mode từ chối thu hẹp enum khi còn giá trị cũ —
+ * migration phải tự dọn trước, nếu không lệnh deploy production dừng giữa chừng.
+ */
+describe('0008 — chuyển dữ liệu sang RBAC', () => {
+  let old: TestDatabase;
+  let folder: string;
+  beforeAll(async () => {
+    folder = mkdtempSync(join(tmpdir(), 'drizzle-0007-'));
+    cpSync('drizzle', folder, { recursive: true });
+    const journalPath = join(folder, 'meta', '_journal.json');
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as { entries: { idx: number }[] };
+    journal.entries = journal.entries.filter((e) => e.idx <= 7);
+    writeFileSync(journalPath, JSON.stringify(journal));
+    old = await createTestDatabase({ migrationsFolder: folder });
+  });
+  afterAll(async () => {
+    await old?.close();
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("mọi admin đang có -> super_admin; vai 'super_admin' cấp app bị bỏ, 'app_admin' giữ", async () => {
+    const accountId = AccountId.create();
+    await old.db.execute(sql`INSERT INTO accounts (account_id, name) VALUES (${accountId}, 'A')`);
+    await old.db.execute(sql`INSERT INTO organizations (org_id, account_id, name) VALUES (${ORG}, ${accountId}, 'O')`);
+    await old.db.execute(
+      sql`INSERT INTO apps (app_id, org_id, account_id, slug, name, namespace) VALUES (${APP}, ${ORG}, ${accountId}, 'a', 'A', 'a')`,
+    );
+    for (const [id, role] of [[ADMIN_1, 'app_admin'], [ADMIN_2, 'super_admin']] as const) {
+      await old.db.execute(sql`INSERT INTO admins (admin_id, account_id, email, role) VALUES (${id}, ${accountId}, ${id + '@t.local'}, ${role})`);
+    }
+    await old.db.execute(sql`INSERT INTO admin_app_roles (admin_id, app_id, account_id, role) VALUES
+      (${ADMIN_1}, ${APP}, ${accountId}, 'app_admin'), (${ADMIN_2}, ${APP}, ${accountId}, 'super_admin')`);
+
+    await migrate(old.db, { migrationsFolder: 'drizzle' });
+
+    const [admins] = (await old.db.execute(sql`SELECT role FROM admins ORDER BY admin_id`)) as unknown as [{ role: string }[]];
+    expect(admins.map((r) => r.role)).toEqual(['super_admin', 'super_admin']);
+    const [roles] = (await old.db.execute(sql`SELECT admin_id AS adminId, role FROM admin_app_roles`)) as unknown as [
+      { adminId: string; role: string }[],
+    ];
+    expect(roles).toEqual([{ adminId: ADMIN_1, role: 'app_admin' }]);
+    expect(await tableNames(old.db)).toContain('org_members');
+  });
+});
+
+const ORG = '00000000-0000-4000-8000-000000000001';
+const APP = '00000000-0000-4000-8000-000000000002';
+const ADMIN_1 = '00000000-0000-4000-8000-0000000000a1';
+const ADMIN_2 = '00000000-0000-4000-8000-0000000000a2';

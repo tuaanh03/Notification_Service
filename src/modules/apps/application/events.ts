@@ -14,6 +14,7 @@ export const APP_EVENTS = {
   secretRevoked: 'AppSecretRevoked',
   networkRuleAdded: 'AppNetworkRuleAdded',
   networkRuleRemoved: 'AppNetworkRuleRemoved',
+  roleGranted: 'AdminAppRoleGranted',
 } as const;
 
 export const APP_AGGREGATE = 'App';

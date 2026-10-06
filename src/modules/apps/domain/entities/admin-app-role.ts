@@ -2,7 +2,7 @@ import {
   CrossAccountViolationError,
   type AccountId,
   type AdminId,
-  type AdminRole,
+  type AppRole,
   type AppId,
 } from '../../../../shared/kernel/index.ts';
 
@@ -11,13 +11,15 @@ export interface AdminAppRoleProps {
   appId: AppId;
   /** Account chung của admin và app — denormalize để ép hai composite FK (ADR-0011). */
   accountId: AccountId;
-  role: AdminRole;
+  role: AppRole;
   grantedAt: Date;
 }
 
 /**
  * Cấp quyền chạm một app cụ thể. Khoá chính là (admin_id, app_id) nên đây là
  * entity khoá kép, không kế thừa BaseEntity.
+ *
+ * Chỉ cấp cho THÀNH VIÊN của org sở hữu app (ADR-0022) — MySQL không ép được, `GrantAppRole` ép.
  *
  * LƯU Ý: đây là RBAC thật. Tag `role:*` trên user KHÔNG BAO GIỜ được dùng để
  * kiểm tra quyền — tag chỉ để phân đoạn (OneSignal §5).
@@ -26,7 +28,7 @@ export class AdminAppRole {
   readonly adminId: AdminId;
   readonly appId: AppId;
   readonly accountId: AccountId;
-  role: AdminRole;
+  role: AppRole;
   readonly grantedAt: Date;
 
   constructor(props: AdminAppRoleProps) {
@@ -45,7 +47,7 @@ export class AdminAppRole {
   static grant(
     admin: { id: AdminId; accountId: AccountId },
     app: { id: AppId; accountId: AccountId },
-    role: AdminRole,
+    role: AppRole,
     at: Date,
   ): AdminAppRole {
     if (app.accountId !== admin.accountId) {

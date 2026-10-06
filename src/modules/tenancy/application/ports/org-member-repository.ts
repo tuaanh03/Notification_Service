@@ -1,0 +1,12 @@
+import type { AdminId, OrgId } from '../../../../shared/kernel/index.ts';
+import type { OrgMember } from '../../domain/entities/org-member.ts';
+
+export interface OrgMemberRepository {
+  find(orgId: OrgId, adminId: AdminId): Promise<OrgMember | null>;
+  /** Mọi org của một người — mỗi request `/admin` gọi một lần (một truy vấn, theo index admin_id). */
+  listByAdmin(adminId: AdminId): Promise<OrgMember[]>;
+  /** Gọi SAU khi đã khoá dòng org (`OrganizationRepository.lockForUpdate`). */
+  countOwners(orgId: OrgId): Promise<number>;
+  /** Thêm mới hoặc đổi vai (khoá chính org + admin). */
+  save(member: OrgMember): Promise<void>;
+}

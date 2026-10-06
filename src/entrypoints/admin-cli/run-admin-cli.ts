@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline/promises';
 import { buildApplication, createContainer, type Container } from '../../composition/index.ts';
-import { AccountId, ADMIN_ROLES, type AdminRole } from '../../shared/kernel/index.ts';
+import { AccountId, ADMIN_ROLES, APP_ROLES, AppId, OrgId, ORG_ROLES } from '../../shared/kernel/index.ts';
 import type { Env } from '../../shared/config/index.ts';
 
 /**
@@ -16,14 +16,19 @@ import type { Env } from '../../shared/config/index.ts';
  */
 const USAGE = `admin-cli — quản trị admin, chạy trong container
 
-  create-admin   --email <email> [--account <id>] [--account-name <tên>] [--role super_admin|app_admin]
+  create-admin   --email <email> --role super_admin|user [--account <id>] [--account-name <tên>]
                  [--login password|m365]
   reset-password --email <email>
+  set-member     --org <orgId> --email <email> --role owner|org_admin|member
+  grant-app-role --app <appId> --email <email> --role app_admin|app_viewer
   list-accounts
 
 Mật khẩu nhập qua stdin (nhắc 2 lần), không truyền bằng tham số.
 --login m365: không đặt mật khẩu — người này chỉ đăng nhập bằng Microsoft 365 (khớp theo email).
 Đặt mật khẩu sau được bằng reset-password.
+--role bắt buộc: super_admin thấy và làm được mọi thứ; user chỉ thấy org / app được gán (ADR-0022).
+set-member thêm người ĐÃ CÓ tài khoản vào org, hoặc đổi vai; org luôn phải còn ít nhất một owner.
+grant-app-role chỉ cấp được cho thành viên của org sở hữu app.
 Chưa có account nào thì create-admin cần --account-name để tạo account đầu tiên.
 Có đúng một account thì tự chọn account đó, không cần --account.`;
 
@@ -87,10 +92,19 @@ async function readValidPassword(app: ReturnType<typeof buildApplication>): Prom
   return password;
 }
 
-function parseRole(raw: string | undefined): AdminRole {
-  if (raw === undefined) return 'super_admin';
-  if (!(ADMIN_ROLES as readonly string[]).includes(raw)) throw new Error(`--role phải là ${ADMIN_ROLES.join(' | ')}`);
-  return raw as AdminRole;
+/**
+ * `--role` bắt buộc, không có mặc định: tạo nhầm Super Admin là mở toàn bộ hệ thống, tạo nhầm `user`
+ * là người đó không thấy gì — cả hai đều phải là lựa chọn có chủ đích.
+ */
+function parseRole<R extends string>(raw: string | undefined, allowed: readonly R[]): R {
+  if (raw === undefined || !(allowed as readonly string[]).includes(raw)) throw new Error(`--role phải là ${allowed.join(' | ')}`);
+  return raw as R;
+}
+
+function required(flags: Map<string, string>, name: string): string {
+  const value = flags.get(name);
+  if (value === undefined) throw new Error(`thiếu --${name}`);
+  return value;
 }
 
 /**
@@ -146,7 +160,7 @@ export async function runAdminCli(env: Env, argv: readonly string[]): Promise<nu
       case 'create-admin': {
         const email = flags.get('email');
         if (email === undefined) throw new Error('thiếu --email');
-        const role = parseRole(flags.get('role'));
+        const role = parseRole(flags.get('role'), ADMIN_ROLES);
         const login = flags.get('login') ?? 'password';
         if (login !== 'password' && login !== 'm365') throw new Error('--login phải là password | m365');
         const password = login === 'm365' ? null : await readValidPassword(app);
@@ -164,6 +178,22 @@ export async function runAdminCli(env: Env, argv: readonly string[]): Promise<nu
         const password = await readValidPassword(app);
         const admin = await app.adminOps.setAdminPassword.execute({ email, password }, ctx);
         process.stdout.write(`đã đổi mật khẩu ${admin.email}; mọi phiên đang mở đã bị huỷ\n`);
+        return 0;
+      }
+      case 'set-member': {
+        const member = await app.adminOps.setOrgMember.execute(
+          { orgId: OrgId.parse(required(flags, 'org')), email: required(flags, 'email'), role: parseRole(flags.get('role'), ORG_ROLES) },
+          ctx,
+        );
+        process.stdout.write(`${member.email} là ${member.role} của org ${member.orgId}\n`);
+        return 0;
+      }
+      case 'grant-app-role': {
+        const granted = await app.adminOps.grantAppRole.execute(
+          { appId: AppId.parse(required(flags, 'app')), email: required(flags, 'email'), role: parseRole(flags.get('role'), APP_ROLES) },
+          ctx,
+        );
+        process.stdout.write(`${granted.email} là ${granted.role} của app ${granted.appId}\n`);
         return 0;
       }
       default:

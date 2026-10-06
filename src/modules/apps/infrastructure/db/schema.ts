@@ -10,7 +10,7 @@ import {
   varchar,
 } from 'drizzle-orm/mysql-core';
 import {
-  ADMIN_ROLES,
+  APP_ROLES,
   APP_ORIGINS,
   APP_SECRET_STATUSES,
   APP_STATUSES,
@@ -117,7 +117,7 @@ export const adminAppRoles = mysqlTable(
     appId: uuid('app_id').notNull(),
     /** Denormalize để ép được hai composite FK bên dưới. */
     accountId: uuid('account_id').notNull(),
-    role: mysqlEnum('role', ADMIN_ROLES).notNull(),
+    role: mysqlEnum('role', APP_ROLES).notNull(),
     grantedAt: tsNow('granted_at'),
     revokedAt: ts('revoked_at'),
   },

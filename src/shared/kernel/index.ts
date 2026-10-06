@@ -5,3 +5,4 @@ export * from './result.ts';
 export * from './clock.ts';
 export * from './email.ts';
 export * from './base-entity.ts';
+export * from './access-policy.ts';
