@@ -1,0 +1,3 @@
+﻿Title,Bucket,Status,Priority,Assignees,Labels,Start,Due,Recurrence,Description,Checklist
+"Thiết kế landing page","Đang làm",in_progress,high,"ken@eonsr.com; an@eonsr.com","Tính năng",2026-07-18,2026-07-25,none,"Trang giới thiệu sản phẩm mới","[ ] Wireframe; [ ] Nội dung; [x] Duyệt brief"
+"Báo cáo tuần","Cần làm",todo,medium,ken@eonsr.com,,,2026-07-19,weekly,"Tổng hợp tiến độ trong tuần",
