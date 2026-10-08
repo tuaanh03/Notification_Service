@@ -10,6 +10,8 @@ import type { OrgRole, AppRole } from './enums.ts';
  * trên mọi app của org mình.
  */
 export const PERMISSIONS = [
+  /** Xem vai của CHÍNH MÌNH (`GET /admin/me`) — ai đăng nhập cũng có. */
+  'self.read',
   /** Việc của Super Admin: tạo account / org (tạm thời), xem audit ngoài phạm vi app. */
   'platform.manage',
   /** Xem một org mà mình là thành viên. */
@@ -48,7 +50,7 @@ const SUPER_ADMIN_ONLY: ReadonlySet<Permission> = new Set(['platform.manage', 'a
 const ORG_MANAGERS: ReadonlySet<OrgRole> = new Set(['owner', 'org_admin']);
 
 export function decide(access: AdminAccess, permission: Permission, target: AccessTarget): AccessDecision {
-  if (access.isSuperAdmin) return 'allow';
+  if (access.isSuperAdmin || permission === 'self.read') return 'allow';
   if (target === null) return 'deny';
 
   const orgRole = access.orgRoles.get(target.orgId);

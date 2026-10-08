@@ -17,4 +17,9 @@ export class FindOrganization {
     const org = await this.organizations.findById(id);
     return org ? toOrganizationDto(org) : null;
   }
+
+  /** Theo lô — `ids` bỏ trống = mọi org. Một truy vấn, sắp theo tên. */
+  async list(ids?: readonly OrgId[] | undefined): Promise<OrganizationDto[]> {
+    return (await this.organizations.list(ids)).map(toOrganizationDto);
+  }
 }

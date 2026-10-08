@@ -17,4 +17,8 @@ export class TenancyOrganizationLookup implements OrganizationLookup {
     const org = await this.findOrganization.execute(orgId);
     return org ? { orgId, accountId: AccountId.parse(org.accountId) } : null;
   }
+
+  async list(ids?: readonly OrgId[]): Promise<{ id: string; name: string }[]> {
+    return (await this.findOrganization.list(ids)).map((o) => ({ id: o.id, name: o.name }));
+  }
 }

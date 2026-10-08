@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { lockParentRow, type TransactionContext } from '../../../../shared/db/index.ts';
 import { AccountId, OrgId, type OrgId as OrgIdType } from '../../../../shared/kernel/index.ts';
 import type { OrganizationRepository } from '../../application/ports/index.ts';
@@ -18,15 +18,16 @@ export class DrizzleOrganizationRepository implements OrganizationRepository {
       .select()
       .from(organizations)
       .where(eq(organizations.orgId, id));
-    return row
-      ? new Organization({
-          id: OrgId.parse(row.orgId),
-          accountId: AccountId.parse(row.accountId),
-          name: row.name,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-        })
-      : null;
+    return row ? toEntity(row) : null;
+  }
+
+  async list(ids?: readonly OrgIdType[]): Promise<Organization[]> {
+    if (ids !== undefined && ids.length === 0) return [];
+    const query = this.transactions.executor().select().from(organizations);
+    const rows = await (ids === undefined ? query : query.where(inArray(organizations.orgId, [...ids]))).orderBy(
+      asc(organizations.name),
+    );
+    return rows.map(toEntity);
   }
 
   async insert(org: Organization): Promise<void> {
@@ -42,4 +43,14 @@ export class DrizzleOrganizationRepository implements OrganizationRepository {
   lockForUpdate(id: OrgIdType): Promise<boolean> {
     return lockParentRow(this.transactions.require('OrganizationRepository.lockForUpdate'), organizations, organizations.orgId, id);
   }
+}
+
+function toEntity(row: typeof organizations.$inferSelect): Organization {
+  return new Organization({
+    id: OrgId.parse(row.orgId),
+    accountId: AccountId.parse(row.accountId),
+    name: row.name,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
 }

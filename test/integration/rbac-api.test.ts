@@ -100,6 +100,25 @@ describe('người ngoài org: 404 — y như đối tượng không tồn tại
   });
 });
 
+describe('GET /admin/me — vai của chính mình', () => {
+  it('Owner: chỉ org của mình, kèm vai; không có vai app trực tiếp', async () => {
+    const me = await must(as(token.owner)('GET', '/me'), 200);
+    expect(me).toEqual({ isSuperAdmin: false, orgs: [{ id: org.A, name: 'Org A', role: 'owner' }], appRoles: {} });
+  });
+
+  it('App Viewer: org + vai app trực tiếp', async () => {
+    const me = await must(as(token.viewer)('GET', '/me'), 200);
+    expect(me['orgs']).toEqual([{ id: org.A, name: 'Org A', role: 'member' }]);
+    expect(me['appRoles']).toEqual({ [app.A1]: 'app_viewer' });
+  });
+
+  it('Super Admin: mọi org, role null', async () => {
+    const me = await must(as(SUPER)('GET', '/me'), 200);
+    expect(me['isSuperAdmin']).toBe(true);
+    expect((me['orgs'] as Json[]).map((o) => [o['name'], o['role']])).toEqual([['Org A', null], ['Org B', null]]);
+  });
+});
+
 describe('Member + App Viewer', () => {
   it('danh sách app chỉ có app được cấp vai', async () => {
     expect(ids(await must(as(token.viewer)('GET', `/apps?orgId=${org.A}`), 200))).toEqual([app.A1]);

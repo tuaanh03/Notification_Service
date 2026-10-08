@@ -6,4 +6,6 @@ import type { AccountId, OrgId } from '../../../../shared/kernel/index.ts';
  */
 export interface OrganizationLookup {
   findOwner(orgId: OrgId): Promise<{ orgId: OrgId; accountId: AccountId } | null>;
+  /** Tên org theo lô (`ids` bỏ trống = mọi org), sắp theo tên. */
+  list(ids?: readonly OrgId[] | undefined): Promise<{ id: string; name: string }[]>;
 }

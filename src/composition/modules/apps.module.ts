@@ -5,6 +5,7 @@ import {
   AuthenticateApiKey,
   AuthorizeAdmin,
   CreateApp,
+  GetAdminProfile,
   GrantAppRole,
   IssueAppSecret,
   RemoveNetworkRule,
@@ -20,7 +21,7 @@ import {
   TenancyMembershipLookup,
   TenancyOrganizationLookup,
 } from '../../modules/apps/infrastructure/adapters/index.ts';
-import { adminAppsRoutes, AppsAdminAuthorizer, AppsApiKeyAuthenticator, v1AppsRoutes } from '../../modules/apps/interface/index.ts';
+import { adminAppsRoutes, adminMeRoutes, AppsAdminAuthorizer, AppsApiKeyAuthenticator, v1AppsRoutes } from '../../modules/apps/interface/index.ts';
 import type { FindOrganization, FindOrgMemberships } from '../../modules/tenancy/application/index.ts';
 import type { AdminAuthorizer, ApiKeyAuthenticator } from '../../shared/http/index.ts';
 import type { Container } from '../container.ts';
@@ -74,6 +75,7 @@ export function appsModule(
             removeNetworkRule: new RemoveNetworkRule({ uow, outbox, apps, networkRules }),
             queries,
           }),
+          adminMeRoutes({ getAdminProfile: new GetAdminProfile({ organizations }) }),
         ],
         v1: [v1AppsRoutes({ queries })],
       },
