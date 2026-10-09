@@ -1,5 +1,6 @@
 import type { Notification } from '../domain/entities/notification.ts';
 import type { NotificationRecipient } from '../domain/entities/notification-recipient.ts';
+import type { Publication } from '../domain/entities/publication.ts';
 import type { TemplateLabel } from './ports/index.ts';
 
 export interface NotificationRecipientDto {
@@ -24,6 +25,8 @@ export interface NotificationDto {
   /** Gửi bằng template: id + số version đã dùng (ADR-0020). null = nội dung viết thẳng. */
   template: { id: string; version: number } | null;
   idempotencyKey: string | null;
+  /** Thư con của lần phát nào (ADR-0028); null = gửi lẻ. */
+  publicationId: string | null;
   recipient: NotificationRecipientDto | null;
   createdAt: string;
   queuedAt: string | null;
@@ -44,6 +47,7 @@ export function toNotificationDto(
     topic: extra.topicKey,
     template: extra.template ? { id: extra.template.templateId, version: extra.template.version } : null,
     idempotencyKey: n.idempotencyKey,
+    publicationId: n.publicationId,
     recipient: r
       ? { address: r.address, status: r.status, exclusionReason: r.exclusionReason, error: r.error, sentAt: iso(r.sentAt) }
       : null,
@@ -52,6 +56,61 @@ export function toNotificationDto(
     sendingAt: iso(n.sendingAt),
     finishedAt: iso(n.finishedAt),
   };
+}
+
+/**
+ * Một lần phát tin vào topic, nhìn từ app service (`POST` / `GET /v1/publications`, ADR-0028).
+ * Không có nội dung thư và không có địa chỉ email — cùng lý do với `NotificationDto`; app tra từng thư
+ * con bằng `GET /v1/notifications/:id` nếu cần chi tiết.
+ */
+export interface PublicationDto {
+  id: string;
+  topic: string;
+  template: { id: string; version: number } | null;
+  idempotencyKey: string;
+  /** in_progress = còn thư con chờ gửi · completed = mọi thư con đã có kết quả. */
+  status: 'in_progress' | 'completed';
+  recipientCount: number;
+  /** pending = queued + sending · skipped = no_recipient (bị chặn lúc gửi, ví dụ người nhận vừa tắt topic). */
+  counts: { pending: number; sent: number; failed: number; skipped: number };
+  recipients: { externalId: string | null; notificationId: string; status: string }[];
+  createdAt: string;
+}
+
+export function toPublicationDto(
+  p: Publication,
+  extra: {
+    topicKey: string;
+    template: TemplateLabel | null;
+    children: readonly Notification[];
+    externalIds: ReadonlyMap<string, string>;
+  },
+): PublicationDto {
+  const counts = { pending: 0, sent: 0, failed: 0, skipped: 0 };
+  for (const child of extra.children) counts[publicationBucket(child.status)] += 1;
+  return {
+    id: p.id,
+    topic: extra.topicKey,
+    template: extra.template ? { id: extra.template.templateId, version: extra.template.version } : null,
+    idempotencyKey: p.idempotencyKey,
+    status: counts.pending > 0 ? 'in_progress' : 'completed',
+    recipientCount: p.recipientCount,
+    counts,
+    recipients: extra.children.map((child) => ({
+      externalId: child.targetUserId === null ? null : (extra.externalIds.get(child.targetUserId) ?? null),
+      notificationId: child.id,
+      status: child.status,
+    })),
+    createdAt: p.createdAt.toISOString(),
+  };
+}
+
+/** Thư con gửi trực tiếp chỉ đi `queued -> sending -> sent | failed` hoặc `queued -> no_recipient`. */
+function publicationBucket(status: string): keyof PublicationDto['counts'] {
+  if (status === 'sent') return 'sent';
+  if (status === 'failed') return 'failed';
+  if (status === 'no_recipient') return 'skipped';
+  return 'pending';
 }
 
 /**

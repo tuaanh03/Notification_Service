@@ -27,6 +27,38 @@ import { templateVersions } from '../../../templates/infrastructure/db/schema.ts
 import { users } from '../../../directory/infrastructure/db/schema.ts';
 import type { Counters } from '../../domain/types/counters.ts';
 
+/**
+ * Một dòng = MỘT LẦN PHÁT tin vào topic (ADR-0028). Chỉ gom nhóm: mỗi người nhận là một dòng
+ * `notifications` con trỏ về đây qua `publication_id`; trạng thái nằm ở các con.
+ */
+export const publications = mysqlTable(
+  'publications',
+  {
+    publicationId: uuidPk('publication_id'),
+    appId: uuid('app_id')
+      .notNull()
+      .references(() => apps.appId),
+    topicId: uuid('topic_id')
+      .notNull()
+      .references(() => topics.topicId),
+    /** Bắt buộc (khác notifications): phát trùng là nhiều người nhận trùng thư. */
+    idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
+    recipientCount: int('recipient_count').notNull(),
+    templateVersionId: uuid('template_version_id'),
+    createdBy: varchar('created_by', { length: 64 }),
+    createdAt: tsNow('created_at'),
+    updatedAt: tsNow('updated_at'),
+  },
+  (t) => [
+    uniqueIndex('uq_publications_app_idempotency').on(t.appId, t.idempotencyKey),
+    foreignKey({
+      name: 'fk_publications_template_version',
+      columns: [t.templateVersionId],
+      foreignColumns: [templateVersions.templateVersionId],
+    }),
+  ],
+);
+
 /** Một dòng = một lần gửi, bất kể đến từ API hay người soạn. */
 export const notifications = mysqlTable(
   'notifications',
@@ -67,6 +99,8 @@ export const notifications = mysqlTable(
     subject: varchar('subject', { length: 998 }),
     bodyHtml: mediumtext('body_html'),
     bodyText: mediumtext('body_text'),
+    /** Thư con của một lần phát (ADR-0028). NULL = gửi lẻ. */
+    publicationId: uuid('publication_id'),
   },
   (t) => [
     /**
@@ -86,6 +120,13 @@ export const notifications = mysqlTable(
       columns: [t.targetUserId],
       foreignColumns: [users.userId],
     }),
+    foreignKey({
+      name: 'fk_notifications_publication',
+      columns: [t.publicationId],
+      foreignColumns: [publications.publicationId],
+    }),
+    // GET /v1/publications/:id đọc mọi thư con của một lần phát.
+    index('idx_notifications_publication').on(t.publicationId),
     index('idx_notifications_app_created').on(t.appId, t.createdAt),
     // MySQL không có partial index -> index thường, query phải kèm status='scheduled'.
     index('idx_notifications_scheduled').on(t.status, t.scheduledAt),

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { TransactionContext } from '../../../../shared/db/index.ts';
 import { TopicId, UserId, type TopicId as TopicIdType, type UserId as UserIdType } from '../../../../shared/kernel/index.ts';
 import type { PreferenceRepository } from '../../application/ports/index.ts';
@@ -28,6 +28,16 @@ export class DrizzlePreferenceRepository implements PreferenceRepository {
       .from(userTopicPreferences)
       .where(and(eq(userTopicPreferences.userId, userId), eq(userTopicPreferences.topicId, topicId)));
     return row ? toPreference(row) : null;
+  }
+
+  async findManyByTopic(topicId: TopicIdType, userIds: readonly UserIdType[]): Promise<UserTopicPreference[]> {
+    if (userIds.length === 0) return [];
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(userTopicPreferences)
+      .where(and(eq(userTopicPreferences.topicId, topicId), inArray(userTopicPreferences.userId, [...userIds])));
+    return rows.map(toPreference);
   }
 
   /** INSERT ... ON DUPLICATE KEY UPDATE trên PK (user_id, topic_id): hai request cùng ghi không lỗi, bên sau thắng. */

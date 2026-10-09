@@ -4,6 +4,7 @@ import {
   AppId,
   ConcurrentTransitionError,
   NotificationId,
+  PublicationId,
   SegmentId,
   TemplateVersionId,
   TopicId,
@@ -11,6 +12,7 @@ import {
   UserId,
   type AppId as AppIdType,
   type NotificationId as NotificationIdType,
+  type PublicationId as PublicationIdType,
 } from '../../../../shared/kernel/index.ts';
 import { IdempotencyKeyTakenError } from '../../application/errors.ts';
 import type { NotificationFilter, NotificationPage, NotificationRepository } from '../../application/ports/index.ts';
@@ -60,6 +62,7 @@ export class DrizzleNotificationRepository implements NotificationRepository {
         subject: n.content?.subject ?? null,
         bodyHtml: n.content?.html ?? null,
         bodyText: n.content?.text ?? null,
+        publicationId: n.publicationId,
       });
     } catch (err) {
       if (duplicateKeyName(err) === 'uq_notifications_app_idempotency') {
@@ -147,6 +150,16 @@ export class DrizzleNotificationRepository implements NotificationRepository {
       .limit(limit);
     return rows.map(toNotification);
   }
+
+  async listByPublication(publicationId: PublicationIdType): Promise<Notification[]> {
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(notifications)
+      .where(eq(notifications.publicationId, publicationId))
+      .orderBy(asc(notifications.createdAt), asc(notifications.notificationId));
+    return rows.map(toNotification);
+  }
 }
 
 function toNotification(row: Row): Notification {
@@ -177,6 +190,7 @@ function toNotification(row: Row): Notification {
     sendingAt: row.sendingAt,
     finishedAt: row.finishedAt,
     targetUserId: row.targetUserId === null ? null : UserId.parse(row.targetUserId),
+    publicationId: row.publicationId === null ? null : PublicationId.parse(row.publicationId),
     content:
       row.subject !== null && row.bodyHtml !== null
         ? emailContent({ subject: row.subject, html: row.bodyHtml, text: row.bodyText })

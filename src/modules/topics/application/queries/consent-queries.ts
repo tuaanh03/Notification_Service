@@ -46,6 +46,12 @@ export class ConsentQueries {
     const preference = await this.deps.preferences.find(userId, topicId);
     return preference ? { optedIn: preference.optedIn } : null;
   }
+
+  /** Lựa chọn của nhiều user cho MỘT topic, một truy vấn — phát tin vào topic (ADR-0028). Chưa chọn thì vắng mặt. */
+  async preferencesOf(topicId: TopicId, userIds: readonly UserId[]): Promise<Map<UserId, { optedIn: boolean }>> {
+    const found = await this.deps.preferences.findManyByTopic(topicId, userIds);
+    return new Map(found.map((p) => [p.userId, { optedIn: p.optedIn }]));
+  }
 }
 
 const view = (t: Topic): ConsentTopicView => ({

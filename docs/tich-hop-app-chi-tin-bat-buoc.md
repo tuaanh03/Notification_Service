@@ -126,7 +126,23 @@ Content-Type: application/json
 * **`202` = EWS đã nhận, chưa gửi.** Giữ lại `id` trong kết quả để tra khi cần (mục 4).
 * `subject` bắt buộc, không xuống dòng, tối đa 998 ký tự. `html` bắt buộc. `text` tuỳ chọn, nên có.
   Mỗi phần thân tối đa 256 KB.
-* Gửi cho nhiều người = gọi nhiều lần, mỗi người một lần.
+* Gửi cho nhiều người: gọi nhiều lần, mỗi người một lần — **hoặc** phát một lần cho mọi người có
+  email trong app (dưới).
+
+**Phát một lần cho cả chủ đề** (tối đa 100 người): như trên nhưng gọi `POST $EWS/v1/publications` và
+**bỏ `to`**. Chủ đề bắt buộc nên mọi người đã khai email đều nhận, trừ người đã bị ngắt email (②).
+
+```json
+{ "topic": "⟨mã chủ đề⟩", "subject": "Bảo trì 22:00 tối nay", "html": "<p>…</p>",
+  "idempotencyKey": "bao-tri-2026-10-10" }
+```
+
+* `idempotencyKey` **bắt buộc**, đại diện cho *"lần phát này"*. Gọi lại cùng khoá → `200`, không gửi thêm.
+* Kết quả có `recipientCount`, `counts` (`pending` · `sent` · `failed` · `skipped`) và danh sách
+  `recipients` (`externalId` + `notificationId` để tra từng thư như mục 4). Tra lại bằng
+  `GET $EWS/v1/publications/<id>`.
+* Quá 100 người → `PUBLICATION_TOO_LARGE`, không ai nhận — gửi từng người.
+* Chi tiết: `huong-dan-tich-hop-cho-doi-app.md`, mục 6.
 
 **Hoặc gửi bằng template** do người soạn làm sẵn trên console EWS — app không gửi `subject` /
 `html` / `text` nữa, chỉ gửi mã template và dữ liệu để đổ vào:
@@ -203,6 +219,7 @@ trong `issues[0].code` (ngoài cùng chỉ là `VALIDATION`):
 | 403 | `APP_NOT_ACTIVE` | App đang bị tạm ngưng. Liên hệ EWS |
 | 403 | `IP_NOT_ALLOWED` | Máy gọi không nằm trong danh sách IP đã khai. Báo EWS thêm IP |
 | 422 | `RECIPIENT_NOT_FOUND` | Chưa khai người này — làm ① rồi gửi lại |
+| 422 | `IDEMPOTENCY_KEY_REQUIRED` · `PUBLICATION_TOO_LARGE` | Phát cả chủ đề: thiếu `idempotencyKey` / quá 100 người — gửi từng người |
 | 422 | `TOPIC_NOT_FOUND` · `TOPIC_NOT_ACTIVE` | Sai mã chủ đề / chủ đề đang tạm ngưng |
 | 422 | `EMAIL_SUBJECT_REQUIRED` · `EMAIL_SUBJECT_TOO_LONG` · `EMAIL_SUBJECT_INVALID` | Tiêu đề trống / quá dài / có xuống dòng |
 | 422 | `EMAIL_HTML_REQUIRED` · `EMAIL_BODY_TOO_LARGE` | Thiếu `html` / nội dung quá 256 KB |
@@ -213,7 +230,7 @@ trong `issues[0].code` (ngoài cùng chỉ là `VALIDATION`):
 | 422 | `EMAIL_INVALID` | Email sai định dạng |
 | 422 | `INVALID_FIELD` | Sai kiểu, thừa trường, mã người nhận có ký tự lạ — `path` chỉ trường nào |
 | 409 | `EMAIL_TAKEN` | Email đã thuộc người khác trong app |
-| 404 | `NOT_FOUND` | Không có người / lá thư này |
+| 404 | `NOT_FOUND` | Không có người / lá thư / lần phát này |
 
 **Thử lại khi nào:** `4xx` — sửa rồi mới gọi, gọi lại nguyên xi vẫn sai. `5xx` hoặc hết thời gian
 chờ — thử lại có giãn cách, **giữ nguyên `idempotencyKey`**.

@@ -34,6 +34,8 @@ export interface UserEmailForDelivery {
 
 export interface EmailLookup {
   find(appId: AppId, userId: UserId): Promise<UserEmailForDelivery | null>;
+  /** Email của MỌI user trong app, mọi trạng thái — phát tin vào topic (ADR-0028). User chưa có email thì vắng mặt. */
+  listByApp(appId: AppId): Promise<Map<UserId, UserEmailForDelivery>>;
 }
 
 /** -> subscriptions: số email của app theo trạng thái — màn Tổng quan. Tách khỏi `EmailLookup` của đường gửi. */
@@ -56,6 +58,8 @@ export interface TopicConsentLookup {
   /** Mọi topic của app — màn danh sách đổi `topic_id` ra `key` bằng MỘT truy vấn. */
   topicsByApp(appId: AppId): Promise<TopicForDelivery[]>;
   preference(userId: UserId, topicId: TopicId): Promise<{ optedIn: boolean } | null>;
+  /** Như `preference` nhưng cho nhiều user, một truy vấn. User chưa chọn thì vắng mặt trong Map. */
+  preferences(topicId: TopicId, userIds: readonly UserId[]): Promise<Map<UserId, { optedIn: boolean }>>;
 }
 
 /** -> delivery: gửi một email. Kết quả đã hết `retryable` (delivery tự thử lại). */

@@ -147,6 +147,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         saveTransition: async () => undefined,
         listByApp: async () => ({ rows: [], total: 0 }),
         listStuckSending: async () => [],
+        listByPublication: async () => [],
       },
       recipients: {
         findByNotification: async () => null,
@@ -154,12 +155,13 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         insert: async () => undefined,
         update: async () => undefined,
       },
-      emails: { find: async () => options.email ?? null },
+      emails: { find: async () => options.email ?? null, listByApp: async () => new Map() },
       topics: {
         topicByKey: async () => null,
         topicById: async () => ({ topicId, key: 'order_updates', status: 'active', mandatory: false, defaultOptedIn: true }),
         topicsByApp: async () => [],
         preference: async () => null,
+        preferences: async () => new Map(),
       },
       sender: {
         awaitCapacity: async () => undefined,

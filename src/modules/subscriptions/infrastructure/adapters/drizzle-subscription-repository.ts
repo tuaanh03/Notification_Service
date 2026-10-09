@@ -46,6 +46,15 @@ export class DrizzleSubscriptionRepository implements SubscriptionRepository {
     return rows.map(toSubscription);
   }
 
+  async listByApp(appId: AppIdType, channel: Channel): Promise<Subscription[]> {
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.appId, appId), eq(subscriptions.channel, channel)));
+    return rows.map(toSubscription);
+  }
+
   async countByStatus(appId: AppIdType, channel: Channel): Promise<Record<SubscriptionStatus, number>> {
     const rows = await this.transactions
       .executor()

@@ -6,13 +6,16 @@ import {
   FailStuckSending,
   GetAppOverview,
   GetNotification,
+  GetPublication,
   ListNotifications,
+  PublishToTopic,
 } from '../../modules/notifications/application/index.ts';
 import {
   DeliveryEmailSender,
   DirectoryRecipientLookup,
   DrizzleNotificationRepository,
   DrizzleNotificationStats,
+  DrizzlePublicationRepository,
   DrizzleRecipientRepository,
   SubscriptionsEmailLookup,
   TemplatesLabels,
@@ -24,6 +27,7 @@ import {
   emailSenderHandler,
   failStuckSendingJob,
   v1NotificationsRoutes,
+  v1PublicationsRoutes,
 } from '../../modules/notifications/interface/index.ts';
 import type { FindUserEmail } from '../../modules/subscriptions/application/index.ts';
 import type { RenderTemplate, TemplateQueries } from '../../modules/templates/application/index.ts';
@@ -34,7 +38,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
 
 /**
  * Ghép module notifications — cắm vào CẢ BA process:
- *   api       POST/GET /v1/notifications · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
+ *   api       POST/GET /v1/notifications · POST/GET /v1/publications (phát vào topic, ADR-0028) · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
  *             · GET /admin/apps/:appId/overview (màn Tổng quan, chỉ đọc)
  *   worker    consumer `email-sender` (notif.queued, idempotency: 'handler')
  *   scheduler job `fail-stuck-sending`
@@ -60,6 +64,8 @@ export function notificationsModule(
   const users = new DirectoryRecipientLookup(dependencies);
   const emails = new SubscriptionsEmailLookup(dependencies);
   const templates = new TemplatesLabels(dependencies);
+  const renderer = new TemplatesRenderer(dependencies);
+  const publications = new DrizzlePublicationRepository({ transactions });
 
   return {
     definition: {
@@ -81,10 +87,25 @@ export function notificationsModule(
               recipients,
               users,
               topics,
-              renderer: new TemplatesRenderer(dependencies),
+              renderer,
               templates,
             }),
             get: new GetNotification({ notifications, recipients, topics, templates }),
+          }),
+          v1PublicationsRoutes({
+            publish: new PublishToTopic({
+              uow,
+              outbox,
+              clock,
+              publications,
+              notifications,
+              users,
+              emails,
+              topics,
+              renderer,
+              templates,
+            }),
+            get: new GetPublication({ publications, notifications, users, topics, templates }),
           }),
         ],
       },

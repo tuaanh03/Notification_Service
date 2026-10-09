@@ -58,7 +58,7 @@ Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm
 `templates` (ADR-0020) — xong cả 3 GĐ: admin soạn / xuất bản, app gửi bằng `templateId` + `payload`,
 màn Templates của console đã đấu API.
 
-Có trong repo: domain model 10 module · schema MySQL + 7 migration · hạ tầng dùng chung (config, db,
+Có trong repo: domain model 10 module · schema MySQL + 11 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
@@ -68,7 +68,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác; `GET /admin/apps/:appId/users` (danh sách người nhận, phân trang + tìm) và `GET /admin/apps/:appId/users/:externalId` (một người, khớp đủ mã — cùng `FindUserByExternalId.get` với `/v1`) |
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
 | `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `GET /admin/apps/:appId/users/:externalId/preferences` (chỉ đọc); `ConsentQueries` cho module khác |
-| `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency; nội dung viết thẳng HOẶC `templateId` + `payload`, đổ biến lúc nhận); `GET /admin/apps/:appId/notifications` (lịch sử gửi, chỉ đọc, không kèm địa chỉ / nội dung); `GET /admin/apps/:appId/overview` (số liệu màn Tổng quan: 24 giờ gần nhất + hàng chờ, chỉ con số); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
+| `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency; nội dung viết thẳng HOẶC `templateId` + `payload`, đổ biến lúc nhận); `POST/GET /v1/publications` (phát vào topic — ≤ 100 người đang theo dõi, mỗi người một notification con đi đúng đường gửi lẻ, `idempotencyKey` bắt buộc — ADR-0028); `GET /admin/apps/:appId/notifications` (lịch sử gửi, chỉ đọc, không kèm địa chỉ / nội dung); `GET /admin/apps/:appId/overview` (số liệu màn Tổng quan: 24 giờ gần nhất + hàng chờ, chỉ con số); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
 | `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `GraphEmailProvider` + `MockEmailProvider` (chọn bằng `EMAIL_PROVIDER`), port `SendRateLimiter` (`EMAIL_MAX_PER_MINUTE`, đếm chung trên Redis) |
 | `apps` | vòng đời app (UC-001) — tự phục vụ: tạo xong là `active`, cấp sẵn `email` (`App.register`, ADR-0023), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
@@ -116,6 +116,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0025` | **Org tự phục vụ**: quyền `org.create` (ai đăng nhập cũng có), `POST /admin/organizations` tạo org trong account của chính mình + ghi mình là Owner trong CÙNG transaction. Chưa làm hạn mức / đổi tên / xoá / chuyển Owner |
 | `0026` | **Màn Thành viên**: quyền `org.manage` (Owner, Org Admin); thêm / đổi vai / gỡ thành viên, cấp / thu hồi vai app qua `/admin`; CHỈ Owner động được vai Owner (`OWNER_REQUIRED`); email chưa có tài khoản -> 422 `ADMIN_NOT_REGISTERED`; gỡ khỏi org thu hồi vai app CÙNG transaction (`apps/RemoveMemberFromOrg` gọi tenancy qua port) |
 | `0027` | **Đồng bộ danh bạ M365**: Super Admin bấm `POST /admin/directory/m365-sync` -> đọc `/users` bằng app `GRAPH_*` (`User.Read.All`), tạo / gắn tài khoản cùng luật ADR-0024; hai tenant `GRAPH_*` / `M365_*` phải trùng; cột `admins.display_name`; hộp Thêm thành viên chọn từ `GET …/member-candidates` |
+| `0028` | **Phát tin vào topic**: `POST /v1/publications` -> một dòng `publications` + mỗi người theo dõi một notification con (`publication_id`), worker không đổi; người nhận chốt lúc phát bằng `emailGate` (không dùng pipeline segments); trần 100 người (422 `PUBLICATION_TOO_LARGE`), mọi thứ trong MỘT transaction; `idempotencyKey` bắt buộc; topic bắt buộc phát được |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

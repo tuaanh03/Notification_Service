@@ -27,6 +27,15 @@ export class FindUserEmail {
     return new Map(found.map((s) => [s.userId, toEmailSubscriptionDto(s)]));
   }
 
+  /**
+   * Email của MỌI user trong app, một truy vấn — phát tin vào topic (ADR-0028) dựng danh sách người nhận.
+   * Trả cả email đã ngắt / hỏng: gate ở phía gọi quyết định, không lọc ở đây.
+   */
+  async listOf(input: { appId: AppId }): Promise<Map<UserId, EmailSubscriptionDto>> {
+    const found = await this.subscriptions.listByApp(input.appId, 'email');
+    return new Map(found.map((s) => [s.userId, toEmailSubscriptionDto(s)]));
+  }
+
   /** Số email của app theo trạng thái — cho màn Tổng quan (bao nhiêu người còn nhận được thư). */
   countByStatus(input: { appId: AppId }): Promise<Record<SubscriptionStatus, number>> {
     return this.subscriptions.countByStatus(input.appId, 'email');

@@ -9,6 +9,8 @@ export interface SubscriptionRepository {
    * không bắn N+1 truy vấn. Danh sách rỗng -> trả mảng rỗng, không gọi DB.
    */
   findManyByUsers(appId: AppId, userIds: readonly UserId[], channel: Channel): Promise<Subscription[]>;
+  /** Mọi điểm nhận của MỘT app trên một kênh, mọi trạng thái — phát tin vào topic (ADR-0028) lọc ở phía gọi. */
+  listByApp(appId: AppId, channel: Channel): Promise<Subscription[]>;
   /** Số điểm nhận của MỘT app theo trạng thái (index `idx_subscriptions_app_status`). Trạng thái không có dòng nào -> 0. */
   countByStatus(appId: AppId, channel: Channel): Promise<Record<SubscriptionStatus, number>>;
   /** Ai đang giữ địa chỉ này trong app (`uq_subscriptions_app_channel_value`). */

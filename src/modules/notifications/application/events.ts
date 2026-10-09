@@ -13,6 +13,13 @@ export const NOTIFICATION_EVENTS = {
   failed: 'NotificationFailed',
 } as const;
 
+export const PUBLICATION_AGGREGATE = 'Publication';
+
+/** Chỉ vào `audit.events` — thư con có `NotificationQueued` riêng, đi `notif.queued` như gửi lẻ. */
+export const PUBLICATION_EVENTS = {
+  published: 'TopicPublished',
+} as const;
+
 /** Actor của mọi chuyển trạng thái do worker / job làm. */
 export const EMAIL_SENDER_ACTOR: Actor = { id: 'email-sender', type: 'system' };
 

@@ -3,9 +3,7 @@ import {
   NotificationId,
   ValidationError,
   type AppId,
-  type Channel,
   type Clock,
-  type TemplateId,
 } from '../../../../shared/kernel/index.ts';
 import { Notification } from '../../domain/entities/notification.ts';
 import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
@@ -22,19 +20,12 @@ import type {
   TemplateRenderer,
   TopicConsentLookup,
 } from '../ports/index.ts';
+import { parseSendSource, requireActiveTopic, type SendContentInput } from './send-input.ts';
 
-export interface AcceptEmailNotificationInput {
+export interface AcceptEmailNotificationInput extends SendContentInput {
   appId: AppId;
-  grantedChannels: readonly Channel[];
   externalId: string;
   topic: string;
-  /** Cách 1 — nội dung viết thẳng. */
-  subject?: string | undefined;
-  html?: string | undefined;
-  text?: string | undefined;
-  /** Cách 2 — gửi bằng template đã xuất bản (ADR-0020). Loại trừ với cách 1. */
-  templateId?: TemplateId | undefined;
-  payload?: Record<string, unknown> | undefined;
   idempotencyKey?: string | undefined;
 }
 
@@ -73,38 +64,14 @@ export class AcceptEmailNotification {
     ctx: CommandContext,
   ): Promise<{ notification: NotificationDto; created: boolean }> {
     const { uow, outbox, clock, notifications, users, topics, renderer } = this.deps;
-    if (!input.grantedChannels.includes('email')) {
-      throw ValidationError.of('CHANNEL_NOT_GRANTED', 'this app is not granted the email channel', 'channel');
-    }
-    const templateId = input.templateId;
-    if (templateId && [input.subject, input.html, input.text].some((field) => field !== undefined)) {
-      throw ValidationError.of(
-        'CONTENT_AND_TEMPLATE_CONFLICT',
-        'send either templateId + payload or subject + html, not both',
-        'templateId',
-      );
-    }
-    if (!templateId && input.payload !== undefined) {
-      throw ValidationError.of('PAYLOAD_REQUIRES_TEMPLATE', 'payload is only used together with templateId', 'payload');
-    }
-    // Nội dung viết thẳng kiểm ngay; nội dung từ template kiểm sau khi đổ biến (cùng `emailContent()`).
-    const source = templateId
-      ? ({ kind: 'template', templateId } as const)
-      : ({
-          kind: 'direct',
-          content: emailContent({ subject: input.subject ?? '', html: input.html ?? '', text: input.text }),
-        } as const);
+    const source = parseSendSource(input);
 
     if (input.idempotencyKey) {
       const existing = await notifications.findByIdempotencyKey(input.appId, input.idempotencyKey);
       if (existing) return { notification: await this.describe(existing), created: false };
     }
 
-    const topic = await topics.topicByKey(input.appId, input.topic);
-    if (!topic) throw ValidationError.of('TOPIC_NOT_FOUND', `topic ${input.topic} does not exist`, 'topic');
-    if (topic.status !== 'active') {
-      throw ValidationError.of('TOPIC_NOT_ACTIVE', `topic ${input.topic} is ${topic.status}`, 'topic');
-    }
+    const topic = await requireActiveTopic(topics, input.appId, input.topic);
     const userId = await users.findUserId(input.appId, input.externalId);
     if (!userId) {
       throw ValidationError.of(

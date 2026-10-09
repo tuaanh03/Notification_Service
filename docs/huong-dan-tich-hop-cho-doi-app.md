@@ -367,6 +367,8 @@ gửi mới với **khoá `idempotencyKey` mới** — và chấp nhận khả n
 Gửi bằng template thì kết quả có thêm `"template": { "id": "…", "version": 3 }` — bản đã dùng cho
 lá thư đó. Gửi bằng nội dung viết thẳng thì `"template": null`.
 
+`publicationId`: thư thuộc một lần phát vào chủ đề (mục 6) thì là `id` của lần phát đó, gửi lẻ thì `null`.
+
 Thư của app khác → `404`, như thể không tồn tại.
 
 *Nguồn: `notifications-api.test.ts` — khối "gate L0 / L1 / L3", "chuyển phát at-most-once", "GET /v1/notifications/:id".*
@@ -375,13 +377,79 @@ Thư của app khác → `404`, như thể không tồn tại.
 
 ## 6. Gửi cho nhiều người
 
-App lặp, mỗi người một lời gọi. Hai điều cần biết:
+Có hai cách.
+
+### Cách 1 — phát vào chủ đề (tối đa 100 người)
+
+Một lời gọi, EWS gửi cho **mọi người trong app đang theo dõi chủ đề đó**. App không cần biết danh sách.
+
+```http
+POST $EWS/v1/publications
+Content-Type: application/json
+
+{
+  "topic": "bao_tri",
+  "subject": "Bảo trì hệ thống 22:00 tối nay",
+  "html": "<p>Hệ thống tạm ngưng từ 22:00 đến 23:00.</p>",
+  "text": "Hệ thống tạm ngưng từ 22:00 đến 23:00.",
+  "idempotencyKey": "bao-tri-2026-10-10"
+}
+```
+
+Như gửi lẻ nhưng **không có `to`**. Nội dung viết thẳng hoặc `templateId` + `payload` (bước 5) — mọi
+người nhận cùng `payload`; `{{ user.external_id }}` được đổ theo từng người.
+
+**Ai nhận** — đúng luật của gửi lẻ (mục 5), chốt **ngay lúc gọi**:
+
+| Người | Chủ đề `opt_out` | Chủ đề `opt_in` | Chủ đề bắt buộc |
+| --- | --- | --- | --- |
+| chưa chọn gì | nhận | không | nhận |
+| đã bật chủ đề | nhận | nhận | nhận |
+| đã tắt chủ đề / tắt mọi tin không bắt buộc | không | không | **nhận** |
+| chưa có email / email đã ngắt / không dùng được | không | không | không |
+
+* **`idempotencyKey` bắt buộc** (thiếu → `IDEMPOTENCY_KEY_REQUIRED`). Phát trùng là cả nhóm nhận
+  thư trùng. Khoá đại diện cho *"lần phát này"* — ví dụ `bao-tri-2026-10-10`. Gọi lại cùng khoá →
+  `200` kèm lần phát cũ, không gửi thêm. Khoá của lần phát và của gửi lẻ là hai tập riêng.
+* **Quá 100 người theo dõi** → `422 PUBLICATION_TOO_LARGE`, không gửi cho ai. Dùng cách 2.
+* **Không ai theo dõi** không phải lỗi: `202`, `"recipientCount": 0`.
+* Người tắt chủ đề **sau** lúc phát nhưng **trước** khi tới lượt gửi thì không nhận (đếm vào `skipped`).
+
+Kết quả `202` (và `GET $EWS/v1/publications/<id>` về sau):
+
+```json
+{
+  "id": "…", "topic": "bao_tri", "template": null, "idempotencyKey": "bao-tri-2026-10-10",
+  "status": "in_progress", "recipientCount": 37,
+  "counts": { "pending": 37, "sent": 0, "failed": 0, "skipped": 0 },
+  "recipients": [{ "externalId": "NV-0123", "notificationId": "…", "status": "queued" }],
+  "createdAt": "…"
+}
+```
+
+* `status`: `in_progress` khi còn thư chờ gửi, `completed` khi mọi thư đã có kết quả.
+* `counts`: `pending` = `queued` + `sending` · `sent` · `failed` · `skipped` = `no_recipient`.
+* Mỗi người nhận là **một lá thư riêng** — tra chi tiết (lý do chặn, lỗi) bằng
+  `GET /v1/notifications/<notificationId>` như mục 5.
+* Lần phát của app khác → `404`.
+
+*Nguồn: `publications-api.test.ts`.*
+
+### Cách 2 — app tự lặp
+
+Mỗi người một lời gọi `POST /v1/notifications`. Dùng khi danh sách do app quyết định (không theo chủ
+đề), hoặc chủ đề quá 100 người.
+
+### Cả hai cách
+
+Hai điều cần biết:
 
 * **EWS nhận ngay nhưng gửi dần.** Mọi app dùng chung một hộp thư gửi của công ty, và hộp thư đó
   bị giới hạn tốc độ (mặc định **30 thư/phút**, đội EWS cấu hình). 1 000 lời gọi nhận xong trong vài
-  giây, nhưng thư cuối có thể đi sau hơn nửa giờ — lâu hơn nữa nếu app khác cũng đang gửi.
+  giây, nhưng thư cuối có thể đi sau hơn nửa giờ — lâu hơn nữa nếu app khác cũng đang gửi. Một lần
+  phát 50 người cũng mất khoảng 2 phút mới đi hết.
   **Đừng dùng EWS cho tin cần tới trong vài giây với số đông.**
-* **Người bị chặn không làm hỏng vòng lặp.** Người đã tắt chủ đề vẫn cho `202`, rồi kết thúc
+* **Người bị chặn không làm hỏng vòng lặp (cách 2).** Người đã tắt chủ đề vẫn cho `202`, rồi kết thúc
   `no_recipient`. Chỉ người **chưa khai** mới lỗi ngay (`RECIPIENT_NOT_FOUND`) — khai bổ sung rồi
   gọi lại cho riêng người đó.
 
@@ -448,28 +516,30 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | 403 | `IP_NOT_ALLOWED` | mọi `/v1` | IP gọi tới không nằm trong danh sách đã khai (so khớp đúng từng địa chỉ). |
 | 403 | `ORIGIN_NOT_ALLOWED` | mọi `/v1` | Header `Origin` không nằm trong danh sách đã khai. |
 | 422 | `RECIPIENT_NOT_FOUND` | gửi | Chưa khai người này — làm bước 3 rồi gọi lại. |
-| 422 | `TOPIC_NOT_FOUND` | gửi, preferences | Sai `key`, chủ đề chưa kích hoạt (ở preferences), hoặc chủ đề của app khác. |
-| 422 | `TOPIC_NOT_ACTIVE` | gửi | Chủ đề còn nháp hoặc đang tạm ngưng. Liên hệ EWS. |
-| 422 | `CHANNEL_NOT_GRANTED` | gửi | App chưa được cấp kênh email (chỉ gặp ở app tạo trước khi bỏ bước duyệt). Liên hệ EWS. |
-| 422 | `EMAIL_SUBJECT_REQUIRED` · `EMAIL_SUBJECT_TOO_LONG` · `EMAIL_SUBJECT_INVALID` | gửi | Tiêu đề trống / quá 998 ký tự / có xuống dòng. |
-| 422 | `EMAIL_HTML_REQUIRED` · `EMAIL_BODY_TOO_LARGE` | gửi | Thiếu `html` / một phần thân quá 256 KB. Gửi bằng template thì tính trên nội dung đã đổ biến. |
-| 422 | `CONTENT_AND_TEMPLATE_CONFLICT` | gửi | Gửi cả `templateId` lẫn `subject` / `html` / `text`. Chọn một cách. |
-| 422 | `PAYLOAD_REQUIRES_TEMPLATE` | gửi | Có `payload` mà không có `templateId`. |
-| 422 | `TEMPLATE_NOT_FOUND` | gửi | Sai `templateId`, mã của môi trường khác, hoặc template của app khác. |
-| 422 | `TEMPLATE_NOT_PUBLISHED` | gửi | Template chưa được xuất bản lần nào. Liên hệ người soạn. |
-| 422 | `TEMPLATE_ARCHIVED` | gửi | Template đã lưu trữ, không dùng được nữa. Hỏi người soạn mã mới. |
-| 422 | `MISSING_VARIABLE` | gửi | Thiếu biến bắt buộc. `issues` liệt kê **mọi** biến thiếu, `path` là tên biến (`payload.vm_name`). |
-| 422 | `INVALID_PAYLOAD_VALUE` | gửi | Giá trị trong `payload` là object, mảng hoặc `null`. |
-| 422 | `LINK_SCHEME_NOT_ALLOWED` | gửi | Biến làm link ra địa chỉ không phải `https://` / `mailto:`. |
-| 422 | `PAYLOAD_TOO_LARGE` | gửi | `payload` quá 2 KB (khác mã `413` cùng tên — cái này nằm trong `issues`). |
+| 422 | `IDEMPOTENCY_KEY_REQUIRED` | phát | Lần phát vào chủ đề phải có `idempotencyKey` (mục 6). |
+| 422 | `PUBLICATION_TOO_LARGE` | phát | Chủ đề có quá 100 người theo dõi. Không ai nhận thư — gửi lẻ từng người. |
+| 422 | `TOPIC_NOT_FOUND` | gửi, phát, preferences | Sai `key`, chủ đề chưa kích hoạt (ở preferences), hoặc chủ đề của app khác. |
+| 422 | `TOPIC_NOT_ACTIVE` | gửi, phát | Chủ đề còn nháp hoặc đang tạm ngưng. Liên hệ EWS. |
+| 422 | `CHANNEL_NOT_GRANTED` | gửi, phát | App chưa được cấp kênh email (chỉ gặp ở app tạo trước khi bỏ bước duyệt). Liên hệ EWS. |
+| 422 | `EMAIL_SUBJECT_REQUIRED` · `EMAIL_SUBJECT_TOO_LONG` · `EMAIL_SUBJECT_INVALID` | gửi, phát | Tiêu đề trống / quá 998 ký tự / có xuống dòng. |
+| 422 | `EMAIL_HTML_REQUIRED` · `EMAIL_BODY_TOO_LARGE` | gửi, phát | Thiếu `html` / một phần thân quá 256 KB. Gửi bằng template thì tính trên nội dung đã đổ biến. |
+| 422 | `CONTENT_AND_TEMPLATE_CONFLICT` | gửi, phát | Gửi cả `templateId` lẫn `subject` / `html` / `text`. Chọn một cách. |
+| 422 | `PAYLOAD_REQUIRES_TEMPLATE` | gửi, phát | Có `payload` mà không có `templateId`. |
+| 422 | `TEMPLATE_NOT_FOUND` | gửi, phát | Sai `templateId`, mã của môi trường khác, hoặc template của app khác. |
+| 422 | `TEMPLATE_NOT_PUBLISHED` | gửi, phát | Template chưa được xuất bản lần nào. Liên hệ người soạn. |
+| 422 | `TEMPLATE_ARCHIVED` | gửi, phát | Template đã lưu trữ, không dùng được nữa. Hỏi người soạn mã mới. |
+| 422 | `MISSING_VARIABLE` | gửi, phát | Thiếu biến bắt buộc. `issues` liệt kê **mọi** biến thiếu, `path` là tên biến (`payload.vm_name`). |
+| 422 | `INVALID_PAYLOAD_VALUE` | gửi, phát | Giá trị trong `payload` là object, mảng hoặc `null`. |
+| 422 | `LINK_SCHEME_NOT_ALLOWED` | gửi, phát | Biến làm link ra địa chỉ không phải `https://` / `mailto:`. |
+| 422 | `PAYLOAD_TOO_LARGE` | gửi, phát | `payload` quá 2 KB (khác mã `413` cùng tên — cái này nằm trong `issues`). |
 | 422 | `TOPIC_MANDATORY` | preferences | Cố tắt chủ đề bắt buộc. Không có đường lách. |
 | 422 | `EMAIL_NOT_SET` | preferences | Đặt `optedOutOptional` cho người chưa có email. |
 | 422 | `EMAIL_INVALID` | khai người | Email sai định dạng. |
 | 422 | `INVALID_FIELD` | mọi `/v1` | Sai kiểu / thừa trường / mã nhân viên có ký tự lạ. `path` chỉ trường nào. |
 | 409 | `EMAIL_TAKEN` | khai người | Địa chỉ đã thuộc người khác trong app. |
-| 404 | `NOT_FOUND` | đọc người, preferences, ngắt email, đọc thư | Không có (hoặc thuộc app khác). |
+| 404 | `NOT_FOUND` | đọc người, preferences, ngắt email, đọc thư, đọc lần phát | Không có (hoặc thuộc app khác). |
 | 400 | `MALFORMED_JSON` | mọi `/v1` | Body không phải JSON hợp lệ. |
-| 413 | `PAYLOAD_TOO_LARGE` | mọi `/v1` | Request quá lớn (gửi thư: 512 KB; còn lại: 64 KB). |
+| 413 | `PAYLOAD_TOO_LARGE` | mọi `/v1` | Request quá lớn (gửi thư, phát: 512 KB; còn lại: 64 KB). |
 | 500 | `INTERNAL` | mọi `/v1` | Lỗi phía EWS. |
 
 **Thử lại khi nào:**
@@ -484,7 +554,7 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 
 | Chưa có | Hệ quả cho app |
 | --- | --- |
-| Gửi hàng loạt theo chủ đề / phân khúc | App tự lặp từng người (mục 6). |
+| Phát cho chủ đề quá 100 người, gửi theo phân khúc | App tự lặp từng người (mục 6, cách 2). |
 | App tự tạo / sửa template qua API | Template chỉ soạn và xuất bản trên console EWS. |
 | Biến `{{ user.tags.… }}` trong template | Chỉ có `payload.…` và `user.external_id`. |
 | Hẹn giờ, huỷ, dừng, gửi lại | Gọi lúc nào thì xếp hàng lúc đó. Thư đã nhận không huỷ được. |

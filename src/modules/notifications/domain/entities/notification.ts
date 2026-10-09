@@ -7,6 +7,7 @@ import {
   type NotificationId,
   type NotificationOrigin,
   type NotificationStatus,
+  type PublicationId,
   type SegmentId,
   type TemplateVersionId,
   type TimestampInput,
@@ -44,6 +45,8 @@ export interface NotificationProps extends TimestampInput {
   counters?: Counters | undefined;
   /** Gửi trực tiếp một người (MVP — ADR-0016). NULL khi gửi theo segment. */
   targetUserId?: UserId | null | undefined;
+  /** Thư con của một lần phát tin vào topic (ADR-0028). NULL = gửi lẻ. */
+  publicationId?: PublicationId | null | undefined;
   /**
    * Nội dung email sẽ gửi, tạo bằng `emailContent()`. Gửi bằng template thì đây là nội dung ĐÃ đổ biến lúc
    * API nhận request (ADR-0020), kèm `templateVersionId` — worker gửi đúng thứ này, không đổ lại.
@@ -74,6 +77,7 @@ export class Notification extends BaseEntity<NotificationId> {
   readonly parentNotificationId: NotificationId | null;
   readonly createdBy: string | null;
   readonly targetUserId: UserId | null;
+  readonly publicationId: PublicationId | null;
   readonly content: EmailContent | null;
 
   status: NotificationStatus;
@@ -107,6 +111,7 @@ export class Notification extends BaseEntity<NotificationId> {
     this.parentNotificationId = props.parentNotificationId ?? null;
     this.createdBy = props.createdBy ?? null;
     this.targetUserId = props.targetUserId ?? null;
+    this.publicationId = props.publicationId ?? null;
     this.content = props.content ?? null;
 
     this.status = props.status ?? (props.origin === 'api' ? 'queued' : 'draft');

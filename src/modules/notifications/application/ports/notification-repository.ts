@@ -1,6 +1,7 @@
-import type { AppId, NotificationId, NotificationStatus, TopicId, UserId } from '../../../../shared/kernel/index.ts';
+import type { AppId, NotificationId, NotificationStatus, PublicationId, TopicId, UserId } from '../../../../shared/kernel/index.ts';
 import type { Notification } from '../../domain/entities/notification.ts';
 import type { NotificationRecipient } from '../../domain/entities/notification-recipient.ts';
+import type { Publication } from '../../domain/entities/publication.ts';
 
 /** Bộ lọc của màn lịch sử gửi. Trường vắng mặt = không lọc theo trường đó. */
 export interface NotificationFilter {
@@ -33,6 +34,16 @@ export interface NotificationRepository {
   listByApp(appId: AppId, filter: NotificationFilter, page: { limit: number; offset: number }): Promise<NotificationPage>;
   /** Notification ở `sending` từ trước `before` — ứng viên cho job fail-stuck-sending. */
   listStuckSending(before: Date, limit: number): Promise<Notification[]>;
+  /** Mọi thư con của MỘT lần phát (ADR-0028) — tối đa `MAX_PUBLICATION_RECIPIENTS` dòng. */
+  listByPublication(publicationId: PublicationId): Promise<Notification[]>;
+}
+
+/** Lần phát tin vào topic (ADR-0028). Thư con ghi qua `NotificationRepository`. */
+export interface PublicationRepository {
+  /** Trùng `(app_id, idempotency_key)` -> `PublicationKeyTakenError` (caller trả lần phát cũ). */
+  insert(publication: Publication): Promise<void>;
+  findById(id: PublicationId): Promise<Publication | null>;
+  findByIdempotencyKey(appId: AppId, key: string): Promise<Publication | null>;
 }
 
 export interface RecipientRepository {

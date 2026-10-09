@@ -1,6 +1,6 @@
 import type { SendEmail, SendRateLimiter } from '../../../delivery/application/index.ts';
 import type { FindUserByExternalId } from '../../../directory/application/index.ts';
-import type { FindUserEmail } from '../../../subscriptions/application/index.ts';
+import type { EmailSubscriptionDto, FindUserEmail } from '../../../subscriptions/application/index.ts';
 import type { ConsentQueries } from '../../../topics/application/index.ts';
 import {
   SUBSCRIPTION_STATUSES,
@@ -58,14 +58,12 @@ export class SubscriptionsEmailLookup implements EmailLookup, EmailCounts {
 
   async find(appId: AppId, userId: UserIdType): Promise<UserEmailForDelivery | null> {
     const dto = await this.findUserEmail.execute({ appId, userId });
-    if (!dto) return null;
-    return {
-      subscriptionId: SubscriptionId.parse(dto.subscriptionId),
-      address: dto.address,
-      status: oneOf(SUBSCRIPTION_STATUSES, dto.status, 'subscription status'),
-      suppressedReason: dto.suppressedReason === null ? null : oneOf(SUPPRESSED_REASONS, dto.suppressedReason, 'suppressed reason'),
-      optedOutOptional: dto.optedOutOptional,
-    };
+    return dto ? toDelivery(dto) : null;
+  }
+
+  async listByApp(appId: AppId): Promise<Map<UserIdType, UserEmailForDelivery>> {
+    const found = await this.findUserEmail.listOf({ appId });
+    return new Map([...found].map(([userId, dto]) => [userId, toDelivery(dto)]));
   }
 
   countByStatus(appId: AppId): Promise<Record<SubscriptionStatus, number>> {
@@ -96,6 +94,10 @@ export class TopicsConsentLookup implements TopicConsentLookup {
   preference(userId: UserIdType, topicId: TopicId): Promise<{ optedIn: boolean } | null> {
     return this.consent.preference(userId, topicId);
   }
+
+  preferences(topicId: TopicId, userIds: readonly UserIdType[]): Promise<Map<UserIdType, { optedIn: boolean }>> {
+    return this.consent.preferencesOf(topicId, userIds);
+  }
 }
 
 /** notifications -> delivery. `SendEmail` đã tự thử lại, kết quả không còn `retryable`. */
@@ -115,6 +117,16 @@ export class DeliveryEmailSender implements EmailSender {
   send(email: { to: string; subject: string; html: string; text: string | null; notificationId: string }): Promise<EmailDeliveryOutcome> {
     return this.sendEmail.execute(email);
   }
+}
+
+function toDelivery(dto: EmailSubscriptionDto): UserEmailForDelivery {
+  return {
+    subscriptionId: SubscriptionId.parse(dto.subscriptionId),
+    address: dto.address,
+    status: oneOf(SUBSCRIPTION_STATUSES, dto.status, 'subscription status'),
+    suppressedReason: dto.suppressedReason === null ? null : oneOf(SUPPRESSED_REASONS, dto.suppressedReason, 'suppressed reason'),
+    optedOutOptional: dto.optedOutOptional,
+  };
 }
 
 function oneOf<T extends string>(allowed: readonly T[], value: string, what: string): T {
