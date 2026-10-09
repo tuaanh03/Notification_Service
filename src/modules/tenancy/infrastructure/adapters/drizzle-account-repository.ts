@@ -27,6 +27,13 @@ export class DrizzleAccountRepository implements AccountRepository {
     );
   }
 
+  async findOldest(): Promise<Account | null> {
+    const [row] = await this.transactions.executor().select().from(accounts).orderBy(asc(accounts.createdAt)).limit(1);
+    return row
+      ? new Account({ id: AccountId.parse(row.accountId), name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt })
+      : null;
+  }
+
   async insert(account: Account): Promise<void> {
     await this.transactions.executor().insert(accounts).values({
       accountId: account.id,

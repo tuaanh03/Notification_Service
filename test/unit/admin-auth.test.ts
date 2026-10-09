@@ -59,6 +59,10 @@ class FakeAdmins implements AdminRepository {
   async insert(admin: Admin): Promise<void> {
     this.rows.push(admin);
   }
+  async insertIfAbsent(admin: Admin): Promise<boolean> {
+    this.rows.push(admin);
+    return true;
+  }
   async updatePassword(): Promise<void> {}
   async linkMicrosoft(): Promise<boolean> {
     return true;

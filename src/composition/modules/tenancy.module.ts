@@ -131,7 +131,7 @@ export function tenancyModule(
             logoutAdmin: new LogoutAdmin({ uow, outbox, sessions, tokens }),
             authenticateAdminSession,
             startMicrosoftLogin: new StartMicrosoftLogin({ identity: microsoftIdentity }),
-            loginAdminWithMicrosoft: new LoginAdminWithMicrosoft({ ...sessionDeps, identity: microsoftIdentity, admins }),
+            loginAdminWithMicrosoft: new LoginAdminWithMicrosoft({ ...sessionDeps, identity: microsoftIdentity, admins, accounts }),
           }),
         ],
         admin: [

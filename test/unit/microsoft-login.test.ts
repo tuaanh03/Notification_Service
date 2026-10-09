@@ -6,7 +6,9 @@ import { Admin } from '../../src/modules/tenancy/domain/entities/admin.ts';
 import type { AdminSession } from '../../src/modules/tenancy/domain/entities/admin-session.ts';
 import { LoginAdminWithMicrosoft } from '../../src/modules/tenancy/application/commands/login-admin-with-microsoft.ts';
 import { StartMicrosoftLogin } from '../../src/modules/tenancy/application/commands/start-microsoft-login.ts';
+import { Account } from '../../src/modules/tenancy/domain/entities/account.ts';
 import type {
+  AccountRepository,
   AdminRepository,
   AdminSessionRepository,
   MicrosoftIdentity,
@@ -74,7 +76,17 @@ class FakeAdmins implements AdminRepository {
   async findByMicrosoftOid(oid: string) {
     return this.rows.find((a) => a.microsoftOid === oid) ?? null;
   }
+  /** Mô phỏng lần đăng nhập ĐẦU song song đã tạo tài khoản cho `oid` này trước. */
+  createdConcurrently: Admin | null = null;
   async insert() {}
+  async insertIfAbsent(admin: Admin) {
+    if (this.createdConcurrently !== null) {
+      this.rows.push(this.createdConcurrently);
+      return false;
+    }
+    this.rows.push(admin);
+    return true;
+  }
   async updatePassword() {}
   async linkMicrosoft() {
     return this.linkedConcurrently === null;
@@ -90,13 +102,22 @@ const copy = (a: Admin, microsoftOid: string | null) =>
 const admin = (email: string, microsoftOid: string | null = null) =>
   new Admin({ id: AdminId.create(), accountId: AccountId.create(), email, role: 'user', microsoftOid, createdAt: NOW });
 
+const INSTALL = new Account({ id: AccountId.create(), name: 'EWS', createdAt: NOW });
+/** Account của bản cài — tài khoản tự tạo vào đây. `null` = chưa có account nào. */
+const accountsWith = (oldest: Account | null): AccountRepository => ({
+  findById: async () => oldest,
+  insert: async () => {},
+  listAll: async () => (oldest ? [oldest] : []),
+  findOldest: async () => oldest,
+});
+
 const identityReturning = (profile: MicrosoftProfile): MicrosoftIdentity => ({
   configured: true,
   begin: async () => ({ authorizeUrl: 'https://login.test', state: 's' }),
   complete: async () => profile,
 });
 
-function setup(admins: Admin[], profile: MicrosoftProfile) {
+function setup(admins: Admin[], profile: MicrosoftProfile, oldest: Account | null = INSTALL) {
   const repo = new FakeAdmins(admins);
   const sessions = new FakeSessions();
   const outbox = new FakeOutbox();
@@ -109,6 +130,7 @@ function setup(admins: Admin[], profile: MicrosoftProfile) {
     sessionTtlMs: 1000,
     identity: identityReturning(profile),
     admins: repo,
+    accounts: accountsWith(oldest),
   });
   return { repo, sessions, outbox, run: () => login.execute({ code: 'c', state: 's' }, CTX) };
 }
@@ -138,15 +160,38 @@ describe('LoginAdminWithMicrosoft', () => {
     expect((await setup([a], { oid: 'oid-1', email: 'an@company.com' }).run()).admin.id).toBe(a.id);
   });
 
-  it('email chưa có tài khoản EWS -> 403 M365_ACCOUNT_NOT_REGISTERED, không tạo gì', async () => {
-    const { sessions, outbox, run } = setup([admin('an@company.com')], { oid: 'oid-9', email: 'la@company.com' });
-    expect(await codeOf(run())).toBe('M365_ACCOUNT_NOT_REGISTERED');
-    expect(sessions.rows).toHaveLength(0);
-    expect(outbox.events).toHaveLength(0);
+  it('lần đầu, email chưa có tài khoản -> TỰ TẠO (ADR-0024): vai user, gắn oid, không mật khẩu, account của bản cài', async () => {
+    const { repo, sessions, outbox, run } = setup([admin('an@company.com')], { oid: 'oid-9', email: 'La@Company.com' });
+    const result = await run();
+    const created = repo.rows.find((a) => a.id === result.admin.id)!;
+    expect(created).toMatchObject({ email: 'la@company.com', role: 'user', microsoftOid: 'oid-9', passwordHash: null });
+    expect(created.accountId).toBe(INSTALL.id);
+    expect(sessions.rows).toHaveLength(1);
+    expect(outbox.events.map((e) => e.eventType)).toEqual(['AdminCreated', 'AdminSignedIn']);
+    expect(outbox.events[0]?.payload).toMatchObject({
+      actor: { id: created.id },
+      after: { role: 'user', hasPassword: false, via: 'microsoft_first_sign_in' },
+    });
   });
 
-  it('token không có email -> M365_ACCOUNT_NOT_REGISTERED', async () => {
-    expect(await codeOf(setup([admin('an@company.com')], { oid: 'oid-1', email: null }).run())).toBe('M365_ACCOUNT_NOT_REGISTERED');
+  it('hai lần đăng nhập ĐẦU chạy song song: lần thua dính trùng khoá -> vào tài khoản lần kia vừa tạo', async () => {
+    const { repo, outbox, run } = setup([], { oid: 'oid-9', email: 'la@company.com' });
+    repo.createdConcurrently = admin('la@company.com', 'oid-9');
+    expect((await run()).admin.id).toBe(repo.createdConcurrently.id);
+    expect(outbox.events.map((e) => e.eventType)).toEqual(['AdminSignedIn']);
+  });
+
+  it('chưa có account nào -> M365_ACCOUNT_NOT_REGISTERED, không tạo gì', async () => {
+    const { repo, sessions, run } = setup([], { oid: 'oid-9', email: 'la@company.com' }, null);
+    expect(await codeOf(run())).toBe('M365_ACCOUNT_NOT_REGISTERED');
+    expect(repo.rows).toHaveLength(0);
+    expect(sessions.rows).toHaveLength(0);
+  });
+
+  it('token không có email -> M365_ACCOUNT_NOT_REGISTERED, không tạo gì', async () => {
+    const { repo, run } = setup([admin('an@company.com')], { oid: 'oid-1', email: null });
+    expect(await codeOf(run())).toBe('M365_ACCOUNT_NOT_REGISTERED');
+    expect(repo.rows).toHaveLength(1);
   });
 
   it('admin đã gắn tài khoản Microsoft KHÁC -> M365_ACCOUNT_MISMATCH, không đè', async () => {
@@ -184,6 +229,7 @@ describe('LoginAdminWithMicrosoft', () => {
       sessionTtlMs: 1000,
       identity,
       admins: new FakeAdmins([]),
+      accounts: accountsWith(INSTALL),
     });
     const err = await login.execute({ code: 'c', state: 's' }, CTX).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UpstreamError);

@@ -9,4 +9,9 @@ export interface AccountRepository {
    * CLI trên máy chủ mới không có cách nào biết id đó. Không có route HTTP nào gọi hàm này.
    */
   listAll(): Promise<Account[]>;
+  /**
+   * Account tạo ĐẦU TIÊN — account của bản cài EWS. Tài khoản tự tạo khi đăng nhập M365 lần đầu
+   * vào đây (ADR-0024). `null` = chưa có account nào.
+   */
+  findOldest(): Promise<Account | null>;
 }

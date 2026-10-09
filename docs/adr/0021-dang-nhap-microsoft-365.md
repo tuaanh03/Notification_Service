@@ -1,6 +1,7 @@
 # ADR-0021 — Đăng nhập console bằng Microsoft 365
 
 **Trạng thái:** chấp nhận — 2026-10-06. Bổ sung ADR-0019 (phiên đăng nhập giữ nguyên).
+**Sửa đổi:** 2026-10-09 — ADR-0024 thay luật "chỉ admin đã có": lần đăng nhập đầu không khớp email nay tự tạo tài khoản.
 
 ## 1. Bối cảnh
 

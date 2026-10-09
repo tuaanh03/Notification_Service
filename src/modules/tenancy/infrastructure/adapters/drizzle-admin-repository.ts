@@ -1,5 +1,5 @@
 import { and, count, eq, isNull } from 'drizzle-orm';
-import type { TransactionContext } from '../../../../shared/db/index.ts';
+import { isDuplicateKeyError, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AccountId,
   AdminId,
@@ -46,6 +46,17 @@ export class DrizzleAdminRepository implements AdminRepository {
       createdAt: admin.createdAt,
       updatedAt: admin.updatedAt,
     });
+  }
+
+  async insertIfAbsent(admin: Admin): Promise<boolean> {
+    try {
+      await this.insert(admin);
+      return true;
+    } catch (err) {
+      // MySQL chỉ huỷ CÂU lệnh trùng khoá, transaction đang mở vẫn dùng tiếp được.
+      if (isDuplicateKeyError(err)) return false;
+      throw err;
+    }
   }
 
   async updatePassword(admin: Admin): Promise<void> {

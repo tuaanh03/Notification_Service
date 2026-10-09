@@ -12,6 +12,7 @@ import { loadEnv } from '../../src/shared/config/index.ts';
 import { AccountId } from '../../src/shared/kernel/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient } from './support/http.ts';
+import { race } from './support/race.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
 
 /**
@@ -41,12 +42,15 @@ function idToken(nonce: string): string {
 }
 
 let lastNonce = '';
-const fakeFetch = (async (input: string | URL | Request) => {
+/** `code` -> `nonce` của lượt đó: nhiều lượt chạy song song thì mỗi lượt cần đúng nonce của nó. */
+const nonceByCode = new Map<string, string>();
+const fakeFetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input);
   if (url.endsWith('/discovery/v2.0/keys')) {
     return Response.json({ keys: [{ ...KEY.publicKey.export({ format: 'jwk' }), kid: 'k1' }] });
   }
-  return Response.json({ id_token: idToken(lastNonce) });
+  const code = new URLSearchParams(String(init?.body ?? '')).get('code') ?? '';
+  return Response.json({ id_token: idToken(nonceByCode.get(code) ?? lastNonce) });
 }) as typeof fetch;
 
 let t: TestDatabase;
@@ -54,6 +58,7 @@ let c: Container;
 let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
+let accountId: string;
 
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 5 });
@@ -74,6 +79,7 @@ beforeAll(async () => {
 
   const ctx = { actor: { id: 'test', type: 'admin' as const }, source: 'system' as const };
   const account = await application.adminOps.createAccount.execute({ name: 'M365' }, ctx);
+  accountId = account.id;
   // Chỉ M365, không mật khẩu — đúng đường `admin-cli create-admin --login m365`.
   await application.adminOps.createAdmin.execute(
     { accountId: AccountId.parse(account.id), email: 'An@Company.com', password: null, role: 'user' },
@@ -132,10 +138,39 @@ describe('đăng nhập Microsoft 365', () => {
     expect([replay.status, replay.body['code']]).toEqual([401, 'M365_STATE_INVALID']);
   });
 
-  it('người chưa có tài khoản EWS -> 403 M365_ACCOUNT_NOT_REGISTERED', async () => {
-    microsoftUser = { oid: 'oid-la', email: 'la@company.com' };
+  it('người chưa có tài khoản -> TỰ TẠO (ADR-0024): vai user, chưa thuộc org nào, không mật khẩu', async () => {
+    microsoftUser = { oid: 'oid-la', email: 'La@Company.com' };
     const res = await signInWithMicrosoft();
-    expect([res.status, res.body['code']]).toEqual([403, 'M365_ACCOUNT_NOT_REGISTERED']);
+    expect(res.status).toBe(200);
+    expect(res.body['admin']).toMatchObject({ email: 'la@company.com', role: 'user' });
+    const token = res.body['token'] as string;
+    // Có RBAC: vào được nhưng chưa thấy gì cho tới khi tạo org / được thêm vào org.
+    expect((await http('GET', '/admin/me', { token })).body).toEqual({ isSuperAdmin: false, orgs: [], appRoles: {} });
+
+    const [row] = await t.db.select().from(admins).where(eq(admins.email, 'la@company.com'));
+    expect(row).toMatchObject({ accountId, microsoftOid: 'oid-la', passwordHash: null, role: 'user' });
+
+    // Lần sau vào đúng tài khoản đó, không tạo thêm.
+    const again = await signInWithMicrosoft();
+    expect(again.body['admin']).toMatchObject({ id: res.body['admin']!['id'] as string });
+    expect(await t.db.select().from(admins).where(eq(admins.email, 'la@company.com'))).toHaveLength(1);
+  });
+
+  it('race: hai lần đăng nhập ĐẦU của cùng một người chạy song song -> đúng MỘT tài khoản, cả hai vào được', async () => {
+    microsoftUser = { oid: 'oid-song-song', email: 'song.song@company.com' };
+    const states: string[] = [];
+    for (const code of ['race-a', 'race-b']) {
+      const start = await http('POST', '/auth/m365/start');
+      nonceByCode.set(code, new URL(start.body['authorizeUrl'] as string).searchParams.get('nonce')!);
+      states.push(start.body['state'] as string);
+    }
+    const results = await race(2, (i) =>
+      http('POST', '/auth/m365/callback', { body: { code: i === 0 ? 'race-a' : 'race-b', state: states[i] } }),
+    );
+    const ok = results.map((r) => (r.status === 'fulfilled' ? r.value : null));
+    expect(ok.map((r) => r?.status)).toEqual([200, 200]);
+    expect(ok[0]?.body['admin']!['id']).toBe(ok[1]?.body['admin']!['id']);
+    expect(await t.db.select().from(admins).where(eq(admins.microsoftOid, 'oid-song-song'))).toHaveLength(1);
   });
 
   it('email của admin đã gắn tài khoản Microsoft khác -> 403 M365_ACCOUNT_MISMATCH', async () => {

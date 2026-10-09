@@ -75,7 +75,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản; `POST …/ai-compose` trả đề xuất của AI (không ghi DB, chỉ biến đã khai, 10 lần/phút/admin — ADR-0020 §7); `RenderTemplate` (đổ `payload` vào bản đang xuất bản) + `TemplateQueries.labelsOf` cho module khác |
 
 `segments` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
-(`/auth/login` hoặc Microsoft 365 qua `/auth/m365/*` — ADR-0021 -> token mờ lưu băm trong `admin_sessions`)
+(`/auth/login` hoặc Microsoft 365 qua `/auth/m365/*` — ADR-0021; lần đầu M365 tự tạo tài khoản — ADR-0024 -> token mờ lưu băm trong `admin_sessions`)
 và **RBAC đa tenant** (ADR-0022 — người ngoài org nhận 404); admin đầu tiên tạo bằng `admin-cli` chạy trong
 container, KHÔNG qua HTTP (ADR-0019 thay §4 của ADR-0015).
 
@@ -112,6 +112,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0021` | **Đăng nhập console bằng Microsoft 365**: OIDC + PKCE, backend giữ secret, App registration riêng (không dùng lại `GRAPH_*`), callback ở domain console, chỉ admin đã có (khớp email rồi gắn `microsoft_oid`); mật khẩu giữ làm dự phòng |
 | `0022` | **RBAC đa tenant**: Super Admin (vai hệ thống duy nhất) · Owner > Org Admin > Member · App Admin / App Viewer; người ngoài org 404, thiếu vai 403; luật thuần `decide()` ở kernel; MỌI route `/admin` khai `{ config: access(...) }` — thiếu là server không khởi động |
 | `0023` | **App tự phục vụ, bỏ duyệt**: tạo app là `active` + kênh `email` ngay (`App.register`); đội app tự cấp khoá; Super Admin chỉ tạm ngưng / thu hồi app rác. App cũ `draft` / `pending_approval` để nguyên, vẫn duyệt được — test dựng chúng thẳng trong DB |
+| `0024` | **Tự tạo tài khoản ở lần đăng nhập M365 đầu tiên**: vai `user`, chưa thuộc org, không mật khẩu, vào account cũ nhất (`findOldest`); chỉ người trong tenant M365 qua được; race lần đầu -> `insertIfAbsent` rồi đọc lại theo `oid`. Thay bước 3 của ADR-0021 |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
