@@ -5,3 +5,4 @@ export * from './network-rule-repository.ts';
 export * from './organization-lookup.ts';
 export * from './admin-app-role-repository.ts';
 export * from './membership-lookup.ts';
+export * from './org-member-removal.ts';

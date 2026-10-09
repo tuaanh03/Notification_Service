@@ -78,6 +78,9 @@ class FakeAdmins implements AdminRepository {
   }
   /** Mô phỏng lần đăng nhập ĐẦU song song đã tạo tài khoản cho `oid` này trước. */
   createdConcurrently: Admin | null = null;
+  async findManyByIds(ids: readonly string[]) {
+    return this.rows.filter((a) => ids.includes(a.id));
+  }
   async insert() {}
   async insertIfAbsent(admin: Admin) {
     if (this.createdConcurrently !== null) {

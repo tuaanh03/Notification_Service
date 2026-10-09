@@ -59,6 +59,9 @@ class FakeAdmins implements AdminRepository {
   async insert(admin: Admin): Promise<void> {
     this.rows.push(admin);
   }
+  async findManyByIds(ids: readonly string[]): Promise<Admin[]> {
+    return this.rows.filter((a) => ids.includes(a.id));
+  }
   async insertIfAbsent(admin: Admin): Promise<boolean> {
     this.rows.push(admin);
     return true;

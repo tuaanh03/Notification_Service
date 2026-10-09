@@ -26,6 +26,11 @@ export class DrizzleOrgMemberRepository implements OrgMemberRepository {
     return rows.map(toEntity);
   }
 
+  async listByOrg(orgId: OrgIdType): Promise<OrgMember[]> {
+    const rows = await this.transactions.executor().select().from(orgMembers).where(eq(orgMembers.orgId, orgId));
+    return rows.map(toEntity);
+  }
+
   async countOwners(orgId: OrgIdType): Promise<number> {
     const [row] = await this.transactions
       .executor()
@@ -48,6 +53,13 @@ export class DrizzleOrgMemberRepository implements OrgMemberRepository {
         updatedAt: member.updatedAt,
       })
       .onDuplicateKeyUpdate({ set: { role: member.role, updatedAt: member.updatedAt } });
+  }
+
+  async remove(orgId: OrgIdType, adminId: AdminIdType): Promise<void> {
+    await this.transactions
+      .executor()
+      .delete(orgMembers)
+      .where(and(eq(orgMembers.orgId, orgId), eq(orgMembers.adminId, adminId)));
   }
 }
 

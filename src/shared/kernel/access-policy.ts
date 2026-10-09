@@ -18,6 +18,8 @@ export const PERMISSIONS = [
   'platform.manage',
   /** Xem một org mà mình là thành viên. */
   'org.read',
+  /** Quản lý thành viên org và vai app trong org — Owner, Org Admin (ADR-0026). */
+  'org.manage',
   /** Tạo app trong org. */
   'app.create',
   /** Xem dữ liệu của một app. */
@@ -65,6 +67,8 @@ export function decide(access: AdminAccess, permission: Permission, target: Acce
   switch (permission) {
     case 'org.read':
       return 'allow';
+    case 'org.manage':
+      return managesOrg ? 'allow' : 'deny';
     case 'app.create':
       return managesOrg ? 'allow' : 'deny';
     case 'app.read':

@@ -1,4 +1,4 @@
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, inArray, isNull } from 'drizzle-orm';
 import { isDuplicateKeyError, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AccountId,
@@ -33,6 +33,12 @@ export class DrizzleAdminRepository implements AdminRepository {
   async findByMicrosoftOid(oid: string): Promise<Admin | null> {
     const [row] = await this.transactions.executor().select().from(admins).where(eq(admins.microsoftOid, oid));
     return row ? toEntity(row) : null;
+  }
+
+  async findManyByIds(ids: readonly AdminIdType[]): Promise<Admin[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.transactions.executor().select().from(admins).where(inArray(admins.adminId, [...ids]));
+    return rows.map(toEntity);
   }
 
   async insert(admin: Admin): Promise<void> {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ConflictError, decide, type AdminAccess, type AppRole, type OrgRole, type Permission } from '../../src/shared/kernel/index.ts';
-import { assertOwnerRemains } from '../../src/modules/tenancy/domain/rules/org-ownership.ts';
+import { assertMayTouchOwner, assertOwnerRemains } from '../../src/modules/tenancy/domain/rules/org-ownership.ts';
 
 const ORG = 'org-a';
 const APP = 'app-1';
@@ -38,6 +38,13 @@ describe('decide() — luật phân quyền /admin (ADR-0022)', () => {
 
   it('tạo org mới: ai đăng nhập cũng được, kể cả chưa thuộc org nào (ADR-0025)', () => {
     expect(decide(user(), 'org.create', null)).toBe('allow');
+  });
+
+  it('quản lý thành viên org (org.manage): Owner, Org Admin; Member 403, người ngoài 404 (ADR-0026)', () => {
+    expect(decide(user('owner'), 'org.manage', { orgId: ORG })).toBe('allow');
+    expect(decide(user('org_admin'), 'org.manage', { orgId: ORG })).toBe('allow');
+    expect(decide(user('member', 'app_admin'), 'org.manage', onApp)).toBe('deny');
+    expect(decide(user(), 'org.manage', { orgId: ORG })).toBe('hidden');
   });
 
   it('Owner / Org Admin: ngầm là App Admin trên MỌI app của org (kế thừa, không lưu dòng)', () => {
@@ -78,5 +85,23 @@ describe('assertOwnerRemains — org luôn còn ít nhất một owner', () => {
     expect(lastOwner('owner', 'owner', 1)).not.toThrow();
     expect(lastOwner('member', 'owner', 0)).not.toThrow();
     expect(lastOwner(null, 'member', 0)).not.toThrow();
+  });
+});
+
+describe('assertMayTouchOwner — chỉ Owner động được vai Owner (ADR-0026)', () => {
+  const touch = (actorIsOwner: boolean | undefined, currentRole: OrgRole | null, nextRole: OrgRole | null) => () =>
+    assertMayTouchOwner({ actorIsOwner, currentRole, nextRole });
+
+  it('không phải Owner: trao / hạ / gỡ Owner -> OWNER_REQUIRED', () => {
+    expect(touch(false, 'member', 'owner')).toThrow(/only an owner/);
+    expect(touch(false, 'owner', 'member')).toThrow(/only an owner/);
+    expect(touch(false, 'owner', null)).toThrow(/only an owner/);
+  });
+
+  it('không phải Owner nhưng không đụng Owner -> được; Owner hoặc lệnh hệ thống -> luôn được', () => {
+    expect(touch(false, 'member', 'org_admin')).not.toThrow();
+    expect(touch(false, null, 'member')).not.toThrow();
+    expect(touch(true, 'owner', null)).not.toThrow();
+    expect(touch(undefined, 'member', 'owner')).not.toThrow();
   });
 });

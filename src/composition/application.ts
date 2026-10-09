@@ -44,7 +44,11 @@ export interface ApplicationOverrides {
 
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
   const tenancy = tenancyModule(container, { microsoftIdentity: overrides.microsoftIdentity });
-  const apps = appsModule(container, { findOrganization: tenancy.findOrganization, findOrgMemberships: tenancy.findOrgMemberships });
+  const apps = appsModule(container, {
+    findOrganization: tenancy.findOrganization,
+    findOrgMemberships: tenancy.findOrgMemberships,
+    removeOrgMember: tenancy.removeOrgMember,
+  });
   const subscriptions = subscriptionsModule(container);
   const directory = directoryModule(container, subscriptions);
   const topics = topicsModule(container, {

@@ -7,6 +7,8 @@ export interface AdminRepository {
   findByEmail(email: NormalizedEmail): Promise<Admin | null>;
   /** Admin đã gắn tài khoản Microsoft này (ADR-0021). */
   findByMicrosoftOid(oid: string): Promise<Admin | null>;
+  /** Theo LÔ — màn Thành viên lấy email của cả org bằng một truy vấn, không N+1. */
+  findManyByIds(ids: readonly AdminId[]): Promise<Admin[]>;
   insert(admin: Admin): Promise<void>;
   /**
    * Như `insert`, nhưng trùng khoá duy nhất (email trong account, `microsoft_oid`) thì trả `false`

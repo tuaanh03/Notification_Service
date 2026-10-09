@@ -8,6 +8,8 @@ import {
   DUMMY_PASSWORD,
   FindOrganization,
   FindOrgMemberships,
+  ListOrgMembers,
+  RemoveOrgMember,
   ListAccounts,
   LoginAdmin,
   LoginAdminWithMicrosoft,
@@ -58,7 +60,7 @@ export interface AdminOps {
   listAccounts: ListAccounts;
   createAdmin: CreateAdmin;
   setAdminPassword: SetAdminPassword;
-  /** Thêm người vào org / đổi vai (ADR-0022). Màn Thành viên trên console là task 1.5. */
+  /** Thêm người vào org / đổi vai (ADR-0022). Màn Thành viên dùng chung qua `PUT …/members` (ADR-0026). */
   setOrgMember: SetOrgMember;
 }
 
@@ -76,6 +78,8 @@ export function tenancyModule(
   definition: ModuleDefinition;
   findOrganization: FindOrganization;
   findOrgMemberships: FindOrgMemberships;
+  /** Cho module apps: gỡ thành viên + thu hồi vai app trong cùng transaction (ADR-0026). */
+  removeOrgMember: RemoveOrgMember;
   adminAuthenticator: SessionAdminAuthenticator;
   adminOps: AdminOps;
 } {
@@ -99,9 +103,11 @@ export function tenancyModule(
   const createAccount = new CreateAccount({ uow, outbox, clock, accounts });
   const sessionDeps = { uow, outbox, clock, sessions, tokens, sessionTtlMs: SESSION_TTL_MS };
   const microsoftIdentity = dependencies.microsoftIdentity ?? selectMicrosoftIdentity(container);
+  const setOrgMember = new SetOrgMember({ uow, outbox, clock, organizations, admins, members });
 
   return {
     findOrganization,
+    removeOrgMember: new RemoveOrgMember({ uow, outbox, organizations, members }),
     findOrgMemberships: new FindOrgMemberships({ members, admins }),
     adminAuthenticator: new SessionAdminAuthenticator({ authenticateAdminSession }),
     adminOps: {
@@ -110,7 +116,7 @@ export function tenancyModule(
       listAccounts: new ListAccounts({ accounts }),
       createAdmin: new CreateAdmin({ uow, outbox, clock, accounts, admins, passwords }),
       setAdminPassword: new SetAdminPassword({ uow, outbox, clock, admins, sessions, passwords }),
-      setOrgMember: new SetOrgMember({ uow, outbox, clock, organizations, admins, members }),
+      setOrgMember,
     },
     definition: {
       name: 'tenancy',
@@ -141,6 +147,8 @@ export function tenancyModule(
             createOrganization: new CreateOrganization({ uow, outbox, clock, accounts, organizations }),
             createOwnOrganization: new CreateOwnOrganization({ uow, outbox, clock, admins, organizations, members }),
             findOrganization,
+            listOrgMembers: new ListOrgMembers({ members, admins }),
+            setOrgMember,
           }),
         ],
       },

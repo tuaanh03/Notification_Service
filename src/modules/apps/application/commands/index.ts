@@ -6,3 +6,5 @@ export * from './manage-network-rules.ts';
 export * from './revoke-app-secret.ts';
 export * from './transition-app.ts';
 export * from './grant-app-role.ts';
+export * from './revoke-app-role.ts';
+export * from './remove-member-from-org.ts';

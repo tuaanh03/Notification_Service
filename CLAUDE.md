@@ -114,6 +114,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0023` | **App tự phục vụ, bỏ duyệt**: tạo app là `active` + kênh `email` ngay (`App.register`); đội app tự cấp khoá; Super Admin chỉ tạm ngưng / thu hồi app rác. App cũ `draft` / `pending_approval` để nguyên, vẫn duyệt được — test dựng chúng thẳng trong DB |
 | `0024` | **Tự tạo tài khoản ở lần đăng nhập M365 đầu tiên**: vai `user`, chưa thuộc org, không mật khẩu, vào account cũ nhất (`findOldest`); chỉ người trong tenant M365 qua được; race lần đầu -> `insertIfAbsent` rồi đọc lại theo `oid`. Thay bước 3 của ADR-0021 |
 | `0025` | **Org tự phục vụ**: quyền `org.create` (ai đăng nhập cũng có), `POST /admin/organizations` tạo org trong account của chính mình + ghi mình là Owner trong CÙNG transaction. Chưa làm hạn mức / đổi tên / xoá / chuyển Owner |
+| `0026` | **Màn Thành viên**: quyền `org.manage` (Owner, Org Admin); thêm / đổi vai / gỡ thành viên, cấp / thu hồi vai app qua `/admin`; CHỈ Owner động được vai Owner (`OWNER_REQUIRED`); email chưa có tài khoản -> 422 `ADMIN_NOT_REGISTERED`; gỡ khỏi org thu hồi vai app CÙNG transaction (`apps/RemoveMemberFromOrg` gọi tenancy qua port) |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

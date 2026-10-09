@@ -249,3 +249,82 @@ describe('org tự phục vụ (ADR-0025)', () => {
     expect((await http('POST', '/admin/organizations', { body: { name: 'X' } })).status).toBe(401);
   });
 });
+
+describe('màn Thành viên (ADR-0026)', () => {
+  /** Org riêng cho nhóm test này: Owner tự tạo qua HTTP, không đụng org A / B của các test khác. */
+  let orgId = '';
+  let appId = '';
+  const tk = { owner: '', admin: '', m1: '', stranger: '' };
+  const idOf = async (email: string) => {
+    const list = (await must(as(tk.owner)('GET', `/organizations/${orgId}/members`), 200)) as unknown as Json[];
+    return list.find((m) => m['email'] === email)!['adminId'] as string;
+  };
+
+  beforeAll(async () => {
+    tk.owner = await userWith('mem-owner@test.local', []);
+    tk.admin = await userWith('mem-admin@test.local', []);
+    tk.m1 = await userWith('mem-1@test.local', []);
+    tk.stranger = await userWith('mem-stranger@test.local', []);
+    orgId = (await must(as(tk.owner)('POST', '/organizations', { name: 'Org Thành viên' }), 201))['id'] as string;
+    appId = (await must(as(tk.owner)('POST', '/apps', { orgId, slug: 'mem-x1', name: 'X1', namespace: 'mem-x1' }), 201))['id'] as string;
+  });
+
+  it('Owner thêm người bằng email; mọi thành viên xem được danh sách; Member không sửa được (403)', async () => {
+    const owner = as(tk.owner);
+    await must(owner('PUT', `/organizations/${orgId}/members`, { email: 'MEM-1@test.local', role: 'member' }), 200);
+    await must(owner('PUT', `/organizations/${orgId}/members`, { email: 'mem-admin@test.local', role: 'org_admin' }), 200);
+    const list = (await must(as(tk.m1)('GET', `/organizations/${orgId}/members`), 200)) as unknown as Json[];
+    expect(list.map((m) => [m['email'], m['role']])).toEqual([
+      ['mem-1@test.local', 'member'],
+      ['mem-admin@test.local', 'org_admin'],
+      ['mem-owner@test.local', 'owner'],
+    ]);
+    const res = await as(tk.m1)('PUT', `/organizations/${orgId}/members`, { email: 'mem-stranger@test.local', role: 'member' });
+    expect([res.status, res.body['code']]).toEqual([403, 'FORBIDDEN']);
+  });
+
+  it('email chưa có tài khoản -> 422 ADMIN_NOT_REGISTERED; người ngoài org -> 404', async () => {
+    const res = await as(tk.owner)('PUT', `/organizations/${orgId}/members`, { email: 'chua-co@test.local', role: 'member' });
+    expect(res.status).toBe(422);
+    expect((res.body['issues'] as Json[])[0]).toMatchObject({ code: 'ADMIN_NOT_REGISTERED', path: 'email' });
+    expect((await as(tk.stranger)('GET', `/organizations/${orgId}/members`)).status).toBe(404);
+  });
+
+  it('Org Admin không động được vai Owner (403 OWNER_REQUIRED), vẫn đổi được vai thường', async () => {
+    const admin = as(tk.admin);
+    const promote = await admin('PUT', `/organizations/${orgId}/members`, { email: 'mem-1@test.local', role: 'owner' });
+    expect([promote.status, promote.body['code']]).toEqual([403, 'OWNER_REQUIRED']);
+    const kick = await admin('DELETE', `/organizations/${orgId}/members/${await idOf('mem-owner@test.local')}`);
+    expect([kick.status, kick.body['code']]).toEqual([403, 'OWNER_REQUIRED']);
+    await must(admin('PUT', `/organizations/${orgId}/members`, { email: 'mem-1@test.local', role: 'member' }), 200);
+  });
+
+  it('cấp / thu hồi vai app; chỉ cấp cho thành viên org (409 NOT_ORG_MEMBER)', async () => {
+    const m1 = await idOf('mem-1@test.local');
+    await must(as(tk.admin)('PUT', `/apps/${appId}/roles`, { email: 'mem-1@test.local', role: 'app_viewer' }), 200);
+    expect(await must(as(tk.owner)('GET', `/organizations/${orgId}/app-roles`), 200)).toEqual([{ adminId: m1, appId, role: 'app_viewer' }]);
+    expect((await as(tk.m1)('GET', `/apps/${appId}`)).status).toBe(200);
+
+    expect((await as(tk.owner)('DELETE', `/apps/${appId}/roles/${m1}`)).status).toBe(204);
+    expect((await as(tk.m1)('GET', `/apps/${appId}`)).status).toBe(403);
+
+    const outsider = await as(tk.owner)('PUT', `/apps/${appId}/roles`, { email: 'mem-stranger@test.local', role: 'app_viewer' });
+    expect([outsider.status, outsider.body['code']]).toEqual([409, 'NOT_ORG_MEMBER']);
+  });
+
+  it('gỡ khỏi org thu hồi luôn vai app — thêm lại thì quyền cũ KHÔNG tự sống lại', async () => {
+    const m1 = await idOf('mem-1@test.local');
+    await must(as(tk.owner)('PUT', `/apps/${appId}/roles`, { email: 'mem-1@test.local', role: 'app_admin' }), 200);
+    expect((await as(tk.owner)('DELETE', `/organizations/${orgId}/members/${m1}`)).status).toBe(204);
+    expect((await as(tk.m1)('GET', `/organizations/${orgId}/members`)).status).toBe(404);
+    expect(await must(as(tk.owner)('GET', `/organizations/${orgId}/app-roles`), 200)).toEqual([]);
+
+    await must(as(tk.owner)('PUT', `/organizations/${orgId}/members`, { email: 'mem-1@test.local', role: 'member' }), 200);
+    expect((await as(tk.m1)('GET', `/apps/${appId}`)).status).toBe(403);
+  });
+
+  it('Owner cuối cùng không tự gỡ được mình (409 LAST_OWNER)', async () => {
+    const res = await as(tk.owner)('DELETE', `/organizations/${orgId}/members/${await idOf('mem-owner@test.local')}`);
+    expect([res.status, res.body['code']]).toEqual([409, 'LAST_OWNER']);
+  });
+});

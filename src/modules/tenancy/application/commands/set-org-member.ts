@@ -1,7 +1,7 @@
 import { audited, type CommandContext, type EventOutbox, type UnitOfWork } from '../../../../shared/application/index.ts';
-import { NotFoundError, normalizeEmail, type Clock, type OrgId, type OrgRole } from '../../../../shared/kernel/index.ts';
+import { NotFoundError, normalizeEmail, ValidationError, type Clock, type OrgId, type OrgRole } from '../../../../shared/kernel/index.ts';
 import { OrgMember } from '../../domain/entities/org-member.ts';
-import { assertOwnerRemains } from '../../domain/rules/org-ownership.ts';
+import { assertMayTouchOwner, assertOwnerRemains } from '../../domain/rules/org-ownership.ts';
 import type { AdminRepository, OrganizationRepository, OrgMemberRepository } from '../ports/index.ts';
 
 export interface OrgMemberDto {
@@ -12,8 +12,11 @@ export interface OrgMemberDto {
 }
 
 /**
- * Thêm người (đã có tài khoản) vào org, hoặc đổi vai của họ (ADR-0022). Khoá dòng org TRƯỚC khi
- * đọc / đếm owner (ADR-0009): hai lệnh hạ vai owner chạy song song không được cùng lọt.
+ * Thêm người (đã có tài khoản) vào org, hoặc đổi vai của họ (ADR-0022, ADR-0026). Khoá dòng org
+ * TRƯỚC khi đọc / đếm owner (ADR-0009): hai lệnh hạ vai owner chạy song song không được cùng lọt.
+ *
+ * Email chưa có tài khoản -> 422 `ADMIN_NOT_REGISTERED`: người đó cần đăng nhập Microsoft 365 một
+ * lần để có tài khoản (ADR-0024). Không dùng 404 — 404 trên route này nghĩa là "không thấy org".
  */
 export class SetOrgMember {
   private readonly deps: {
@@ -29,16 +32,28 @@ export class SetOrgMember {
     this.deps = deps;
   }
 
-  async execute(input: { orgId: OrgId; email: string; role: OrgRole }, ctx: CommandContext): Promise<OrgMemberDto> {
+  async execute(
+    input: {
+      orgId: OrgId;
+      email: string;
+      role: OrgRole;
+      /** Người gọi có phải Owner / Super Admin không. `undefined` = `admin-cli` (lệnh hệ thống). */
+      actorIsOwner?: boolean | undefined;
+    },
+    ctx: CommandContext,
+  ): Promise<OrgMemberDto> {
     const { uow, outbox, clock, organizations, admins, members } = this.deps;
     return uow.run(async () => {
       if (!(await organizations.lockForUpdate(input.orgId))) throw new NotFoundError('organization', input.orgId);
       const org = (await organizations.findById(input.orgId))!;
       const admin = await admins.findByEmail(normalizeEmail(input.email));
-      if (admin === null) throw new NotFoundError('admin', input.email);
+      if (admin === null) {
+        throw ValidationError.of('ADMIN_NOT_REGISTERED', 'no EWS account with this email yet', 'email');
+      }
 
       const now = clock.now();
       const current = await members.find(org.id, admin.id);
+      assertMayTouchOwner({ actorIsOwner: input.actorIsOwner, currentRole: current?.role ?? null, nextRole: input.role });
       assertOwnerRemains({
         currentRole: current?.role ?? null,
         nextRole: input.role,

@@ -1,12 +1,20 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { access, adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
-import { AccountId, AdminId, NotFoundError, OrgId } from '../../../../shared/kernel/index.ts';
-import type { CreateAccount, CreateOrganization, CreateOwnOrganization, FindOrganization } from '../../application/index.ts';
+import { access, adminAccess, adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { AccountId, AdminId, NotFoundError, OrgId, ORG_ROLES } from '../../../../shared/kernel/index.ts';
+import type {
+  CreateAccount,
+  CreateOrganization,
+  CreateOwnOrganization,
+  FindOrganization,
+  ListOrgMembers,
+  SetOrgMember,
+} from '../../application/index.ts';
 
 const nameBody = z.object({ name: z.string().trim().min(1).max(200) }).strict();
 const accountParams = z.object({ accountId: z.string().uuid() });
 const orgParams = z.object({ orgId: z.string().uuid() });
+const memberBody = z.object({ email: z.string().trim().min(3).max(320), role: z.enum(ORG_ROLES) }).strict();
 
 /**
  * `/admin/accounts`, `/admin/organizations` — tối thiểu để dựng tenant. Route chỉ làm ba việc:
@@ -17,6 +25,8 @@ export function adminTenancyRoutes(useCases: {
   createOrganization: CreateOrganization;
   createOwnOrganization: CreateOwnOrganization;
   findOrganization: FindOrganization;
+  listOrgMembers: ListOrgMembers;
+  setOrgMember: SetOrgMember;
 }): HttpRoutes {
   return (app) => {
     const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
@@ -47,6 +57,27 @@ export function adminTenancyRoutes(useCases: {
         ctx(request),
       );
       return reply.status(201).send(org);
+    });
+
+    // Màn Thành viên (ADR-0026). Gỡ thành viên ở module apps — kèm thu hồi vai app.
+    app.get('/organizations/:orgId/members', { config: access('org.read') }, async (request) => {
+      const { orgId } = parseInput(orgParams, request.params);
+      return useCases.listOrgMembers.execute(OrgId.parse(orgId));
+    });
+
+    app.put('/organizations/:orgId/members', { config: access('org.manage') }, async (request) => {
+      const { orgId } = parseInput(orgParams, request.params);
+      const body = parseInput(memberBody, request.body);
+      const caller = adminAccess(request);
+      return useCases.setOrgMember.execute(
+        {
+          orgId: OrgId.parse(orgId),
+          email: body.email,
+          role: body.role,
+          actorIsOwner: caller.isSuperAdmin || caller.orgRoles.get(orgId) === 'owner',
+        },
+        ctx(request),
+      );
     });
 
     app.get('/organizations/:orgId', { config: access('org.read') }, async (request) => {
