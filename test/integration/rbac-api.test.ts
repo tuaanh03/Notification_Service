@@ -5,6 +5,7 @@ import { loadEnv } from '../../src/shared/config/index.ts';
 import { AccountId, AppId, ConflictError, OrgId, type AppRole, type OrgRole } from '../../src/shared/kernel/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, signInAdmin, TEST_PASSWORD, type Json } from './support/http.ts';
+import type { DirectoryPerson } from '../../src/modules/tenancy/application/ports/index.ts';
 import { race, rejected } from './support/race.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
 
@@ -56,7 +57,9 @@ beforeAll(async () => {
     loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0' }),
     { database: t, redis: await createTestRedis() },
   );
-  application = buildApplication(c);
+  application = buildApplication(c, {
+    tenantDirectory: { configured: true, unavailableCode: 'M365_DIRECTORY_NOT_CONFIGURED', listPeople: async () => tenantPeople },
+  });
   api = await startApi(c, application);
   http = httpClient(api.url);
 
@@ -81,6 +84,9 @@ afterAll(async () => {
   await api?.stop();
   await c?.dispose();
 });
+
+/** Danh bạ M365 giả (ADR-0027) — test đổi `tenantPeople` rồi gọi đồng bộ. */
+let tenantPeople: DirectoryPerson[] = [];
 
 const ids = (body: Json) => (body as unknown as Json[]).map((a) => a['id']);
 
@@ -326,5 +332,61 @@ describe('màn Thành viên (ADR-0026)', () => {
   it('Owner cuối cùng không tự gỡ được mình (409 LAST_OWNER)', async () => {
     const res = await as(tk.owner)('DELETE', `/organizations/${orgId}/members/${await idOf('mem-owner@test.local')}`);
     expect([res.status, res.body['code']]).toEqual([409, 'LAST_OWNER']);
+  });
+});
+
+describe('danh bạ M365 (ADR-0027)', () => {
+  /** Org riêng: các nhóm test trên đã đổi vai trong org A / B. */
+  let orgId = '';
+  const tk = { owner: '', member: '' };
+
+  beforeAll(async () => {
+    tk.owner = await userWith('dir-owner@test.local', []);
+    tk.member = await userWith('dir-member@test.local', []);
+    orgId = (await must(as(tk.owner)('POST', '/organizations', { name: 'Org Danh bạ' }), 201))['id'] as string;
+    await must(as(tk.owner)('PUT', `/organizations/${orgId}/members`, { email: 'dir-member@test.local', role: 'member' }), 200);
+  });
+
+  it('chỉ Super Admin đồng bộ được; Owner một org cũng không (403)', async () => {
+    const res = await as(tk.owner)('POST', '/directory/m365-sync');
+    expect([res.status, res.body['code']]).toEqual([403, 'FORBIDDEN']);
+  });
+
+  it('đồng bộ tạo tài khoản kèm tên; Owner thấy họ trong danh sách để chọn rồi thêm vào org', async () => {
+    tenantPeople = [
+      { oid: 'oid-nv1', email: 'NV1@test.local', displayName: 'Nhân Viên Một' },
+      // Đã có tài khoản (tạo bằng mật khẩu), chưa gắn oid -> gắn + đặt tên.
+      { oid: 'oid-dir-member', email: 'dir-member@test.local', displayName: 'Thành Viên' },
+    ];
+    const result = await must(as(SUPER)('POST', '/directory/m365-sync'), 200);
+    expect(result).toMatchObject({ total: 2, created: 1, linked: 1, conflicts: 0 });
+
+    const owner = as(tk.owner);
+    const candidates = (await must(owner('GET', `/organizations/${orgId}/member-candidates`), 200)) as unknown as Json[];
+    expect(candidates).toContainEqual(expect.objectContaining({ email: 'nv1@test.local', displayName: 'Nhân Viên Một' }));
+    // Người đã là thành viên org không nằm trong danh sách.
+    expect(candidates.map((c) => c['email'])).not.toContain('dir-member@test.local');
+
+    await must(owner('PUT', `/organizations/${orgId}/members`, { email: 'nv1@test.local', role: 'member' }), 200);
+    const members = (await must(owner('GET', `/organizations/${orgId}/members`), 200)) as unknown as Json[];
+    expect(members).toContainEqual(expect.objectContaining({ email: 'nv1@test.local', displayName: 'Nhân Viên Một' }));
+    expect(members).toContainEqual(expect.objectContaining({ email: 'dir-member@test.local', displayName: 'Thành Viên' }));
+    const after = (await must(owner('GET', `/organizations/${orgId}/member-candidates`), 200)) as unknown as Json[];
+    expect(after.map((c) => c['email'])).not.toContain('nv1@test.local');
+  });
+
+  it('Member không xem được danh sách để chọn (403); người ngoài org -> 404', async () => {
+    expect((await as(tk.member)('GET', `/organizations/${orgId}/member-candidates`)).status).toBe(403);
+    expect((await as(token.outsider)('GET', `/organizations/${orgId}/member-candidates`)).status).toBe(404);
+  });
+
+  it('hai lượt đồng bộ chạy song song -> mỗi người đúng MỘT tài khoản, không lượt nào lỗi', async () => {
+    tenantPeople = Array.from({ length: 5 }, (_, i) => ({ oid: `oid-song-${i}`, email: `song-${i}@test.local`, displayName: `Song ${i}` }));
+    const results = await race(2, () => must(as(SUPER)('POST', '/directory/m365-sync'), 200));
+    expect(rejected(results)).toEqual([]);
+    const created = results.map((r) => (r.status === 'fulfilled' ? (r.value['created'] as number) : -1));
+    expect(created.reduce((a, b) => a + b, 0)).toBe(5);
+    const candidates = (await must(as(tk.owner)('GET', `/organizations/${orgId}/member-candidates`), 200)) as unknown as Json[];
+    expect(candidates.filter((c) => String(c['email']).startsWith('song-'))).toHaveLength(5);
   });
 });

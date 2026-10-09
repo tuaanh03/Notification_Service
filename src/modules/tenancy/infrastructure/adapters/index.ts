@@ -7,3 +7,4 @@ export * from './scrypt-password-hasher.ts';
 export * from './entra-id-microsoft-identity.ts';
 export * from './redis-login-state-store.ts';
 export * from './drizzle-org-member-repository.ts';
+export * from './graph-tenant-directory.ts';

@@ -41,6 +41,11 @@ export class DrizzleAdminRepository implements AdminRepository {
     return rows.map(toEntity);
   }
 
+  async listByAccount(accountId: AccountIdType): Promise<Admin[]> {
+    const rows = await this.transactions.executor().select().from(admins).where(eq(admins.accountId, accountId));
+    return rows.map(toEntity);
+  }
+
   async insert(admin: Admin): Promise<void> {
     await this.transactions.executor().insert(admins).values({
       adminId: admin.id,
@@ -49,6 +54,7 @@ export class DrizzleAdminRepository implements AdminRepository {
       role: admin.role,
       passwordHash: admin.passwordHash,
       microsoftOid: admin.microsoftOid,
+      displayName: admin.displayName,
       createdAt: admin.createdAt,
       updatedAt: admin.updatedAt,
     });
@@ -63,6 +69,14 @@ export class DrizzleAdminRepository implements AdminRepository {
       if (isDuplicateKeyError(err)) return false;
       throw err;
     }
+  }
+
+  async updateDisplayName(admin: Admin): Promise<void> {
+    await this.transactions
+      .executor()
+      .update(admins)
+      .set({ displayName: admin.displayName, updatedAt: admin.updatedAt })
+      .where(eq(admins.adminId, admin.id));
   }
 
   async updatePassword(admin: Admin): Promise<void> {
@@ -100,6 +114,7 @@ function toEntity(row: typeof admins.$inferSelect): Admin {
     role: row.role,
     passwordHash: row.passwordHash,
     microsoftOid: row.microsoftOid,
+    displayName: row.displayName,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

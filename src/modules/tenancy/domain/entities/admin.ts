@@ -21,6 +21,8 @@ export interface AdminProps extends TimestampInput {
   passwordHash?: string | null | undefined;
   /** `oid` của tài khoản Microsoft 365 đã gắn (ADR-0021). `null` = chưa gắn. */
   microsoftOid?: string | null | undefined;
+  /** Tên hiển thị từ Microsoft 365 (ADR-0027). `null` = chưa biết. */
+  displayName?: string | null | undefined;
 }
 
 /**
@@ -33,6 +35,7 @@ export class Admin extends BaseEntity<AdminId> {
   role: AdminRole;
   passwordHash: string | null;
   microsoftOid: string | null;
+  displayName: string | null;
 
   constructor(props: AdminProps) {
     super(props.id, props);
@@ -41,6 +44,7 @@ export class Admin extends BaseEntity<AdminId> {
     this.role = props.role;
     this.passwordHash = props.passwordHash ?? null;
     this.microsoftOid = props.microsoftOid ?? null;
+    this.displayName = props.displayName ?? null;
   }
 
   /** Chưa đặt mật khẩu thì không có đường đăng nhập nào — đặt bằng CLI (`admin-cli`). */
@@ -63,6 +67,18 @@ export class Admin extends BaseEntity<AdminId> {
     }
     this.microsoftOid = oid;
     this.touch(at);
+  }
+
+  /**
+   * Cập nhật tên theo Microsoft 365. Trả `false` khi không có gì đổi — tên rỗng / thiếu thì giữ tên cũ,
+   * không xoá (M365 không trả tên chưa có nghĩa là người đó không còn tên).
+   */
+  rename(displayName: string | null, at: Date): boolean {
+    const next = displayName?.trim().slice(0, 256) || null;
+    if (next === null || next === this.displayName) return false;
+    this.displayName = next;
+    this.touch(at);
+    return true;
   }
 
   get isSuperAdmin(): boolean {

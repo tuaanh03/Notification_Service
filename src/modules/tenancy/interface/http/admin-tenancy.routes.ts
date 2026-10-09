@@ -7,8 +7,10 @@ import type {
   CreateOrganization,
   CreateOwnOrganization,
   FindOrganization,
+  ListMemberCandidates,
   ListOrgMembers,
   SetOrgMember,
+  SyncTenantDirectory,
 } from '../../application/index.ts';
 
 const nameBody = z.object({ name: z.string().trim().min(1).max(200) }).strict();
@@ -26,7 +28,9 @@ export function adminTenancyRoutes(useCases: {
   createOwnOrganization: CreateOwnOrganization;
   findOrganization: FindOrganization;
   listOrgMembers: ListOrgMembers;
+  listMemberCandidates: ListMemberCandidates;
   setOrgMember: SetOrgMember;
+  syncTenantDirectory: SyncTenantDirectory;
 }): HttpRoutes {
   return (app) => {
     const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
@@ -64,6 +68,17 @@ export function adminTenancyRoutes(useCases: {
       const { orgId } = parseInput(orgParams, request.params);
       return useCases.listOrgMembers.execute(OrgId.parse(orgId));
     });
+
+    // Người có thể thêm vào org: tài khoản cùng account, chưa là thành viên (ADR-0027).
+    app.get('/organizations/:orgId/member-candidates', { config: access('org.manage') }, async (request) => {
+      const { orgId } = parseInput(orgParams, request.params);
+      return useCases.listMemberCandidates.execute(OrgId.parse(orgId));
+    });
+
+    // Đồng bộ danh bạ tenant M365 thành tài khoản EWS — việc cấp hệ thống, chỉ Super Admin (ADR-0027).
+    app.post('/directory/m365-sync', { config: access('platform.manage') }, async (request) =>
+      useCases.syncTenantDirectory.execute(ctx(request)),
+    );
 
     app.put('/organizations/:orgId/members', { config: access('org.manage') }, async (request) => {
       const { orgId } = parseInput(orgParams, request.params);

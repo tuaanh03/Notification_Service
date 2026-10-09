@@ -91,7 +91,7 @@ export class EntraIdMicrosoftIdentity implements MicrosoftIdentity {
     if (typeof claims.oid !== 'string' || claims.oid === '') throw invalidToken('missing oid');
 
     const email = [claims.email, claims.preferred_username].find((v): v is string => typeof v === 'string' && v.includes('@'));
-    return { oid: claims.oid, email: email ?? null };
+    return { oid: claims.oid, email: email ?? null, name: typeof claims.name === 'string' ? claims.name : null };
   }
 
   /** Đổi `code` lấy `id_token` ở token endpoint, kèm secret + `code_verifier` (PKCE). */
@@ -189,6 +189,7 @@ interface IdTokenClaims {
   oid?: unknown;
   email?: unknown;
   preferred_username?: unknown;
+  name?: unknown;
 }
 
 const randomToken = () => randomBytes(32).toString('base64url');

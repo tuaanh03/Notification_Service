@@ -90,6 +90,13 @@ class FakeAdmins implements AdminRepository {
     this.rows.push(admin);
     return true;
   }
+  async listByAccount() {
+    return this.rows;
+  }
+  renamed: string[] = [];
+  async updateDisplayName(admin: Admin) {
+    this.renamed.push(admin.id);
+  }
   async updatePassword() {}
   async linkMicrosoft() {
     return this.linkedConcurrently === null;
@@ -218,6 +225,23 @@ describe('LoginAdminWithMicrosoft', () => {
     expect(await codeOf(run())).toBe('M365_ACCOUNT_MISMATCH');
   });
 
+  it('tên từ claim `name` (ADR-0027): tài khoản tự tạo có tên; tài khoản đã gắn đổi tên theo M365', async () => {
+    const fresh = setup([], { oid: 'oid-9', email: 'la@company.com', name: 'Lã Thị La' });
+    const result = await fresh.run();
+    expect(fresh.repo.rows.find((a) => a.id === result.admin.id)?.displayName).toBe('Lã Thị La');
+
+    const a = admin('an@company.com', 'oid-1');
+    const old = setup([a], { oid: 'oid-1', email: 'an@company.com', name: 'Nguyễn Văn An' });
+    await old.run();
+    expect([a.displayName, old.repo.renamed]).toEqual(['Nguyễn Văn An', [a.id]]);
+    // Cùng tên / token không có tên -> không ghi gì.
+    const same = setup([a], { oid: 'oid-1', email: 'an@company.com', name: 'Nguyễn Văn An' });
+    await same.run();
+    const none = setup([a], { oid: 'oid-1', email: 'an@company.com' });
+    await none.run();
+    expect([same.repo.renamed, none.repo.renamed, a.displayName]).toEqual([[], [], 'Nguyễn Văn An']);
+  });
+
   it('chưa cấu hình M365_* -> 503 M365_NOT_CONFIGURED ở cả hai bước', async () => {
     const identity = new DisabledMicrosoftIdentity();
     const start = new StartMicrosoftLogin({ identity });
@@ -309,6 +333,7 @@ const validClaims = (nonce: string) => ({
   tid: TENANT,
   oid: 'oid-1',
   email: 'an@company.com',
+  name: 'Nguyễn Văn An',
   nonce,
   exp,
   nbf: exp - 3600,
@@ -331,10 +356,14 @@ describe('EntraIdMicrosoftIdentity', () => {
     expect(state).not.toBe((await begin()).state);
   });
 
-  it('đủ bước hợp lệ -> trả oid + email; gửi code_verifier khớp code_challenge', async () => {
+  it('đủ bước hợp lệ -> trả oid + email + tên; gửi code_verifier khớp code_challenge', async () => {
     const ms = fakeMicrosoft({});
     const { url, state } = await ms.begin();
-    expect(await ms.identity.complete({ code: 'ma-tu-microsoft', state })).toEqual({ oid: 'oid-1', email: 'an@company.com' });
+    expect(await ms.identity.complete({ code: 'ma-tu-microsoft', state })).toEqual({
+      oid: 'oid-1',
+      email: 'an@company.com',
+      name: 'Nguyễn Văn An',
+    });
     const tokenCall = ms.calls.find((c) => c.url.endsWith('/oauth2/v2.0/token'))!;
     const verifier = tokenCall.body!.get('code_verifier')!;
     expect(createHash('sha256').update(verifier).digest('base64url')).toBe(url.searchParams.get('code_challenge'));

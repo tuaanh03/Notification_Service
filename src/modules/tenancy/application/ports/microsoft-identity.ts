@@ -4,6 +4,8 @@ export interface MicrosoftProfile {
   oid: string;
   /** Claim `email`, thiếu thì `preferred_username` (UPN). `null` = token không có địa chỉ nào. */
   email: string | null;
+  /** Claim `name` (tên hiển thị, scope `profile`). `null` = token không có. Chỉ để hiển thị (ADR-0027). */
+  name?: string | null | undefined;
 }
 
 /**

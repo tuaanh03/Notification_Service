@@ -1,0 +1,1 @@
+ALTER TABLE `admins` ADD `display_name` varchar(256);

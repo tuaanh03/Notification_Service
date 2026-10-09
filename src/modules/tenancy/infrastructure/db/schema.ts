@@ -48,6 +48,11 @@ export const admins = mysqlTable(
      * Gắn ở lần đăng nhập M365 đầu tiên (khớp theo email), từ đó tra theo `oid`: email có thể đổi, `oid` thì không.
      */
     microsoftOid: varchar('microsoft_oid', { length: 36 }),
+    /**
+     * Tên hiển thị lấy từ Microsoft 365 (ADR-0027) — điền lúc đồng bộ danh bạ và mỗi lần đăng nhập M365.
+     * NULL = chưa biết tên (admin chỉ dùng mật khẩu, hoặc M365 không trả tên). Chỉ để hiển thị, không định danh.
+     */
+    displayName: varchar('display_name', { length: 256 }),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

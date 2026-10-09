@@ -16,9 +16,12 @@ export class ListOrgMembers {
   async execute(orgId: OrgId): Promise<OrgMemberDto[]> {
     const members = await this.deps.members.listByOrg(orgId);
     const admins = await this.deps.admins.findManyByIds(members.map((m) => m.adminId));
-    const emailOf = new Map(admins.map((a) => [a.id as string, a.email as string]));
+    const byId = new Map(admins.map((a) => [a.id as string, a]));
     return members
-      .map((m) => ({ orgId: m.orgId as string, adminId: m.adminId as string, email: emailOf.get(m.adminId) ?? '', role: m.role }))
+      .map((m) => {
+        const admin = byId.get(m.adminId);
+        return { orgId: m.orgId as string, adminId: m.adminId as string, email: admin?.email ?? '', displayName: admin?.displayName ?? null, role: m.role };
+      })
       .sort((a, b) => a.email.localeCompare(b.email));
   }
 }

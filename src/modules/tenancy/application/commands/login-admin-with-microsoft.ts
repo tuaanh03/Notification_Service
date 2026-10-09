@@ -18,6 +18,8 @@ import { m365NotConfigured } from './start-microsoft-login.ts';
  *    Token không có email hợp lệ -> 403 `M365_ACCOUNT_NOT_REGISTERED` (không có gì để định danh).
  *
  * Không đòi mật khẩu: admin chỉ dùng M365 không cần có `password_hash`.
+ *
+ * Mỗi lần vào, tên hiển thị lấy theo claim `name` (ADR-0027) — đổi tên trên M365 thì EWS theo.
  */
 export class LoginAdminWithMicrosoft {
   private readonly deps: IssueSessionDeps & {
@@ -45,7 +47,7 @@ export class LoginAdminWithMicrosoft {
       }
       const candidate = await admins.findByEmail(email);
       if (candidate === null) {
-        const created = await this.register(email, profile.oid, ctx);
+        const created = await this.register(email, profile.oid, profile.name ?? null, ctx);
         return issueAdminSession(this.deps, created, 'microsoft', { ...ctx, actor: { id: created.id, type: 'admin' } });
       }
       // Ném M365_ACCOUNT_MISMATCH nếu admin đã gắn một tài khoản Microsoft KHÁC.
@@ -64,6 +66,8 @@ export class LoginAdminWithMicrosoft {
       });
     }
 
+    // Chỉ để hiển thị — không audit, không chung transaction với việc cấp phiên.
+    if (admin.rename(profile.name ?? null, clock.now())) await admins.updateDisplayName(admin);
     return issueAdminSession(this.deps, admin, 'microsoft', { ...ctx, actor: { id: admin.id, type: 'admin' } });
   }
 
@@ -72,7 +76,7 @@ export class LoginAdminWithMicrosoft {
    * khoá (`uq_admins_microsoft_oid` / email) -> đọc lại theo `oid`. Không thấy nghĩa là email đã
    * thuộc một danh tính Microsoft khác -> từ chối, như nhánh gắn `oid`.
    */
-  private async register(email: NormalizedEmail, oid: string, ctx: CommandContext): Promise<Admin> {
+  private async register(email: NormalizedEmail, oid: string, name: string | null, ctx: CommandContext): Promise<Admin> {
     const { admins, accounts, uow, outbox, clock } = this.deps;
     const account = await accounts.findOldest();
     if (account === null) {
@@ -87,6 +91,7 @@ export class LoginAdminWithMicrosoft {
       microsoftOid: oid,
       createdAt: clock.now(),
     });
+    admin.rename(name, admin.createdAt);
     const inserted = await uow.run(async () => {
       if (!(await admins.insertIfAbsent(admin))) return false;
       await outbox.append([

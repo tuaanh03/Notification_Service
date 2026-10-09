@@ -8,6 +8,7 @@ import {
   DUMMY_PASSWORD,
   FindOrganization,
   FindOrgMemberships,
+  ListMemberCandidates,
   ListOrgMembers,
   RemoveOrgMember,
   ListAccounts,
@@ -17,7 +18,9 @@ import {
   SetAdminPassword,
   SetOrgMember,
   StartMicrosoftLogin,
+  SyncTenantDirectory,
   type MicrosoftIdentity,
+  type TenantDirectory,
 } from '../../modules/tenancy/application/index.ts';
 import {
   DrizzleAccountRepository,
@@ -26,7 +29,9 @@ import {
   DrizzleOrganizationRepository,
   DrizzleOrgMemberRepository,
   DisabledMicrosoftIdentity,
+  DisabledTenantDirectory,
   EntraIdMicrosoftIdentity,
+  GraphTenantDirectory,
   RandomSessionTokenFactory,
   RedisLoginStateStore,
   ScryptPasswordHasher,
@@ -43,6 +48,8 @@ import type { ModuleDefinition } from '../module-definition.ts';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 /** Chờ Microsoft tối đa 8 giây mỗi lời gọi — dưới hạn 10 giây console chờ backend. */
 const M365_TIMEOUT_MS = 8_000;
+/** Mỗi trang danh bạ (≤ 999 người) chờ Graph tối đa 15 giây — đồng bộ do người bấm, không nằm trên đường đăng nhập. */
+const DIRECTORY_TIMEOUT_MS = 15_000;
 
 /**
  * Việc chỉ CLI gọi — KHÔNG có route HTTP nào (`entrypoints/admin-cli`).
@@ -73,7 +80,7 @@ export interface AdminOps {
  */
 export function tenancyModule(
   container: Container,
-  dependencies: { microsoftIdentity?: MicrosoftIdentity | undefined } = {},
+  dependencies: { microsoftIdentity?: MicrosoftIdentity | undefined; tenantDirectory?: TenantDirectory | undefined } = {},
 ): {
   definition: ModuleDefinition;
   findOrganization: FindOrganization;
@@ -148,7 +155,16 @@ export function tenancyModule(
             createOwnOrganization: new CreateOwnOrganization({ uow, outbox, clock, admins, organizations, members }),
             findOrganization,
             listOrgMembers: new ListOrgMembers({ members, admins }),
+            listMemberCandidates: new ListMemberCandidates({ organizations, members, admins }),
             setOrgMember,
+            syncTenantDirectory: new SyncTenantDirectory({
+              uow,
+              outbox,
+              clock,
+              directory: dependencies.tenantDirectory ?? selectTenantDirectory(container),
+              accounts,
+              admins,
+            }),
           }),
         ],
       },
@@ -170,5 +186,21 @@ function selectMicrosoftIdentity(container: Container): MicrosoftIdentity {
     },
     states: new RedisLoginStateStore({ redis: container.infra.redis.client }),
     clock: container.ports.clock,
+  });
+}
+
+/**
+ * Danh bạ M365 đọc bằng app `GRAPH_*` (ADR-0027). Thiếu một trong ba biến -> tắt. Tenant của `GRAPH_*`
+ * khác tenant đăng nhập `M365_*` -> cũng tắt: `oid` của tenant này không bao giờ khớp claim `oid`
+ * của tenant kia, đồng bộ sẽ tạo tài khoản không ai đăng nhập vào được.
+ */
+function selectTenantDirectory(container: Container): TenantDirectory {
+  const { GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, M365_TENANT_ID } = container.env;
+  if (!GRAPH_TENANT_ID || !GRAPH_CLIENT_ID || !GRAPH_CLIENT_SECRET) return new DisabledTenantDirectory('M365_DIRECTORY_NOT_CONFIGURED');
+  if (M365_TENANT_ID && M365_TENANT_ID.toLowerCase() !== GRAPH_TENANT_ID.toLowerCase()) {
+    return new DisabledTenantDirectory('M365_DIRECTORY_TENANT_MISMATCH');
+  }
+  return new GraphTenantDirectory({
+    config: { tenantId: GRAPH_TENANT_ID, clientId: GRAPH_CLIENT_ID, clientSecret: GRAPH_CLIENT_SECRET, timeoutMs: DIRECTORY_TIMEOUT_MS },
   });
 }

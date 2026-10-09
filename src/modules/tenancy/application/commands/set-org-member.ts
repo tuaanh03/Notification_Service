@@ -8,6 +8,8 @@ export interface OrgMemberDto {
   orgId: string;
   adminId: string;
   email: string;
+  /** Tên từ Microsoft 365 (ADR-0027). `null` = chưa biết. */
+  displayName: string | null;
   role: OrgRole;
 }
 
@@ -72,7 +74,7 @@ export class SetOrgMember {
           payload: audited(ctx, { before: { adminId: admin.id, role: before }, after: { adminId: admin.id, role: input.role } }),
         },
       ]);
-      return { orgId: org.id, adminId: admin.id, email: admin.email, role: input.role };
+      return { orgId: org.id, adminId: admin.id, email: admin.email, displayName: admin.displayName, role: input.role };
     });
   }
 }

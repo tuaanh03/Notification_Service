@@ -9,6 +9,8 @@ export interface AdminRepository {
   findByMicrosoftOid(oid: string): Promise<Admin | null>;
   /** Theo LÔ — màn Thành viên lấy email của cả org bằng một truy vấn, không N+1. */
   findManyByIds(ids: readonly AdminId[]): Promise<Admin[]>;
+  /** Mọi admin của một account — danh sách để chọn khi thêm thành viên (ADR-0027). */
+  listByAccount(accountId: AccountId): Promise<Admin[]>;
   insert(admin: Admin): Promise<void>;
   /**
    * Như `insert`, nhưng trùng khoá duy nhất (email trong account, `microsoft_oid`) thì trả `false`
@@ -20,6 +22,8 @@ export interface AdminRepository {
    * gắn trước (hai lần đăng nhập đầu tiên chạy song song) — application đọc lại rồi so.
    */
   linkMicrosoft(admin: Admin): Promise<boolean>;
+  /** Chỉ ghi `display_name` + `updated_at` (ADR-0027). */
+  updateDisplayName(admin: Admin): Promise<void>;
   /** Chỉ ghi `password_hash` + `updated_at` — không đụng email, role. */
   updatePassword(admin: Admin): Promise<void>;
   countByAccount(accountId: AccountId): Promise<number>;

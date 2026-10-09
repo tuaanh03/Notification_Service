@@ -1,7 +1,7 @@
 import type { AdminAuthenticator, AdminAuthorizer, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
 import type { TemplateAiWriter } from '../modules/templates/application/index.ts';
-import type { MicrosoftIdentity } from '../modules/tenancy/application/index.ts';
+import type { MicrosoftIdentity, TenantDirectory } from '../modules/tenancy/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
 import type { ConsumerRegistration } from './consumer-registry.ts';
 import type { Container } from './container.ts';
@@ -40,10 +40,15 @@ export interface ApplicationOverrides {
   templateAiWriter?: TemplateAiWriter | undefined;
   /** Test thay đăng nhập Microsoft bằng bản trỏ vào Microsoft giả. */
   microsoftIdentity?: MicrosoftIdentity | undefined;
+  /** Test thay danh bạ M365 bằng bản giả — không gọi Graph (ADR-0027). */
+  tenantDirectory?: TenantDirectory | undefined;
 }
 
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
-  const tenancy = tenancyModule(container, { microsoftIdentity: overrides.microsoftIdentity });
+  const tenancy = tenancyModule(container, {
+    microsoftIdentity: overrides.microsoftIdentity,
+    tenantDirectory: overrides.tenantDirectory,
+  });
   const apps = appsModule(container, {
     findOrganization: tenancy.findOrganization,
     findOrgMemberships: tenancy.findOrgMemberships,
