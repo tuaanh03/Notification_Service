@@ -4,6 +4,7 @@ import {
   CreateAccount,
   CreateAdmin,
   CreateOrganization,
+  CreateOwnOrganization,
   DUMMY_PASSWORD,
   FindOrganization,
   FindOrgMemberships,
@@ -138,6 +139,7 @@ export function tenancyModule(
           adminTenancyRoutes({
             createAccount,
             createOrganization: new CreateOrganization({ uow, outbox, clock, accounts, organizations }),
+            createOwnOrganization: new CreateOwnOrganization({ uow, outbox, clock, admins, organizations, members }),
             findOrganization,
           }),
         ],

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
 import { access, adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
-import { AccountId, NotFoundError, OrgId } from '../../../../shared/kernel/index.ts';
-import type { CreateAccount, CreateOrganization, FindOrganization } from '../../application/index.ts';
+import { AccountId, AdminId, NotFoundError, OrgId } from '../../../../shared/kernel/index.ts';
+import type { CreateAccount, CreateOrganization, CreateOwnOrganization, FindOrganization } from '../../application/index.ts';
 
 const nameBody = z.object({ name: z.string().trim().min(1).max(200) }).strict();
 const accountParams = z.object({ accountId: z.string().uuid() });
@@ -15,6 +15,7 @@ const orgParams = z.object({ orgId: z.string().uuid() });
 export function adminTenancyRoutes(useCases: {
   createAccount: CreateAccount;
   createOrganization: CreateOrganization;
+  createOwnOrganization: CreateOwnOrganization;
   findOrganization: FindOrganization;
 }): HttpRoutes {
   return (app) => {
@@ -33,6 +34,16 @@ export function adminTenancyRoutes(useCases: {
       const body = parseInput(nameBody, request.body);
       const org = await useCases.createOrganization.execute(
         { accountId: AccountId.parse(accountId), name: body.name },
+        ctx(request),
+      );
+      return reply.status(201).send(org);
+    });
+
+    // Org tự phục vụ (ADR-0025): ai đăng nhập cũng tạo được, người tạo thành Owner.
+    app.post('/organizations', { config: access('org.create') }, async (request, reply) => {
+      const body = parseInput(nameBody, request.body);
+      const org = await useCases.createOwnOrganization.execute(
+        { adminId: AdminId.parse(adminCaller(request).adminId), name: body.name },
         ctx(request),
       );
       return reply.status(201).send(org);

@@ -225,3 +225,27 @@ describe('ràng buộc ép ở command (ADR-0009)', () => {
     await expect(setRole('stranger@test.local', 'member')).rejects.toMatchObject({ code: 'CROSS_ACCOUNT' });
   });
 });
+
+describe('org tự phục vụ (ADR-0025)', () => {
+  it('người chưa thuộc org nào tạo org -> thành Owner, tạo được app; người khác không thấy org đó', async () => {
+    const newbie = await userWith('newbie@test.local', []);
+    const me = as(newbie);
+    expect(await must(me('GET', '/me'), 200)).toMatchObject({ orgs: [] });
+
+    const org = await must(me('POST', '/organizations', { name: '  Đội Mới  ' }), 201);
+    expect(org).toMatchObject({ name: 'Đội Mới', accountId });
+    const orgId = org['id'] as string;
+    expect((await must(me('GET', '/me'), 200))['orgs']).toEqual([{ id: orgId, name: 'Đội Mới', role: 'owner' }]);
+
+    const created = await must(me('POST', '/apps', { orgId, slug: 'doi-moi', name: 'Đội mới', namespace: 'doi-moi' }), 201);
+    expect(created['status']).toBe('active');
+
+    // Owner của org khác không thấy org này: 404, không phải 403.
+    expect((await as(token.outsider)('GET', `/organizations/${orgId}`)).status).toBe(404);
+  });
+
+  it('tên trống -> 422; chưa đăng nhập -> 401', async () => {
+    expect((await as(token.viewer)('POST', '/organizations', { name: '   ' })).status).toBe(422);
+    expect((await http('POST', '/admin/organizations', { body: { name: 'X' } })).status).toBe(401);
+  });
+});

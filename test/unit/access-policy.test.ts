@@ -36,6 +36,10 @@ describe('decide() — luật phân quyền /admin (ADR-0022)', () => {
     expect(decide(user(), 'self.read', null)).toBe('allow');
   });
 
+  it('tạo org mới: ai đăng nhập cũng được, kể cả chưa thuộc org nào (ADR-0025)', () => {
+    expect(decide(user(), 'org.create', null)).toBe('allow');
+  });
+
   it('Owner / Org Admin: ngầm là App Admin trên MỌI app của org (kế thừa, không lưu dòng)', () => {
     for (const role of ['owner', 'org_admin'] as OrgRole[]) {
       expect(decide(user(role), 'app.read', { orgId: ORG, appId: OTHER_APP })).toBe('allow');

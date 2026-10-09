@@ -64,7 +64,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 
 | Module | Có gì |
 | --- | --- |
-| `tenancy` | tạo account / organization; query `FindOrganization` cho module khác |
+| `tenancy` | tạo account / organization (người dùng tự tạo org và thành Owner — ADR-0025); query `FindOrganization` cho module khác |
 | `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác; `GET /admin/apps/:appId/users` (danh sách người nhận, phân trang + tìm) và `GET /admin/apps/:appId/users/:externalId` (một người, khớp đủ mã — cùng `FindUserByExternalId.get` với `/v1`) |
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
 | `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `GET /admin/apps/:appId/users/:externalId/preferences` (chỉ đọc); `ConsentQueries` cho module khác |
@@ -113,6 +113,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0022` | **RBAC đa tenant**: Super Admin (vai hệ thống duy nhất) · Owner > Org Admin > Member · App Admin / App Viewer; người ngoài org 404, thiếu vai 403; luật thuần `decide()` ở kernel; MỌI route `/admin` khai `{ config: access(...) }` — thiếu là server không khởi động |
 | `0023` | **App tự phục vụ, bỏ duyệt**: tạo app là `active` + kênh `email` ngay (`App.register`); đội app tự cấp khoá; Super Admin chỉ tạm ngưng / thu hồi app rác. App cũ `draft` / `pending_approval` để nguyên, vẫn duyệt được — test dựng chúng thẳng trong DB |
 | `0024` | **Tự tạo tài khoản ở lần đăng nhập M365 đầu tiên**: vai `user`, chưa thuộc org, không mật khẩu, vào account cũ nhất (`findOldest`); chỉ người trong tenant M365 qua được; race lần đầu -> `insertIfAbsent` rồi đọc lại theo `oid`. Thay bước 3 của ADR-0021 |
+| `0025` | **Org tự phục vụ**: quyền `org.create` (ai đăng nhập cũng có), `POST /admin/organizations` tạo org trong account của chính mình + ghi mình là Owner trong CÙNG transaction. Chưa làm hạn mức / đổi tên / xoá / chuyển Owner |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
