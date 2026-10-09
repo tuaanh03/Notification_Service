@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   buildApplication,
@@ -8,6 +9,7 @@ import {
 } from '../../src/composition/index.ts';
 import { startApi, startWorker, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
+import { apps } from '../../src/modules/apps/infrastructure/db/schema.ts';
 import { outbox } from '../../src/shared/db/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { race } from './support/race.ts';
@@ -65,7 +67,7 @@ async function http(method: string, path: string, opts: { token?: string | null;
 }
 const admin = (method: string, path: string, body?: unknown) => http(method, `/admin${path}`, body === undefined ? {} : { body });
 
-/** account -> org -> app (draft). */
+/** account -> org -> app (tạo xong là active — ADR-0023). */
 async function newApp(slug: string) {
   const account = await admin('POST', '/accounts', { name: `Acc ${slug}` });
   const org = await admin('POST', `/accounts/${account.body['id']}/organizations`, { name: `Org ${slug}` });
@@ -73,10 +75,15 @@ async function newApp(slug: string) {
   expect(created.status).toBe(201);
   return { orgId: org.body['id'] as string, appId: created.body['id'] as string };
 }
-async function activeApp(slug: string) {
+const activeApp = newApp;
+
+/** App CŨ còn nằm ở `pending_approval` từ trước ADR-0023 — dựng thẳng trong DB, vì API không tạo ra được nữa. */
+async function legacyPendingApp(slug: string) {
   const ids = await newApp(slug);
-  expect((await admin('POST', `/apps/${ids.appId}/submit`)).status).toBe(200);
-  expect((await admin('POST', `/apps/${ids.appId}/approve`, { grantedChannels: ['email'] })).status).toBe(200);
+  await t.db
+    .update(apps)
+    .set({ status: 'pending_approval', grantedChannels: [] })
+    .where(eq(apps.appId, ids.appId));
   return ids;
 }
 
@@ -121,10 +128,14 @@ describe('bề mặt /admin — đăng nhập và phiên', () => {
 });
 
 describe('vòng đời app qua /admin', () => {
-  it('draft -> pending_approval -> active kèm quyền cấp', async () => {
-    const { appId } = await newApp('lifecycle');
-    expect((await admin('GET', `/apps/${appId}`)).body).toMatchObject({ status: 'draft', grantedChannels: [] });
-    expect((await admin('POST', `/apps/${appId}/submit`)).body['status']).toBe('pending_approval');
+  it('tạo app là active ngay, cấp sẵn email, cấp khoá được luôn — không qua duyệt (ADR-0023)', async () => {
+    const { appId } = await newApp('self-serve');
+    expect((await admin('GET', `/apps/${appId}`)).body).toMatchObject({ status: 'active', grantedChannels: ['email'] });
+    expect((await admin('POST', `/apps/${appId}/secrets`)).status).toBe(201);
+  });
+
+  it('app CŨ đang pending_approval vẫn duyệt được, kèm quyền cấp', async () => {
+    const { appId } = await legacyPendingApp('lifecycle');
     const approved = await admin('POST', `/apps/${appId}/approve`, {
       grantedChannels: ['email', 'in_app'],
       rateLimitPerMinute: 120,
@@ -248,16 +259,14 @@ describe('audit end-to-end qua worker thật', () => {
       let entries: Json[] = [];
       await eventually(async () => {
         entries = (await admin('GET', `/audit?targetType=App&targetId=${appId}`)).body as unknown as Json[];
-        return entries.length >= 4;
+        return entries.length >= 2;
       });
-      expect(entries.map((e) => e['action']).sort()).toEqual(
-        ['AppApproved', 'AppCreated', 'AppSecretIssued', 'AppSubmittedForReview'].sort(),
-      );
+      expect(entries.map((e) => e['action']).sort()).toEqual(['AppCreated', 'AppSecretIssued'].sort());
       // Actor là ID admin THẬT đang đăng nhập, không còn 'bootstrap-admin' dùng chung — nhờ vậy
       // audit_log trả lời được "ai làm việc này", thứ mà một token dùng chung không làm được.
       expect(entries.every((e) => e['actor'] === ADMIN_ID && e['source'] === 'admin_api')).toBe(true);
-      expect(entries.find((e) => e['action'] === 'AppApproved')).toMatchObject({
-        before: { status: 'pending_approval' },
+      // Không còn bước duyệt: trạng thái và kênh cấp sẵn nằm ngay trong AppCreated (ADR-0023).
+      expect(entries.find((e) => e['action'] === 'AppCreated')).toMatchObject({
         after: { status: 'active', grantedChannels: ['email'] },
       });
     } finally {

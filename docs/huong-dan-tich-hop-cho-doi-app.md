@@ -77,7 +77,7 @@ Trả `status` của app và `grantedChannels`. Phải có `"email"` trong đó 
 
 | # | Việc | Ai làm |
 | --- | --- | --- |
-| 1 | Tạo app, duyệt, cấp khoá API | **EWS** |
+| 1 | Tạo app, cấp khoá API trên console EWS — tạo xong là dùng được, không chờ duyệt | **đội app** (Owner / Org Admin của org) |
 | 2 | Tạo chủ đề **và kích hoạt** | **EWS** |
 | 3 | Khai báo nhân viên + email | **đội app** |
 | 4 | Dựng màn "Cài đặt nhận thông báo" cho nhân viên | **đội app** |
@@ -112,7 +112,7 @@ Content-Type: application/json
 
 Nhân viên **chỉ tắt được thông báo qua màn do app bạn dựng**. EWS không có trang nào cho nhân viên
 tự vào. Không có màn này thì nhân viên **vĩnh viễn không tắt được gì**, và mọi lớp kiểm quyền nhận
-của EWS trở nên vô nghĩa. Lúc duyệt app, EWS sẽ hỏi bạn đã có màn này chưa.
+của EWS trở nên vô nghĩa. Không còn bước EWS duyệt app — dựng màn này **trước** khi bắt đầu gửi là trách nhiệm của đội app.
 
 Đọc lựa chọn hiện tại:
 
@@ -450,7 +450,7 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | 422 | `RECIPIENT_NOT_FOUND` | gửi | Chưa khai người này — làm bước 3 rồi gọi lại. |
 | 422 | `TOPIC_NOT_FOUND` | gửi, preferences | Sai `key`, chủ đề chưa kích hoạt (ở preferences), hoặc chủ đề của app khác. |
 | 422 | `TOPIC_NOT_ACTIVE` | gửi | Chủ đề còn nháp hoặc đang tạm ngưng. Liên hệ EWS. |
-| 422 | `CHANNEL_NOT_GRANTED` | gửi | App chưa được cấp kênh email lúc duyệt. Liên hệ EWS. |
+| 422 | `CHANNEL_NOT_GRANTED` | gửi | App chưa được cấp kênh email (chỉ gặp ở app tạo trước khi bỏ bước duyệt). Liên hệ EWS. |
 | 422 | `EMAIL_SUBJECT_REQUIRED` · `EMAIL_SUBJECT_TOO_LONG` · `EMAIL_SUBJECT_INVALID` | gửi | Tiêu đề trống / quá 998 ký tự / có xuống dòng. |
 | 422 | `EMAIL_HTML_REQUIRED` · `EMAIL_BODY_TOO_LARGE` | gửi | Thiếu `html` / một phần thân quá 256 KB. Gửi bằng template thì tính trên nội dung đã đổ biến. |
 | 422 | `CONTENT_AND_TEMPLATE_CONFLICT` | gửi | Gửi cả `templateId` lẫn `subject` / `html` / `text`. Chọn một cách. |
@@ -490,7 +490,7 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | Hẹn giờ, huỷ, dừng, gửi lại | Gọi lúc nào thì xếp hàng lúc đó. Thư đã nhận không huỷ được. |
 | Xử lý thư dội về | Chính sách "nghỉ việc → ngắt email" (mục 7) là lớp bảo vệ duy nhất. |
 | Link "Quản lý thông báo" trong thư | Màn cài đặt của app (bước 4) là cửa duy nhất. |
-| Hạn mức theo app (`429`) | Hạn mức ghi lúc duyệt app chưa được đối chiếu. |
+| Hạn mức theo app (`429`) | Hạn mức lưu theo app chưa được đối chiếu. |
 | Gọi ngược (webhook) báo kết quả | Hỏi `GET /v1/notifications/:id` khi cần. |
 | Kênh khác email | Chỉ email. |
 

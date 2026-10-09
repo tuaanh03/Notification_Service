@@ -252,7 +252,7 @@ Có người báo không nhận được thư: gửi đội EWS **mã người n
 }
 ```
 
-Hai trường cuối là hạn mức ghi lúc duyệt app, **hiện chưa áp dụng** — bỏ qua.
+Hai trường cuối là hạn mức lưu theo app, **hiện chưa áp dụng** — bỏ qua.
 
 `PUT /v1/users/:externalId` (cũng là khuôn của `GET /v1/users/:externalId` và `DELETE .../email`)
 

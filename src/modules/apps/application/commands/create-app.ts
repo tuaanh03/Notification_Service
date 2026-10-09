@@ -13,7 +13,10 @@ export interface CreateAppInput {
   origin?: AppOrigin | undefined;
 }
 
-/** UC-001: đăng ký app mới ở trạng thái `draft`. Chưa gửi được gì cho tới khi được duyệt. */
+/**
+ * UC-001, bản tự phục vụ (ADR-0023): đăng ký app mới, tạo xong là `active` và gửi được email —
+ * không còn bước duyệt. Người tạo tự cấp khoá API (`IssueAppSecret`).
+ */
 export class CreateApp {
   private readonly deps: {
     uow: UnitOfWork;
@@ -33,7 +36,7 @@ export class CreateApp {
       const owner = await organizations.findOwner(input.orgId);
       if (!owner) throw new NotFoundError('organization', input.orgId);
 
-      const app = new App({
+      const app = App.register({
         id: AppId.create(),
         orgId: owner.orgId,
         accountId: owner.accountId,
@@ -50,7 +53,14 @@ export class CreateApp {
           aggregateId: app.id,
           eventType: APP_EVENTS.created,
           payload: audited(ctx, {
-            after: { orgId: app.orgId, slug: app.slug, name: app.name, namespace: app.namespace, status: app.status },
+            after: {
+              orgId: app.orgId,
+              slug: app.slug,
+              name: app.name,
+              namespace: app.namespace,
+              status: app.status,
+              grantedChannels: [...app.grantedChannels],
+            },
           }),
         },
       ]);

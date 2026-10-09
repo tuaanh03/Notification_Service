@@ -37,7 +37,24 @@ function app(status: AppStatus = 'active'): App {
   });
 }
 
-describe('App.approve — duyệt kèm quyền cấp', () => {
+describe('App.register — app tự phục vụ (ADR-0023)', () => {
+  it('tạo xong là active, cấp sẵn email, gửi được ngay', () => {
+    const a = App.register({
+      id: AppId.create(),
+      orgId: OrgId.create(),
+      accountId: AccountId.create(),
+      slug: 'self',
+      name: 'Self',
+      namespace: 'self',
+      createdAt: AT,
+    });
+    expect(a.status).toBe('active');
+    expect(a.grantedChannels).toEqual(['email']);
+    expect(a.canSend).toBe(true);
+  });
+});
+
+describe('App.approve — duyệt kèm quyền cấp (app cũ đang chờ duyệt)', () => {
   it('pending_approval -> active, ghi quyền cấp (khử trùng kênh)', () => {
     const a = app('pending_approval');
     a.approve({ grantedChannels: ['email', 'email', 'in_app'], rateLimitPerMinute: 120, maxRecipientsPerEvent: 500 }, AT);

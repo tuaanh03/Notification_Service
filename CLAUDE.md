@@ -70,7 +70,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `GET /admin/apps/:appId/users/:externalId/preferences` (chỉ đọc); `ConsentQueries` cho module khác |
 | `notifications` | `POST/GET /v1/notifications` (202 queued, idempotency; nội dung viết thẳng HOẶC `templateId` + `payload`, đổ biến lúc nhận); `GET /admin/apps/:appId/notifications` (lịch sử gửi, chỉ đọc, không kèm địa chỉ / nội dung); `GET /admin/apps/:appId/overview` (số liệu màn Tổng quan: 24 giờ gần nhất + hàng chờ, chỉ con số); worker `email-sender` gửi AT-MOST-ONCE (gate L0/L1/L3 lúc gửi -> tx1 nhận việc -> provider ngoài transaction -> tx2 kết quả); job `fail-stuck-sending` |
 | `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `GraphEmailProvider` + `MockEmailProvider` (chọn bằng `EMAIL_PROVIDER`), port `SendRateLimiter` (`EMAIL_MAX_PER_MINUTE`, đếm chung trên Redis) |
-| `apps` | vòng đời app (UC-001), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
+| `apps` | vòng đời app (UC-001) — tự phục vụ: tạo xong là `active`, cấp sẵn `email` (`App.register`, ADR-0023), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
 | `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản; `POST …/ai-compose` trả đề xuất của AI (không ghi DB, chỉ biến đã khai, 10 lần/phút/admin — ADR-0020 §7); `RenderTemplate` (đổ `payload` vào bản đang xuất bản) + `TemplateQueries.labelsOf` cho module khác |
 
@@ -111,6 +111,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0020` | **Template**: app gửi bằng `templateId` (bỏ `key`), tên không trùng trong app, không binding topic, đổ biến lúc API nhận request (qua `RenderTemplate`, worker không đổi), nháp lỏng / xuất bản chặt, lỗi template đều 422; AI soạn gọi ở backend, chuẩn tương thích OpenAI, 3 biến `AI_*` |
 | `0021` | **Đăng nhập console bằng Microsoft 365**: OIDC + PKCE, backend giữ secret, App registration riêng (không dùng lại `GRAPH_*`), callback ở domain console, chỉ admin đã có (khớp email rồi gắn `microsoft_oid`); mật khẩu giữ làm dự phòng |
 | `0022` | **RBAC đa tenant**: Super Admin (vai hệ thống duy nhất) · Owner > Org Admin > Member · App Admin / App Viewer; người ngoài org 404, thiếu vai 403; luật thuần `decide()` ở kernel; MỌI route `/admin` khai `{ config: access(...) }` — thiếu là server không khởi động |
+| `0023` | **App tự phục vụ, bỏ duyệt**: tạo app là `active` + kênh `email` ngay (`App.register`); đội app tự cấp khoá; Super Admin chỉ tạm ngưng / thu hồi app rác. App cũ `draft` / `pending_approval` để nguyên, vẫn duyệt được — test dựng chúng thẳng trong DB |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

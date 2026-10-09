@@ -32,7 +32,13 @@ export interface AppProps extends TimestampInput {
   isSystem?: boolean | undefined;
 }
 
-/** Quyền cấp cho app lúc duyệt. */
+/**
+ * Kênh cấp sẵn cho app tự phục vụ (ADR-0023). MVP chỉ gửi email — kênh là thứ DUY NHẤT trong
+ * "quyền cấp" mà lúc gửi thật sự kiểm (`assertChannel`).
+ */
+export const SELF_SERVE_CHANNELS: readonly Channel[] = ['email'];
+
+/** Quyền cấp cho app lúc duyệt — chỉ còn cho app cũ đang chờ duyệt (ADR-0023). */
 export interface AppGrant {
   grantedChannels: readonly Channel[];
   rateLimitPerMinute: number;
@@ -80,6 +86,14 @@ export class App extends BaseEntity<AppId> {
     this.maxRecipientsPerEvent = props.maxRecipientsPerEvent ?? 1000;
     this.includedInOrgBroadcast = props.includedInOrgBroadcast ?? true;
     this.isSystem = props.isSystem ?? false;
+  }
+
+  /**
+   * Đăng ký app tự phục vụ (ADR-0023): tạo xong là `active`, cấp sẵn `SELF_SERVE_CHANNELS` —
+   * không qua duyệt. Đội app tự cấp khoá API; app rác do Super Admin tạm ngưng / thu hồi.
+   */
+  static register(props: Omit<AppProps, 'status' | 'grantedChannels'>): App {
+    return new App({ ...props, status: 'active', grantedChannels: SELF_SERVE_CHANNELS });
   }
 
   /**

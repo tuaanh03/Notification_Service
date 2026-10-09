@@ -158,9 +158,8 @@ describe('Member + App Admin', () => {
     expect((await appAdmin('POST', `/apps/${app.A1}/suspend`)).status).toBe(403);
   });
 
-  it('gửi duyệt là việc của đội app — được', async () => {
-    const res = await as(token.appAdmin)('POST', `/apps/${app.A1}/submit`);
-    expect([res.status, res.body['status']]).toEqual([200, 'pending_approval']);
+  it('cấp khoá API cho app của mình — được, không chờ ai duyệt (ADR-0023)', async () => {
+    expect((await as(token.appAdmin)('POST', `/apps/${app.A1}/secrets`)).status).toBe(201);
   });
 });
 

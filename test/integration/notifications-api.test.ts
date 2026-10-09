@@ -8,6 +8,7 @@ import {
   type Application,
   type Container,
 } from '../../src/composition/index.ts';
+import { apps } from '../../src/modules/apps/infrastructure/db/schema.ts';
 import { MockEmailProvider } from '../../src/modules/delivery/infrastructure/adapters/index.ts';
 import { notifications, notificationTransitions } from '../../src/modules/notifications/infrastructure/db/schema.ts';
 import { subscriptions } from '../../src/modules/subscriptions/infrastructure/db/schema.ts';
@@ -143,8 +144,8 @@ describe('POST /v1/notifications -> worker -> Mock', () => {
     const account = (await admin('POST', '/accounts', { name: 'NoMail' })).body;
     const org = (await admin('POST', `/accounts/${account['id']}/organizations`, { name: 'NoMail' })).body;
     const app = (await admin('POST', '/apps', { orgId: org['id'], slug: 'inapp', name: 'In-app only', namespace: 'inapp' })).body;
-    await admin('POST', `/apps/${app['id']}/submit`);
-    await admin('POST', `/apps/${app['id']}/approve`, { grantedChannels: ['in_app'] });
+    // App tạo mới luôn có email (ADR-0023) — app CŨ được duyệt chỉ in_app thì dựng thẳng trong DB.
+    await t.db.update(apps).set({ grantedChannels: ['in_app'] }).where(eq(apps.appId, app['id'] as string));
     const key = (await admin('POST', `/apps/${app['id']}/secrets`)).body['apiKey'] as string;
     const res = await v1('POST', '/notifications', { to: { externalId: 'x' }, topic: 't', subject: 's', html: 'h' }, key);
     expect((res.body['issues'] as Json[])[0]).toMatchObject({ code: 'CHANNEL_NOT_GRANTED' });

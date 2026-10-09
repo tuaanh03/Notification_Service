@@ -45,8 +45,6 @@ export async function provisionApp(
   const account = must(await admin('POST', '/accounts', { name: `Acc ${slug}` }), 201, 'create account');
   const org = must(await admin('POST', `/accounts/${account['id']}/organizations`, { name: `Org ${slug}` }), 201, 'create org');
   const app = must(await admin('POST', '/apps', { orgId: org['id'], slug, name: `App ${slug}`, namespace: slug }), 201, 'create app');
-  must(await admin('POST', `/apps/${app['id']}/submit`), 200, 'submit app');
-  must(await admin('POST', `/apps/${app['id']}/approve`, { grantedChannels: ['email'] }), 200, 'approve app');
   const key = must(await admin('POST', `/apps/${app['id']}/secrets`), 201, 'issue key');
   return { appId: app['id'] as string, orgId: org['id'] as string, apiKey: key['apiKey'] as string };
 }
