@@ -21,6 +21,7 @@ let http: ReturnType<typeof httpClient>;
 
 const CTX = { actor: { id: 'test', type: 'admin' as const }, source: 'system' as const };
 let SUPER: string;
+const superEmail = 'super@test.local';
 let accountId: string;
 const org = { A: '', B: '' };
 const app = { A1: '', A2: '', B1: '' };
@@ -59,7 +60,7 @@ beforeAll(async () => {
   api = await startApi(c, application);
   http = httpClient(api.url);
 
-  const signedIn = await signInAdmin(application, api.url);
+  const signedIn = await signInAdmin(application, api.url, { email: superEmail });
   SUPER = signedIn.token;
   accountId = signedIn.accountId;
   const root = as(SUPER);
@@ -112,10 +113,15 @@ describe('GET /admin/me — vai của chính mình', () => {
     expect(me['appRoles']).toEqual({ [app.A1]: 'app_viewer' });
   });
 
-  it('Super Admin: mọi org, role null', async () => {
+  it('Super Admin: mọi org; role là vai thành viên thật, null ở org không thuộc về', async () => {
     const me = await must(as(SUPER)('GET', '/me'), 200);
     expect(me['isSuperAdmin']).toBe(true);
     expect((me['orgs'] as Json[]).map((o) => [o['name'], o['role']])).toEqual([['Org A', null], ['Org B', null]]);
+
+    // Super Admin vào thêm org B -> console app thấy org B, khu Quản trị EWS vẫn thấy mọi org.
+    await application.adminOps.setOrgMember.execute({ orgId: OrgId.parse(org.B), email: superEmail, role: 'member' }, CTX);
+    const after = await must(as(SUPER)('GET', '/me'), 200);
+    expect((after['orgs'] as Json[]).map((o) => [o['name'], o['role']])).toEqual([['Org A', null], ['Org B', 'member']]);
   });
 });
 

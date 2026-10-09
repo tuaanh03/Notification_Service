@@ -75,7 +75,7 @@ export function appsModule(
             removeNetworkRule: new RemoveNetworkRule({ uow, outbox, apps, networkRules }),
             queries,
           }),
-          adminMeRoutes({ getAdminProfile: new GetAdminProfile({ organizations }) }),
+          adminMeRoutes({ getAdminProfile: new GetAdminProfile({ organizations, memberships }) }),
         ],
         v1: [v1AppsRoutes({ queries })],
       },
