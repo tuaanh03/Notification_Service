@@ -74,6 +74,12 @@ const EnvSchema = z.object({
   M365_CLIENT_SECRET: optional(z.string().min(1)),
   /** Trang callback của CONSOLE (`https://<console>/auth/callback/microsoft`) — khớp từng ký tự với bản đăng ký trên Entra ID. */
   M365_REDIRECT_URI: optional(z.url()),
+  /**
+   * Khoá chủ ký outgoing webhook (ADR-0029 §7a): secret của từng URL tính từ khoá này, không lưu DB.
+   * Trống = webhook tắt (route tạo / đổi secret trả 503 WEBHOOK_NOT_CONFIGURED, job không gọi gì).
+   * Đổi khoá = secret của MỌI URL đổi theo — chỉ đổi khi bị lộ. Sinh bằng `openssl rand -base64 32`.
+   */
+  WEBHOOK_SIGNING_KEY: optional(z.string().min(32, 'must be at least 32 characters')),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

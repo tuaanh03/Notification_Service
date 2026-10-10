@@ -2,6 +2,7 @@ import type { AdminAuthenticator, AdminAuthorizer, ApiKeyAuthenticator, HttpRout
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
 import type { TemplateAiWriter } from '../modules/templates/application/index.ts';
 import type { MicrosoftIdentity, TenantDirectory } from '../modules/tenancy/application/index.ts';
+import type { WebhookTransport } from '../modules/webhooks/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
 import type { ConsumerRegistration } from './consumer-registry.ts';
 import type { Container } from './container.ts';
@@ -14,6 +15,7 @@ import { directoryModule } from './modules/directory.module.ts';
 import { subscriptionsModule } from './modules/subscriptions.module.ts';
 import { templatesModule } from './modules/templates.module.ts';
 import { topicsModule } from './modules/topics.module.ts';
+import { webhooksModule } from './modules/webhooks.module.ts';
 import { tenancyModule, type AdminOps } from './modules/tenancy.module.ts';
 import type { GrantAppRole } from '../modules/apps/application/index.ts';
 
@@ -31,7 +33,8 @@ export interface Application {
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
  * Thứ tự dựng theo phụ thuộc: tenancy -> apps (cần findOrganization); subscriptions -> directory
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
- * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, templates, delivery).
+ * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, templates, delivery)
+ * -> webhooks (cần notifications).
  */
 export interface ApplicationOverrides {
   /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
@@ -42,6 +45,8 @@ export interface ApplicationOverrides {
   microsoftIdentity?: MicrosoftIdentity | undefined;
   /** Test thay danh bạ M365 bằng bản giả — không gọi Graph (ADR-0027). */
   tenantDirectory?: TenantDirectory | undefined;
+  /** Test thay phần gọi HTTPS ra URL của app bằng bản ghi lại — không gọi mạng (ADR-0029). */
+  webhookTransport?: WebhookTransport | undefined;
 }
 
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
@@ -72,6 +77,10 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     renderTemplate: templates.renderTemplate,
     templateQueries: templates.templateQueries,
   });
+  const webhooks = webhooksModule(container, {
+    notificationOutcomes: notifications.notificationOutcomes,
+    transport: overrides.webhookTransport,
+  });
   const audit = auditModule(container);
 
   return {
@@ -84,6 +93,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
       templates.definition,
       delivery.definition,
       notifications.definition,
+      webhooks,
       audit,
     ],
     authenticators: {

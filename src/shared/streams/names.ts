@@ -13,6 +13,8 @@ export const STREAMS = {
   DIRECTORY_IMPORT: 'directory.import',
   DIRECTORY_SYNC: 'directory.sync',
   AUDIT_EVENTS: 'audit.events',
+  /** Kết quả gửi thư -> consumer `webhook-dispatcher` tạo lượt gọi webhook (ADR-0029). */
+  WEBHOOK_EVENTS: 'webhook.events',
 } as const;
 export type StreamName = (typeof STREAMS)[keyof typeof STREAMS];
 
@@ -27,6 +29,9 @@ export function dlqOf(stream: string): string {
  */
 export const EVENT_ROUTES: Readonly<Record<string, readonly StreamName[]>> = {
   NotificationQueued: [STREAMS.NOTIF_QUEUED],
+  NotificationSent: [STREAMS.WEBHOOK_EVENTS],
+  NotificationFailed: [STREAMS.WEBHOOK_EVENTS],
+  NotificationNoRecipient: [STREAMS.WEBHOOK_EVENTS],
 };
 
 /**

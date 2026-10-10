@@ -58,7 +58,7 @@ Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm
 `templates` (ADR-0020) — xong cả 3 GĐ: admin soạn / xuất bản, app gửi bằng `templateId` + `payload`,
 màn Templates của console đã đấu API.
 
-Có trong repo: domain model 10 module · schema MySQL + 11 migration · hạ tầng dùng chung (config, db,
+Có trong repo: domain model 11 module · schema MySQL + 12 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
@@ -72,6 +72,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `delivery` | port `EmailProvider` (kết quả phân loại accepted / retryable / rejected / unknown), `SendEmail` thử lại chỉ khi chắc chắn chưa gửi, `GraphEmailProvider` + `MockEmailProvider` (chọn bằng `EMAIL_PROVIDER`), port `SendRateLimiter` (`EMAIL_MAX_PER_MINUTE`, đếm chung trên Redis) |
 | `apps` | vòng đời app (UC-001) — tự phục vụ: tạo xong là `active`, cấp sẵn `email` (`App.register`, ADR-0023), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
+| `webhooks` | outgoing webhook (ADR-0029): `/admin/apps/:appId/webhooks` (≤ 2 URL mỗi app — `slot` + unique; secret không lưu, tính từ `WEBHOOK_SIGNING_KEY`; gửi thử; nhật ký gọi); consumer `webhook-dispatcher` (`webhook.events` -> ghi `webhook_deliveries`); job `deliver-webhooks` gọi HTTPS ngoài transaction, chặn IP nội bộ lúc phân giải DNS, gọi lại 6 lần trong ~8,5 giờ |
 | `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản; `POST …/ai-compose` trả đề xuất của AI (không ghi DB, chỉ biến đã khai, 10 lần/phút/admin — ADR-0020 §7); `RenderTemplate` (đổ `payload` vào bản đang xuất bản) + `TemplateQueries.labelsOf` cho module khác |
 
 `segments` mới có domain + schema (ngoài phạm vi MVP). `/admin/*` dùng **phiên đăng nhập admin**
@@ -117,6 +118,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0026` | **Màn Thành viên**: quyền `org.manage` (Owner, Org Admin); thêm / đổi vai / gỡ thành viên, cấp / thu hồi vai app qua `/admin`; CHỈ Owner động được vai Owner (`OWNER_REQUIRED`); email chưa có tài khoản -> 422 `ADMIN_NOT_REGISTERED`; gỡ khỏi org thu hồi vai app CÙNG transaction (`apps/RemoveMemberFromOrg` gọi tenancy qua port) |
 | `0027` | **Đồng bộ danh bạ M365**: Super Admin bấm `POST /admin/directory/m365-sync` -> đọc `/users` bằng app `GRAPH_*` (`User.Read.All`), tạo / gắn tài khoản cùng luật ADR-0024; hai tenant `GRAPH_*` / `M365_*` phải trùng; cột `admins.display_name`; hộp Thêm thành viên chọn từ `GET …/member-candidates` |
 | `0028` | **Phát tin vào topic**: `POST /v1/publications` -> một dòng `publications` + mỗi người theo dõi một notification con (`publication_id`), worker không đổi; người nhận chốt lúc phát bằng `emailGate` (không dùng pipeline segments); trần 100 người (422 `PUBLICATION_TOO_LARGE`), mọi thứ trong MỘT transaction; `idempotencyKey` bắt buộc; topic bắt buộc phát được |
+| `0029` | **Outgoing webhook**: module `webhooks`; 3 sự kiện kết quả thư (+ `ping`), body không có email / nội dung; consumer chỉ ghi lượt, job gọi ra ngoài; gọi ít nhất một lần, chữ ký HMAC `t=…,v1=…`; secret = HMAC(`WEBHOOK_SIGNING_KEY`, id:version) — thiếu khoá thì 503 `WEBHOOK_NOT_CONFIGURED`; chặn IP nội bộ; tối đa 2 URL bằng unique `(app_id, slot)` |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 
@@ -185,8 +187,8 @@ entrypoints ─► composition ─► infrastructure (modules/*/infrastructure, 
 interface kiểu repository/lookup đặt ở `application/ports/`. Ví dụ: `identityKeys()` →
 application tra qua `PersonLookup` → `resolveIdentity(keys, matches)`.
 
-10 module: `tenancy` · `apps` · `directory` · `subscriptions` · `topics` · `segments` ·
-`templates` · `notifications` · `delivery` · `audit`.
+11 module: `tenancy` · `apps` · `directory` · `subscriptions` · `topics` · `segments` ·
+`templates` · `notifications` · `delivery` · `webhooks` · `audit`.
 
 Khác tài liệu A ba chỗ (ADR-0006): thêm `tenancy` (org/admin), thêm `segments` (giữ pipeline giải
 người nhận), `topics` thu lại chỉ còn consent.

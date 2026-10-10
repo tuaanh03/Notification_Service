@@ -239,8 +239,8 @@ chờ — thử lại có giãn cách, **giữ nguyên `idempotencyKey`**.
 
 ## 6. Chưa có
 
-Hẹn giờ gửi · huỷ thư đã gửi · tệp đính kèm · EWS gọi ngược báo kết quả (webhook). Gọi lúc nào
-gửi lúc đó, cần kết quả thì hỏi (mục 4).
+Hẹn giờ gửi · huỷ thư đã gửi · tệp đính kèm. Gọi lúc nào gửi lúc đó. Cần kết quả thì hỏi (mục 4),
+hoặc đăng ký webhook trên console để EWS tự báo — xem `huong-dan-tich-hop-cho-doi-app.md`, mục 5.
 
 ---
 

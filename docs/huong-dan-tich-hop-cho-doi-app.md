@@ -311,13 +311,12 @@ cuối ngày:
 | Nhân viên đổi cài đặt nhận thông báo | `PUT /v1/users/:externalId/preferences` |
 | Nhân viên nghỉ việc | `DELETE /v1/users/:externalId/email` (mục 7) |
 | Cần gửi thư | `POST /v1/notifications` (bước 5) |
-| Muốn biết thư đã đi chưa | `GET /v1/notifications/:id` (mục 5) |
+| Muốn biết thư đã đi chưa | `GET /v1/notifications/:id`, hoặc để EWS tự báo qua webhook (mục 5) |
 
 Các lời gọi đổi dữ liệu ghi **trạng thái cuối**, không phải "vừa đổi gì" — gọi lại bao nhiêu lần
 kết quả vẫn thế. Lỗi mạng thì cứ gọi lại, không cần nhớ đã gọi hay chưa.
 
-EWS **chưa có webhook báo ngược** sang app (mục 9) và **chưa nhận nhiều người trong một lời gọi** —
-đồng bộ lần đầu là lặp từng người.
+EWS **chưa nhận khai nhiều người trong một lời gọi** — đồng bộ lần đầu là lặp từng người.
 
 ---
 
@@ -372,6 +371,70 @@ lá thư đó. Gửi bằng nội dung viết thẳng thì `"template": null`.
 Thư của app khác → `404`, như thể không tồn tại.
 
 *Nguồn: `notifications-api.test.ts` — khối "gate L0 / L1 / L3", "chuyển phát at-most-once", "GET /v1/notifications/:id".*
+
+### Để EWS tự báo kết quả — webhook
+
+Thay vì hỏi `GET` nhiều lần, app dựng **một route nhận** và để EWS gọi sang mỗi khi một lá thư có kết quả.
+
+**Đăng ký** trên console EWS: app → **Webhooks** → Thêm URL (người có quyền quản lý app).
+
+* URL phải là `https://`, gọi được từ internet. URL trỏ vào mạng nội bộ (`10.x`, `192.168.x`, `localhost`…) bị từ chối.
+* Chọn sự kiện muốn nhận. Mỗi app tối đa **2 URL**.
+* EWS hiện **secret** (`whsec_…`) **một lần duy nhất** — cất vào cấu hình như API key. Mất thì bấm
+  "Đổi secret" (secret cũ hết hiệu lực ngay).
+
+**EWS gọi sang:**
+
+```http
+POST https://app.cua-ban.com/ews-webhook
+Content-Type: application/json
+X-EWS-Event: notification.sent
+X-EWS-Delivery-Id: <id lần gọi>
+X-EWS-Signature: t=1791625213,v1=9f2c…
+
+{
+  "id": "4c0e…",
+  "type": "notification.sent",
+  "createdAt": "2026-10-10T09:40:13.411Z",
+  "data": {
+    "notificationId": "…", "publicationId": null, "externalId": "NV-0123", "topic": "order_updates",
+    "status": "sent", "exclusionReason": null, "error": null
+  }
+}
+```
+
+| `type` | Khi nào | `data` đáng chú ý |
+| --- | --- | --- |
+| `notification.sent` | Máy chủ thư đã nhận | — |
+| `notification.failed` | Gửi không được | `error` (bắt đầu `outcome_unknown` = không rõ đã đi chưa) |
+| `notification.no_recipient` | Không gửi vì người nhận bị chặn | `exclusionReason` (bảng phía trên) |
+| `ping` | Bấm "Gửi thử" trên console | `data` rỗng |
+
+Body **không có** địa chỉ email và nội dung thư. Thư của một lần phát (mục 6) có `publicationId`.
+
+**App phải làm ba việc:**
+
+1. **Kiểm chữ ký** trên **body gốc** (chuỗi nhận được, chưa parse) — URL là công khai, ai cũng gọi
+   giả được:
+
+   ```js
+   import crypto from 'node:crypto';
+
+   function verify(rawBody, signatureHeader, secret) {
+     const { t, v1 } = Object.fromEntries(signatureHeader.split(',').map((p) => p.split('=')));
+     if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false; // quá 5 phút: từ chối
+     const expected = crypto.createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+     return expected.length === v1.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+   }
+   ```
+
+2. **Trả `2xx` trong 10 giây.** Việc nặng thì cất sự kiện rồi xử lý sau. Khác `2xx`, quá 10 giây, hay
+   redirect đều tính là lỗi → EWS gọi lại sau **1 phút · 5 phút · 30 phút · 2 giờ · 6 giờ** rồi dừng
+   (tổng 6 lần). Nhật ký từng lần gọi xem trên console.
+3. **Bỏ bản trùng theo `id`.** Có thể nhận cùng một sự kiện hai lần (ví dụ app xử lý xong nhưng trả lời
+   chậm). Thứ tự giữa các thư khác nhau **không đảm bảo**; mỗi thư chỉ có **một** sự kiện kết quả.
+
+*Nguồn: `webhooks-api.test.ts`, `test/unit/webhooks.test.ts` — "chữ ký kiểm được bằng đúng đoạn code mẫu".*
 
 ---
 
@@ -561,7 +624,7 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | Xử lý thư dội về | Chính sách "nghỉ việc → ngắt email" (mục 7) là lớp bảo vệ duy nhất. |
 | Link "Quản lý thông báo" trong thư | Màn cài đặt của app (bước 4) là cửa duy nhất. |
 | Hạn mức theo app (`429`) | Hạn mức lưu theo app chưa được đối chiếu. |
-| Gọi ngược (webhook) báo kết quả | Hỏi `GET /v1/notifications/:id` khi cần. |
+| Webhook báo "lần phát đã xong" / "đã vào hộp thư" / "đã mở" | Đếm sự kiện theo `publicationId` hoặc gọi `GET /v1/publications/:id`; Microsoft không báo hai thứ sau. |
 | Kênh khác email | Chỉ email. |
 
 ---

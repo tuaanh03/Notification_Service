@@ -123,6 +123,20 @@ export type DeliveryBatchStatus = (typeof DELIVERY_BATCH_STATUSES)[number];
 export const BOUNCE_KINDS = ['hard', 'soft'] as const;
 export type BounceKind = (typeof BOUNCE_KINDS)[number];
 
+/**
+ * Sự kiện app đăng ký nhận qua outgoing webhook (ADR-0029). `ping` chỉ dùng cho nút "Gửi thử" — không
+ * đăng ký được.
+ */
+export const WEBHOOK_EVENT_TYPES = ['notification.sent', 'notification.failed', 'notification.no_recipient'] as const;
+export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
+
+export const WEBHOOK_ENDPOINT_STATUSES = ['active', 'disabled'] as const;
+export type WebhookEndpointStatus = (typeof WEBHOOK_ENDPOINT_STATUSES)[number];
+
+/** pending = còn lượt gọi (kể cả đang chờ lượt sau) · delivered = app trả 2xx · failed = hết lượt / URL bị tắt. */
+export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
+export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
+
 export const ACTOR_TYPES = ['admin', 'app', 'user', 'system'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
 

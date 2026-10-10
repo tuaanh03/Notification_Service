@@ -6,6 +6,7 @@ import {
   FailStuckSending,
   GetAppOverview,
   GetNotification,
+  GetNotificationOutcome,
   GetPublication,
   ListNotifications,
   PublishToTopic,
@@ -54,7 +55,7 @@ export function notificationsModule(
     renderTemplate: RenderTemplate;
     templateQueries: TemplateQueries;
   },
-): { definition: ModuleDefinition } {
+): { definition: ModuleDefinition; notificationOutcomes: GetNotificationOutcome } {
   const { uow, outbox, clock, logger } = container.ports;
   const { transactions } = container.infra;
 
@@ -68,6 +69,7 @@ export function notificationsModule(
   const publications = new DrizzlePublicationRepository({ transactions });
 
   return {
+    notificationOutcomes: new GetNotificationOutcome({ notifications, recipients, users, topics }),
     definition: {
       name: 'notifications',
       http: {
