@@ -57,6 +57,8 @@ export interface IncomingCallDto {
   publicationId: string | null;
   recipientCount: number | null;
   errorCode: string | null;
+  /** Trường gắn với lỗi (`["service"]`) — console hiện "Thiếu trường bắt buộc: service". */
+  errorFields: string[] | null;
 }
 
 /** Kết quả trả cho công cụ ngoài gọi `POST /hooks/:token`. */
@@ -118,4 +120,5 @@ export const toIncomingCallDto = (c: IncomingCall): IncomingCallDto => ({
   publicationId: c.publicationId,
   recipientCount: c.recipientCount,
   errorCode: c.errorCode,
+  errorFields: c.errorFields,
 });

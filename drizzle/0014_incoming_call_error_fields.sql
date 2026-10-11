@@ -1,0 +1,1 @@
+ALTER TABLE `incoming_calls` ADD `error_fields` json;

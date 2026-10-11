@@ -114,6 +114,7 @@ export class DrizzleIncomingCallRepository implements IncomingCallRepository {
       publicationId: c.publicationId,
       recipientCount: c.recipientCount,
       errorCode: c.errorCode,
+      errorFields: c.errorFields,
     });
   }
 
@@ -135,6 +136,7 @@ export class DrizzleIncomingCallRepository implements IncomingCallRepository {
       publicationId: r.publicationId === null ? null : PublicationId.parse(r.publicationId),
       recipientCount: r.recipientCount,
       errorCode: r.errorCode,
+      errorFields: r.errorFields,
     }));
   }
 

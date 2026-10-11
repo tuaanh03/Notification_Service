@@ -58,7 +58,7 @@ Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm
 `templates` (ADR-0020) — xong cả 3 GĐ: admin soạn / xuất bản, app gửi bằng `templateId` + `payload`,
 màn Templates của console đã đấu API.
 
-Có trong repo: domain model 13 module · schema MySQL + 14 migration · hạ tầng dùng chung (config, db,
+Có trong repo: domain model 13 module · schema MySQL + 15 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 

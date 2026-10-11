@@ -10,7 +10,7 @@ import {
   type IncomingCallOutcome,
 } from '../../../../shared/kernel/index.ts';
 import type { IncomingHook } from '../../domain/entities/incoming-hook.ts';
-import { assertNoIssues, conditionMet, extractPayload, missingRequiredIssues } from '../../domain/rules/index.ts';
+import { assertNoIssues, conditionMet, errorFieldsOf, extractPayload, missingRequiredIssues } from '../../domain/rules/index.ts';
 import type { IncomingCallResult } from '../dto.ts';
 import type {
   AppIngress,
@@ -72,12 +72,18 @@ export class ReceiveIncomingCall {
         publicationId: result.status === 'skipped' ? null : result.publicationId,
         recipientCount: result.status === 'skipped' ? null : result.recipientCount,
         errorCode: result.status === 'skipped' ? result.reason : null,
+        errorFields: null,
       });
       return result;
     } catch (err) {
       if (err instanceof DomainError) {
         const code = err instanceof ValidationError ? (err.issues[0]?.code ?? err.code) : err.code;
-        await this.log(hook, this.deps.httpStatusOf(err), 'rejected', { publicationId: null, recipientCount: null, errorCode: code });
+        await this.log(hook, this.deps.httpStatusOf(err), 'rejected', {
+          publicationId: null,
+          recipientCount: null,
+          errorCode: code,
+          errorFields: err instanceof ValidationError ? errorFieldsOf(err.issues) : null,
+        });
       }
       throw err;
     }
@@ -106,7 +112,7 @@ export class ReceiveIncomingCall {
     if (!template) throw ValidationError.of('TEMPLATE_NOT_FOUND', `template ${hook.templateId} does not exist`, 'templateId');
     const extraction = extractPayload(input.body, hook.mappings, template.variables);
     // Báo lỗi theo tên trường của body — kiểm ở đây thay vì để template báo `payload.*`.
-    assertNoIssues([...extraction.issues, ...missingRequiredIssues(extraction.variables)]);
+    assertNoIssues([...extraction.issues, ...missingRequiredIssues(extraction.variables, extraction.issues)]);
     const topic = (await topics.topicsOf(hook.appId)).find((t) => t.topicId === hook.topicId);
     if (!topic) throw ValidationError.of('TOPIC_NOT_FOUND', `topic ${hook.topicId} does not exist`, 'topic');
 
@@ -141,7 +147,7 @@ export class ReceiveIncomingCall {
     hook: IncomingHook,
     httpStatus: number,
     outcome: IncomingCallOutcome,
-    extra: { publicationId: string | null; recipientCount: number | null; errorCode: string | null },
+    extra: { publicationId: string | null; recipientCount: number | null; errorCode: string | null; errorFields: string[] | null },
   ): Promise<void> {
     await this.deps.calls.insert({
       id: IncomingCallId.create(),
@@ -153,6 +159,7 @@ export class ReceiveIncomingCall {
       publicationId: extra.publicationId === null ? null : PublicationId.parse(extra.publicationId),
       recipientCount: extra.recipientCount,
       errorCode: extra.errorCode?.slice(0, 64) ?? null,
+      errorFields: extra.errorFields,
     });
   }
 }

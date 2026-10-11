@@ -18,4 +18,6 @@ export interface IncomingCall {
   recipientCount: number | null;
   /** Mã lỗi ổn định (MISSING_VARIABLE, INCOMING_HOOK_RATE_LIMITED…) hoặc lý do bỏ qua (`condition_not_met`). */
   errorCode: string | null;
+  /** Tên trường của body gắn với `errorCode` (thiếu / sai kiểu) — chỉ tên, không giá trị. */
+  errorFields: string[] | null;
 }

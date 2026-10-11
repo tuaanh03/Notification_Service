@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   conditionMet,
   dedupeValue,
+  errorFieldsOf,
   extractPayload,
   missingRequiredIssues,
   parseJsonPath,
@@ -126,6 +127,20 @@ describe('extractPayload — ánh xạ > chữ cố định > trường cùng t�
     ]);
     const mapped = extractPayload({ endpoint: {} }, mappings, vars);
     expect(missingRequiredIssues(mapped.variables).map((i) => i.path)).toContain('alert.description');
+  });
+
+  it('trường sai kiểu không bị báo thêm là "thiếu"; errorFieldsOf lấy tên trường của mã lỗi đầu tiên', () => {
+    const r = extractPayload({ service: { a: 1 } }, [], [{ name: 'payload.service', required: true }, { name: 'payload.detail', required: true }]);
+    const issues = [...r.issues, ...missingRequiredIssues(r.variables, r.issues)];
+    expect(issues.map((i) => [i.code, i.path])).toEqual([
+      ['INVALID_PAYLOAD_VALUE', 'service'],
+      ['MISSING_VARIABLE', 'detail'],
+    ]);
+    expect(errorFieldsOf(issues)).toEqual(['service']);
+    expect(errorFieldsOf(missingRequiredIssues(extractPayload({}, [], [{ name: 'payload.a', required: true }, { name: 'payload.b', required: true }]).variables))).toEqual(['a', 'b']);
+    // Lỗi từ template (đường /v1) mang `payload.x` — vẫn ra tên trường.
+    expect(errorFieldsOf([{ code: 'MISSING_VARIABLE', message: 'm', path: 'payload.x' }])).toEqual(['x']);
+    expect(errorFieldsOf([{ code: 'INCOMING_BODY_INVALID', message: 'm' }])).toBeNull();
   });
 
   it('body không phải object: chỉ còn chữ cố định / mặc định', () => {

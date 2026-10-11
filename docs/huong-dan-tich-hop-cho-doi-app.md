@@ -549,7 +549,7 @@ Ví dụ template có biến `payload.title` (bắt buộc) và `payload.name_is
 | 429 | `INCOMING_HOOK_RATE_LIMITED` | Gọi quá số lần mỗi phút |
 
 Mọi lần gọi có trong **Nhật ký** của webhook trên console 30 ngày, viết bằng lời ("Đã gửi cho 12 người",
-"Trùng lần trước", "Thiếu trường bắt buộc"). EWS không lưu body.
+"Trùng lần trước", "Thiếu trường bắt buộc: service"). EWS không lưu body, chỉ lưu tên trường bị lỗi.
 
 **Ví dụ cấu hình — Gatus** (kênh `custom`, body tự viết; `send-on-resolved` quyết có báo lúc hết sự cố):
 

@@ -239,17 +239,19 @@ describe('POST /hooks/:token', () => {
 
     const invalid = await call(issued.path, { endpoint: { name: { deep: 1 } }, alert: { state: 'TRIGGERED', description: 'x' } });
     expect([invalid.status, codeOf(invalid.body)]).toEqual([422, 'INVALID_PAYLOAD_VALUE']);
-    expect(((invalid.body['issues'] as Json[])[0] as Json)['path']).toBe('endpoint.name');
+    // Sai kiểu chỉ báo MỘT lỗi — không kèm "thiếu" cho cùng trường.
+    expect((invalid.body['issues'] as Json[]).map((i) => [i['code'], i['path']])).toEqual([['INVALID_PAYLOAD_VALUE', 'endpoint.name']]);
 
     expect((await call(issued.path, ['not', 'an', 'object'])).status).toBe(422);
     expect(await t.db.select().from(publications).where(eq(publications.appId, app.appId))).toHaveLength(0);
 
     const log = (await admin('GET', `/apps/${app.appId}/incoming-webhooks/${issued.hook['id']}/calls`)).body as unknown as Json[];
-    expect(log.map((l) => [l['outcome'], l['httpStatus'], l['errorCode']])).toEqual([
-      ['rejected', 422, 'INCOMING_BODY_INVALID'],
-      ['rejected', 422, 'INVALID_PAYLOAD_VALUE'],
-      ['rejected', 422, 'MISSING_VARIABLE'],
-      ['skipped', 200, 'condition_not_met'],
+    // Nhật ký kèm TÊN trường (không giá trị) để console nói "Thiếu trường bắt buộc: alert.description".
+    expect(log.map((l) => [l['outcome'], l['httpStatus'], l['errorCode'], l['errorFields']])).toEqual([
+      ['rejected', 422, 'INCOMING_BODY_INVALID', null],
+      ['rejected', 422, 'INVALID_PAYLOAD_VALUE', ['endpoint.name']],
+      ['rejected', 422, 'MISSING_VARIABLE', ['alert.description']],
+      ['skipped', 200, 'condition_not_met', null],
     ]);
   });
 

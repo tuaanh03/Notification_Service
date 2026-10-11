@@ -125,14 +125,36 @@ export function dedupeValue(body: unknown, path: string | null): string | null {
  * `endpoint.name`), không theo `payload.service` của template: người cấu hình công cụ gọi vào chỉ thấy body
  * của mình. Cùng mã `MISSING_VARIABLE` với `/v1` — nhật ký và console không phải đổi.
  */
-export function missingRequiredIssues(variables: readonly ExtractedVariable[]): Issue[] {
+export function missingRequiredIssues(variables: readonly ExtractedVariable[], reported: readonly Issue[] = []): Issue[] {
+  // Trường đã bị báo sai kiểu (`reported`) thì không báo thêm là "thiếu" — người gọi CÓ gửi, chỉ sai kiểu.
+  const already = new Set(reported.map((i) => i.path));
   return variables
     .filter((v) => v.required && v.missing)
-    .map((v) => {
-      const field = v.source === 'path' && v.path !== null ? v.path : v.variable.slice('payload.'.length);
-      return issue('MISSING_VARIABLE', `field "${field}" is required but missing`, field);
-    });
+    .map((v) => (v.source === 'path' && v.path !== null ? v.path : v.variable.slice('payload.'.length)))
+    .filter((field) => !already.has(field))
+    .map((field) => issue('MISSING_VARIABLE', `field "${field}" is required but missing`, field));
 }
+
+/**
+ * Tên trường đi kèm mã lỗi của một lần gọi — để nhật ký nói "Thiếu trường bắt buộc: service" thay vì chỉ
+ * "Thiếu trường bắt buộc". Chỉ cho lỗi THEO TRƯỜNG (thiếu / sai kiểu — `path` khác của lỗi khác như `body`,
+ * `templateId` không phải trường của body), chỉ các vi phạm CÙNG mã với mã được ghi (vi phạm đầu tiên);
+ * chỉ tên trường, không giá trị. Không có -> null.
+ */
+export function errorFieldsOf(issues: readonly Issue[]): string[] | null {
+  const code = issues[0]?.code;
+  if (code === undefined || !FIELD_ERROR_CODES.has(code)) return null;
+  const fields = issues
+    .filter((i) => i.code === code && i.path !== undefined)
+    .map((i) => (i.path!.startsWith('payload.') ? i.path!.slice('payload.'.length) : i.path!));
+  const unique = [...new Set(fields)].slice(0, MAX_ERROR_FIELDS);
+  return unique.length > 0 ? unique : null;
+}
+
+const FIELD_ERROR_CODES = new Set(['MISSING_VARIABLE', 'INVALID_PAYLOAD_VALUE']);
+
+/** Trần số tên trường lưu mỗi lần gọi — nhật ký chỉ cần đủ để biết sửa chỗ nào. */
+export const MAX_ERROR_FIELDS = 10;
 
 export function assertNoIssues(issues: readonly Issue[]): void {
   if (issues.length > 0) throw new ValidationError(issues);

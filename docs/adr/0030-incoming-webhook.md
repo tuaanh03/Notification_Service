@@ -87,3 +87,13 @@ sao chép lại được URL bất cứ lúc nào; console chỉ hỏi hai câu 
 4. **Console**: không hộp thoại — thêm / sửa (topic, template) ngay trong danh sách, nút Sao chép URL / Đổi URL
    / Tắt / Xoá, mục "Body mẫu" (khuôn chuẩn: trường trùng tên biến) và "Nhật ký" đóng sẵn. Ánh xạ đường dẫn,
    khoá chống trùng, điều kiện phát KHÔNG có trên console — chỉ qua API cho trường hợp đặc biệt.
+
+## Bổ sung — 2026-10-11: lỗi nói theo trường của body, không lộ token
+
+5. **Token không ra log / lỗi**: `redactUrl` (`shared/http`) thay `/hooks/<token>` bằng `/hooks/ewshk_xxxx…yyyy`
+   ở log mỗi request, `instance` và câu 404. Bản trước ghi nguyên URL vào log server.
+6. **Lỗi theo tên trường người gọi gửi**: `/hooks/*` kiểm biến bắt buộc TRƯỚC template (`missingRequiredIssues`),
+   báo `field "service" is required but missing` (`path` = tên trường, hoặc đường dẫn đã ánh xạ) thay vì
+   `payload.service`; trường sai kiểu chỉ báo một lỗi `INVALID_PAYLOAD_VALUE`. Mã lỗi giữ nguyên.
+7. **Nhật ký có tên trường**: cột `incoming_calls.error_fields` (JSON, migration `0014`) — chỉ tên trường của lỗi
+   thiếu / sai kiểu, không giá trị; console hiện "Thiếu trường bắt buộc: service, detail".

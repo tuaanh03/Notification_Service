@@ -60,6 +60,8 @@ export const incomingCalls = mysqlTable(
     publicationId: uuid('publication_id'),
     recipientCount: int('recipient_count'),
     errorCode: varchar('error_code', { length: 64 }),
+    // Tên trường gắn với lỗi (thiếu / sai kiểu) — KHÔNG lưu giá trị.
+    errorFields: json('error_fields').$type<string[]>(),
   },
   (t) => [
     foreignKey({ name: 'fk_incoming_calls_hook', columns: [t.hookId], foreignColumns: [incomingHooks.hookId] }),
