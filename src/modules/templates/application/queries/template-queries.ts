@@ -28,6 +28,33 @@ export class TemplateQueries {
     return toTemplateDetailDto(template, await this.templates.versionsOf(template.id));
   }
 
+  /**
+   * Cho module khác (incoming webhook — ADR-0030): biến của bản ĐANG XUẤT BẢN, để biết rút biến nào từ JSON
+   * gửi tới. Template của app khác -> null, như không tồn tại. Chưa xuất bản / đã lưu trữ -> `variables` rỗng
+   * kèm `status` để nơi gọi cảnh báo.
+   */
+  async publishedVariables(
+    appId: AppId,
+    id: TemplateId,
+  ): Promise<{
+    templateId: TemplateId;
+    name: string;
+    status: 'published' | 'unpublished' | 'archived';
+    version: number | null;
+    variables: { name: string; required: boolean }[];
+  } | null> {
+    const template = await this.templates.findById(appId, id);
+    if (!template) return null;
+    const version = template.status === 'archived' ? null : await this.templates.findPublishedVersion(template.id);
+    return {
+      templateId: template.id,
+      name: template.name,
+      status: template.status === 'archived' ? 'archived' : version ? 'published' : 'unpublished',
+      version: version?.version ?? null,
+      variables: version ? version.schema.map((v) => ({ name: v.name, required: v.required })) : [],
+    };
+  }
+
   /** Cho module khác (lịch sử gửi): `template_version_id` -> tên + số version, MỘT truy vấn. */
   async labelsOf(versionIds: readonly TemplateVersionId[]): Promise<TemplateVersionLabel[]> {
     if (versionIds.length === 0) return [];

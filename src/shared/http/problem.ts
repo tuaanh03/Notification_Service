@@ -53,7 +53,7 @@ const HTTP_CODES: Readonly<Record<number, string>> = {
 };
 
 /** Lỗi của domain -> HTTP status. Thứ tự quan trọng: lớp con trước lớp cha. */
-function statusOfDomainError(err: DomainError): number {
+export function statusOfDomainError(err: DomainError): number {
   if (err instanceof InvalidIdError) return 400;
   if (err instanceof AuthenticationError) return 401;
   if (err instanceof PermissionDeniedError) return 403;

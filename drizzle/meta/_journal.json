@@ -85,6 +85,13 @@
       "when": 1791628082861,
       "tag": "0011_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1791683191224,
+      "tag": "0012_incoming_hooks_settings",
+      "breakpoints": true
     }
   ]
 }

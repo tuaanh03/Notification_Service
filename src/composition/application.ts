@@ -16,6 +16,8 @@ import { subscriptionsModule } from './modules/subscriptions.module.ts';
 import { templatesModule } from './modules/templates.module.ts';
 import { topicsModule } from './modules/topics.module.ts';
 import { webhooksModule } from './modules/webhooks.module.ts';
+import { incomingModule } from './modules/incoming.module.ts';
+import { settingsModule } from './modules/settings.module.ts';
 import { tenancyModule, type AdminOps } from './modules/tenancy.module.ts';
 import type { GrantAppRole } from '../modules/apps/application/index.ts';
 
@@ -34,7 +36,7 @@ export interface Application {
  * Thứ tự dựng theo phụ thuộc: tenancy -> apps (cần findOrganization); subscriptions -> directory
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
  * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, templates, delivery)
- * -> webhooks (cần notifications).
+ * -> webhooks (cần notifications) -> settings -> incoming (cần apps, templates, topics, notifications, settings).
  */
 export interface ApplicationOverrides {
   /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
@@ -81,6 +83,15 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     notificationOutcomes: notifications.notificationOutcomes,
     transport: overrides.webhookTransport,
   });
+  const settings = settingsModule(container);
+  const incoming = incomingModule(container, {
+    authorizeAppIngress: apps.authorizeAppIngress,
+    templateQueries: templates.templateQueries,
+    renderTemplate: templates.renderTemplate,
+    consentQueries: topics.consentQueries,
+    publishToTopic: notifications.publishToTopic,
+    systemSettings: settings.systemSettings,
+  });
   const audit = auditModule(container);
 
   return {
@@ -94,6 +105,8 @@ export function buildApplication(container: Container, overrides: ApplicationOve
       delivery.definition,
       notifications.definition,
       webhooks,
+      settings.definition,
+      incoming,
       audit,
     ],
     authenticators: {

@@ -55,7 +55,7 @@ export function notificationsModule(
     renderTemplate: RenderTemplate;
     templateQueries: TemplateQueries;
   },
-): { definition: ModuleDefinition; notificationOutcomes: GetNotificationOutcome } {
+): { definition: ModuleDefinition; notificationOutcomes: GetNotificationOutcome; publishToTopic: PublishToTopic } {
   const { uow, outbox, clock, logger } = container.ports;
   const { transactions } = container.infra;
 
@@ -67,8 +67,21 @@ export function notificationsModule(
   const templates = new TemplatesLabels(dependencies);
   const renderer = new TemplatesRenderer(dependencies);
   const publications = new DrizzlePublicationRepository({ transactions });
+  const publishToTopic = new PublishToTopic({
+    uow,
+    outbox,
+    clock,
+    publications,
+    notifications,
+    users,
+    emails,
+    topics,
+    renderer,
+    templates,
+  });
 
   return {
+    publishToTopic,
     notificationOutcomes: new GetNotificationOutcome({ notifications, recipients, users, topics }),
     definition: {
       name: 'notifications',
@@ -95,18 +108,7 @@ export function notificationsModule(
             get: new GetNotification({ notifications, recipients, topics, templates }),
           }),
           v1PublicationsRoutes({
-            publish: new PublishToTopic({
-              uow,
-              outbox,
-              clock,
-              publications,
-              notifications,
-              users,
-              emails,
-              topics,
-              renderer,
-              templates,
-            }),
+            publish: publishToTopic,
             get: new GetPublication({ publications, notifications, users, topics, templates }),
           }),
         ],

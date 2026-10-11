@@ -4,6 +4,7 @@ import {
   ApproveApp,
   AuthenticateApiKey,
   AuthorizeAdmin,
+  AuthorizeAppIngress,
   CreateApp,
   GetAdminProfile,
   GrantAppRole,
@@ -52,6 +53,8 @@ export function appsModule(
   adminAuthorizer: AdminAuthorizer;
   appQueries: AppQueries;
   grantAppRole: GrantAppRole;
+  /** Cho incoming webhook (ADR-0030): app gửi được + qua allowlist IP / Origin. */
+  authorizeAppIngress: AuthorizeAppIngress;
 } {
   const { uow, outbox, clock } = container.ports;
   const { transactions } = container.infra;
@@ -68,6 +71,7 @@ export function appsModule(
 
   return {
     appQueries: queries,
+    authorizeAppIngress: new AuthorizeAppIngress({ apps, networkRules }),
     adminAuthorizer: new AppsAdminAuthorizer({ authorizeAdmin: new AuthorizeAdmin({ apps, roles, memberships }) }),
     grantAppRole,
     apiKeyAuthenticator: new AppsApiKeyAuthenticator({

@@ -503,7 +503,84 @@ Kết quả `202` (và `GET $EWS/v1/publications/<id>` về sau):
 Mỗi người một lời gọi `POST /v1/notifications`. Dùng khi danh sách do app quyết định (không theo chủ
 đề), hoặc chủ đề quá 100 người.
 
-### Cả hai cách
+### Cách 3 — công cụ ngoài gọi vào (incoming webhook)
+
+Dùng khi cái phát tin **không phải app của bạn** mà là công cụ chỉ biết POST JSON của nó tới một URL —
+Gatus, script giám sát, dịch vụ tự build. Không cần API key, không cần sửa JSON cho đúng khuôn EWS.
+
+**Tạo trên console EWS** (người quản lý app): chọn **topic**, **template đã xuất bản**, và **ánh xạ**: mỗi
+biến của template lấy từ đâu trong JSON công cụ gửi tới. EWS hiện **URL một lần duy nhất**:
+
+```
+https://<domain API EWS>/hooks/ewshk_…
+```
+
+URL này là chìa khoá — ai có nó là phát được vào topic. Cất như API key. Lộ thì bấm **Đổi URL** (URL cũ
+chết ngay). Công cụ trong mạng nội bộ cũng gọi qua domain này. Allowlist IP / Origin của app vẫn áp dụng.
+
+**Ánh xạ.** Mỗi biến `payload.*` của template lấy giá trị theo thứ tự:
+
+1. **Đường dẫn trong JSON** (kèm giá trị mặc định nếu muốn) —
+   `status` · `endpoint.name` · `alerts[0].labels.service` · `alerts[-1].summary` (phần tử cuối) ·
+   `labels["app.kubernetes.io/name"]` (tên trường có dấu chấm).
+2. **Chữ cố định** — thông tin không có trong JSON (ví dụ "Gatus").
+3. Không khai gì: lấy **trường cùng tên ở tầng đầu** của JSON (JSON `{"severity":"critical"}` -> biến
+   `payload.severity`).
+
+| Giá trị tìm thấy | Đổ vào template |
+| --- | --- |
+| chữ, số, `true` / `false` | giữ nguyên |
+| mảng toàn chữ / số | nối bằng `", "` — `["prod","hanoi"]` -> `prod, hanoi` |
+| không có, `null`, chuỗi rỗng | dùng giá trị mặc định; không có mặc định = thiếu |
+| object, mảng chứa object | lỗi `INVALID_PAYLOAD_VALUE` |
+
+Hai tuỳ chọn thêm:
+
+* **Điều kiện phát** — chỉ phát khi giá trị ở một đường dẫn nằm trong danh sách (ví dụ `alert.state` là
+  `TRIGGERED`). Không thoả -> `200 {"status":"skipped"}`, không gửi.
+* **Đường dẫn khoá chống trùng** — ví dụ `id`. Cùng khoá = cùng một lần phát, gọi lại bao nhiêu lần cũng
+  chỉ gửi một lần. Không khai thì EWS dùng header `Idempotency-Key` nếu có, không thì **băm cả body**:
+  cùng nội dung trong một khung thời gian (mặc định 10 phút, Super Admin chỉnh được) chỉ phát một lần.
+
+Console có ô **"Xem trước"**: dán một JSON mẫu, thấy ngay biến nào rút được, biến bắt buộc nào thiếu và
+thư trông thế nào — không gửi gì.
+
+**Mẫu Gatus** (kênh `custom`, body tự viết):
+
+```yaml
+alerting:
+  custom:
+    url: "https://<domain API EWS>/hooks/ewshk_…"
+    method: "POST"
+    headers:
+      Content-Type: application/json
+    body: |
+      { "endpoint": { "name": "[ENDPOINT_NAME]", "group": "[ENDPOINT_GROUP]", "url": "[ENDPOINT_URL]" },
+        "alert": { "state": "[ALERT_TRIGGERED_OR_RESOLVED]", "description": "[ALERT_DESCRIPTION]" },
+        "errors": "[RESULT_ERRORS]" }
+```
+
+Ánh xạ tương ứng: `payload.service` ← `endpoint.name` · `payload.group` ← `endpoint.group` (mặc định
+"chung") · `payload.state` ← `alert.state` · `payload.detail` ← `alert.description` · điều kiện
+`alert.state` ∈ [`TRIGGERED`] (thêm `RESOLVED` nếu muốn báo cả lúc hết sự cố).
+
+**EWS trả về:**
+
+| HTTP | Body / mã | Nghĩa |
+| --- | --- | --- |
+| 202 | `{"status":"published","publicationId":"…","recipientCount":12}` | Đã phát (như cách 1) |
+| 200 | `{"status":"duplicate", …}` | Trùng — trả lần phát cũ, không gửi lại |
+| 200 | `{"status":"skipped","reason":"condition_not_met"}` | Không thoả điều kiện phát |
+| 404 | `NOT_FOUND` | URL sai, hook đã tắt hoặc đã xoá |
+| 403 | `APP_NOT_ACTIVE` · `IP_NOT_ALLOWED` · `ORIGIN_NOT_ALLOWED` | Như `/v1` |
+| 422 | `MISSING_VARIABLE` · `INVALID_PAYLOAD_VALUE` · `INCOMING_BODY_INVALID` · `PUBLICATION_TOO_LARGE` · lỗi template | Dữ liệu / cấu hình sai — sửa ánh xạ hoặc JSON |
+| 429 | `INCOMING_HOOK_RATE_LIMITED` | Hook phát quá số lần mỗi phút (mặc định 20, Super Admin chỉnh được) |
+
+Mọi lần gọi (kể cả bị từ chối) có trong **nhật ký** của hook trên console 30 ngày — EWS không lưu body.
+
+*Nguồn: `incoming-api.test.ts`, `incoming-extraction.test.ts`.*
+
+### Cả ba cách
 
 Hai điều cần biết:
 

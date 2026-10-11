@@ -137,6 +137,14 @@ export type WebhookEndpointStatus = (typeof WEBHOOK_ENDPOINT_STATUSES)[number];
 export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
 export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
 
+/** Incoming webhook (ADR-0030): hook tắt thì URL trả 404 như không tồn tại. */
+export const INCOMING_HOOK_STATUSES = ['active', 'disabled'] as const;
+export type IncomingHookStatus = (typeof INCOMING_HOOK_STATUSES)[number];
+
+/** Kết cục một lần công cụ ngoài gọi vào hook — cột `outcome` của nhật ký gọi. */
+export const INCOMING_CALL_OUTCOMES = ['published', 'duplicate', 'skipped', 'rejected'] as const;
+export type IncomingCallOutcome = (typeof INCOMING_CALL_OUTCOMES)[number];
+
 export const ACTOR_TYPES = ['admin', 'app', 'user', 'system'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
 
