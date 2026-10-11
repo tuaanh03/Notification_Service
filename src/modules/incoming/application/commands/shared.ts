@@ -1,6 +1,11 @@
-import { NotFoundError, ValidationError, type AppId, type IncomingHookId } from '../../../../shared/kernel/index.ts';
+import { NotFoundError, UpstreamError, ValidationError, type AppId, type IncomingHookId } from '../../../../shared/kernel/index.ts';
 import type { IncomingHook, IncomingHookConfig } from '../../domain/entities/incoming-hook.ts';
-import type { IncomingHookRepository, TemplateCatalog, TopicCatalog } from '../ports/index.ts';
+import type { HookCrypto, IncomingHookRepository, TemplateCatalog, TopicCatalog } from '../ports/index.ts';
+
+/** Thiếu `WEBHOOK_SIGNING_KEY`: không tính được token -> không tạo / đổi / lấy URL được (cùng mã với outgoing). */
+export function requireConfigured(crypto: HookCrypto): void {
+  if (!crypto.configured) throw new UpstreamError('WEBHOOK_NOT_CONFIGURED', 'webhooks are not configured on this server', 503);
+}
 
 /** Hook của app khác -> 404, như không tồn tại. */
 export async function requireHook(hooks: IncomingHookRepository, appId: AppId, id: IncomingHookId): Promise<IncomingHook> {

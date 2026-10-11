@@ -7,7 +7,10 @@ import { templates } from '../../../templates/infrastructure/db/schema.ts';
 import { topics } from '../../../topics/infrastructure/db/schema.ts';
 import type { PublishCondition, VariableMapping } from '../../domain/types/hook-config.ts';
 
-/** Một incoming webhook (ADR-0030). Token gốc KHÔNG lưu — chỉ băm SHA-256 để tra + đoạn gợi nhớ. */
+/**
+ * Một incoming webhook (ADR-0030). Token gốc KHÔNG lưu — tính lại từ khoá chủ + id + `token_version`;
+ * DB chỉ có băm SHA-256 để tra lời gọi vào + đoạn gợi nhớ.
+ */
 export const incomingHooks = mysqlTable(
   'incoming_hooks',
   {
@@ -30,6 +33,8 @@ export const incomingHooks = mysqlTable(
     /** SHA-256 hex của token. */
     tokenHash: varchar('token_hash', { length: 64 }).notNull(),
     tokenHint: varchar('token_hint', { length: 32 }).notNull(),
+    /** Token = HMAC(khoá chủ, id:phiên bản) — đổi URL = +1. */
+    tokenVersion: int('token_version').notNull().default(1),
     status: mysqlEnum('status', INCOMING_HOOK_STATUSES).notNull().default('active'),
     createdBy: varchar('created_by', { length: 64 }),
     createdAt: tsNow('created_at'),

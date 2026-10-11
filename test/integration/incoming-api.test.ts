@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildApplication,
@@ -14,7 +14,8 @@ import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
 import type { StreamConsumer } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
-import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
+import { httpClient, provisionApp, signInAdmin, TEST_PASSWORD, type Json } from './support/http.ts';
+import { AccountId, AppId, OrgId } from '../../src/shared/kernel/index.ts';
 import { race } from './support/race.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
 
@@ -36,7 +37,15 @@ let worker: StreamConsumer;
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 14 });
   c = createContainer(
-    loadEnv({ DATABASE_URL: t.url, REDIS_URL: await testRedisUrl(), LOG_LEVEL: 'fatal', HOST: '127.0.0.1', PORT: '0', EMAIL_MAX_PER_MINUTE: '10000' }),
+    loadEnv({
+      DATABASE_URL: t.url,
+      REDIS_URL: await testRedisUrl(),
+      LOG_LEVEL: 'fatal',
+      HOST: '127.0.0.1',
+      PORT: '0',
+      EMAIL_MAX_PER_MINUTE: '10000',
+      WEBHOOK_SIGNING_KEY: 'test-incoming-signing-key-0123456789abcdef',
+    }),
     { database: t, redis: await createTestRedis() },
   );
   mail = new MockEmailProvider({ logger: c.ports.logger });
@@ -362,6 +371,48 @@ describe('quản lý hook', () => {
     await deliver();
     expect(mail.delivered).toHaveLength(0);
     expect(await t.db.select().from(publications).where(eq(publications.appId, app.appId))).toHaveLength(0);
+  });
+});
+
+describe('lấy lại URL bất cứ lúc nào', () => {
+  it('URL lấy lại = URL lúc tạo và gọi được; đổi URL -> URL cũ 404, lấy lại ra URL mới; App Viewer 403', async () => {
+    const app = await freshApp('in-reveal');
+    const issued = await createHook(app.appId, gatusConfig(app));
+    const id = issued.hook['id'] as string;
+
+    const revealed = await admin('GET', `/apps/${app.appId}/incoming-webhooks/${id}/url`);
+    expect(revealed.status).toBe(200);
+    expect(revealed.headers.get('cache-control')).toBe('no-store');
+    expect(revealed.body).toEqual({ path: issued.path, url: null });
+    expect((await call(revealed.body['path'] as string, gatusBody('rv1'))).status).toBe(202);
+
+    const rotated = (await admin('POST', `/apps/${app.appId}/incoming-webhooks/${id}/rotate-token`)).body;
+    const again = (await admin('GET', `/apps/${app.appId}/incoming-webhooks/${id}/url`)).body;
+    expect(again['path']).toBe(rotated['path']);
+    expect(again['path']).not.toBe(issued.path);
+    expect((await call(issued.path, gatusBody('rv2'))).status).toBe(404);
+    expect((await call(again['path'] as string, gatusBody('rv2'))).status).toBe(202);
+
+    // App Viewer xem được danh sách nhưng không lấy được URL.
+    const [org] = (await t.db.execute(sql`SELECT account_id FROM organizations WHERE org_id = ${app.orgId}`)) as unknown as [{ account_id: string }[]];
+    const email = 'viewer-in-reveal@test.local';
+    const ctx = { actor: { id: 'test', type: 'admin' as const }, source: 'system' as const };
+    await application.adminOps.createAdmin.execute({ accountId: AccountId.parse(org[0]!.account_id), email, password: TEST_PASSWORD, role: 'user' }, ctx);
+    await application.adminOps.setOrgMember.execute({ orgId: OrgId.parse(app.orgId), email, role: 'member' }, ctx);
+    await application.adminOps.grantAppRole.execute({ appId: AppId.parse(app.appId), email, role: 'app_viewer' }, ctx);
+    const viewer = (await http('POST', '/auth/login', { body: { email, password: TEST_PASSWORD } })).body['token'] as string;
+    expect((await http('GET', `/admin/apps/${app.appId}/incoming-webhooks`, { token: viewer })).status).toBe(200);
+    expect((await http('GET', `/admin/apps/${app.appId}/incoming-webhooks/${id}/url`, { token: viewer })).status).toBe(403);
+  });
+
+  it('hook tạo bằng token ngẫu nhiên (trước khi có cách tính lại) -> 409, đổi URL là lấy được', async () => {
+    const app = await freshApp('in-legacy');
+    const id = (await createHook(app.appId, gatusConfig(app))).hook['id'] as string;
+    await t.db.update(incomingHooks).set({ tokenHash: 'f'.repeat(64) }).where(eq(incomingHooks.hookId, id));
+    const res = await admin('GET', `/apps/${app.appId}/incoming-webhooks/${id}/url`);
+    expect([res.status, res.body['code']]).toEqual([409, 'INCOMING_URL_NEEDS_ROTATION']);
+    await admin('POST', `/apps/${app.appId}/incoming-webhooks/${id}/rotate-token`);
+    expect((await admin('GET', `/apps/${app.appId}/incoming-webhooks/${id}/url`)).status).toBe(200);
   });
 });
 

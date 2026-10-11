@@ -6,6 +6,7 @@ import {
   type IncomingHookStatus,
 } from '../../../../shared/kernel/index.ts';
 import { IncomingHook, MAX_INCOMING_HOOKS, type IncomingHookConfig } from '../../domain/entities/incoming-hook.ts';
+import { ConflictError } from '../../../../shared/kernel/index.ts';
 import type { IncomingHookDto, IssuedHookUrlDto } from '../dto.ts';
 import { IncomingSlotTakenError } from '../errors.ts';
 import { INCOMING_HOOK_AGGREGATE, INCOMING_HOOK_EVENTS } from '../events.ts';
@@ -18,7 +19,7 @@ import type {
   TopicCatalog,
 } from '../ports/index.ts';
 import { describeHooks } from '../queries/describe-hooks.ts';
-import { assertTargetsBelongToApp, hookUrl, requireHook } from './shared.ts';
+import { assertTargetsBelongToApp, hookUrl, requireConfigured, requireHook } from './shared.ts';
 
 interface Deps {
   uow: UnitOfWork;
@@ -71,20 +72,23 @@ export class CreateIncomingHook {
 
   async execute(input: { appId: AppId; config: IncomingHookConfig }, ctx: CommandContext): Promise<IssuedHookUrlDto> {
     const { uow, outbox, clock, hooks, crypto } = this.deps;
+    requireConfigured(crypto);
     await assertTargetsBelongToApp(this.deps, input.appId, input.config);
-    const token = crypto.issueToken();
+    const id = IncomingHookId.create();
+    const token = crypto.tokenFor(id, 1);
     for (let attempt = 0; ; attempt++) {
       try {
         const hook = await uow.run(async () => {
           const slot = IncomingHook.freeSlot((await hooks.listByApp(input.appId)).map((h) => h.slot));
           IncomingHook.assertHasFreeSlot(slot);
           const created = new IncomingHook({
-            id: IncomingHookId.create(),
+            id,
             appId: input.appId,
             slot,
             ...input.config,
             tokenHash: token.hash,
             tokenHint: token.hint,
+            tokenVersion: 1,
             createdBy: ctx.actor.id,
             createdAt: clock.now(),
           });
@@ -137,15 +141,40 @@ export class RotateIncomingHookToken {
 
   async execute(input: { appId: AppId; hookId: IncomingHookId }, ctx: CommandContext): Promise<IssuedHookUrlDto> {
     const { uow, outbox, clock, hooks, crypto } = this.deps;
-    const token = crypto.issueToken();
+    requireConfigured(crypto);
     const hook = await uow.run(async () => {
       const found = await requireHook(hooks, input.appId, input.hookId);
-      found.replaceToken(token, clock.now());
+      found.rotateToken((version) => crypto.tokenFor(found.id, version), clock.now());
       await hooks.update(found);
       await outbox.append([auditEvent(found, INCOMING_HOOK_EVENTS.tokenRotated, ctx, { tokenHint: found.tokenHint })]);
       return found;
     });
-    return issuedUrl(this.deps, hook, token.token);
+    return issuedUrl(this.deps, hook, crypto.tokenFor(hook.id, hook.tokenVersion).token);
+  }
+}
+
+/**
+ * Lấy lại URL của hook bất cứ lúc nào (người quản lý app). Mỗi lần lấy ghi audit `IncomingHookUrlRevealed`
+ * — người dùng chịu trách nhiệm cho URL của mình, audit trả lời "ai đã lấy, lúc nào".
+ */
+export class RevealIncomingHookUrl {
+  private readonly deps: Deps;
+
+  constructor(deps: Deps) {
+    this.deps = deps;
+  }
+
+  async execute(input: { appId: AppId; hookId: IncomingHookId }, ctx: CommandContext): Promise<{ path: string; url: string | null }> {
+    const { uow, outbox, hooks, crypto, settings } = this.deps;
+    requireConfigured(crypto);
+    const hook = await requireHook(hooks, input.appId, input.hookId);
+    const token = crypto.tokenFor(hook.id, hook.tokenVersion);
+    // Hook tạo bằng token ngẫu nhiên (trước khi có cách tính lại) — không lấy lại được, phải đổi URL.
+    if (token.hash !== hook.tokenHash) {
+      throw new ConflictError('INCOMING_URL_NEEDS_ROTATION', 'this hook URL cannot be recovered — rotate it to get a new one');
+    }
+    await uow.run(() => outbox.append([auditEvent(hook, INCOMING_HOOK_EVENTS.urlRevealed, ctx, { tokenHint: hook.tokenHint })]));
+    return hookUrl((await settings.current()).publicBaseUrl, token.token);
   }
 }
 

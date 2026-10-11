@@ -1,9 +1,13 @@
 import type { CommandContext } from '../../../../shared/application/index.ts';
 import type { AppId, Channel, DomainError, TemplateId, TopicId } from '../../../../shared/kernel/index.ts';
 
-/** Token của hook + băm. Token gốc (`ewshk_…`) chỉ trả về một lần, không lưu. */
+/**
+ * Token của hook (`ewshk_…`) KHÔNG lưu — tính lại từ khoá chủ `WEBHOOK_SIGNING_KEY` + id hook + phiên bản,
+ * nên lấy lại được URL bất cứ lúc nào; DB chỉ giữ băm để tra lời gọi vào. Thiếu khoá -> `configured = false`.
+ */
 export interface HookCrypto {
-  issueToken(): { token: string; hash: string; hint: string };
+  readonly configured: boolean;
+  tokenFor(hookId: string, version: number): { token: string; hash: string; hint: string };
   /** SHA-256 hex — băm token để tra, băm body / khoá để chống trùng. */
   sha256(text: string): string;
 }

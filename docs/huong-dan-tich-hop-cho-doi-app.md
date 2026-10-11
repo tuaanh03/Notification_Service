@@ -503,49 +503,55 @@ Kết quả `202` (và `GET $EWS/v1/publications/<id>` về sau):
 Mỗi người một lời gọi `POST /v1/notifications`. Dùng khi danh sách do app quyết định (không theo chủ
 đề), hoặc chủ đề quá 100 người.
 
-### Cách 3 — công cụ ngoài gọi vào (incoming webhook)
+### Cách 3 — hệ thống khác gọi vào (incoming webhook)
 
-Dùng khi cái phát tin **không phải app của bạn** mà là công cụ chỉ biết POST JSON của nó tới một URL —
-Gatus, script giám sát, dịch vụ tự build. Không cần API key, không cần sửa JSON cho đúng khuôn EWS.
+Dùng khi cái phát tin **không phải app của bạn** mà là một hệ thống chỉ biết gọi webhook: công cụ giám
+sát, công cụ tự động hoá, dịch vụ / script của đội. Không cần API key.
 
-**Tạo trên console EWS** (người quản lý app): chọn **topic**, **template đã xuất bản**, và **ánh xạ**: mỗi
-biến của template lấy từ đâu trong JSON công cụ gửi tới. EWS hiện **URL một lần duy nhất**:
+**Tạo trên console EWS** (Cài đặt App → Webhooks → tab **Nhận vào** → Thêm webhook): chỉ chọn **gửi cho
+người theo dõi topic nào** và **nội dung theo template nào**. Bấm **Sao chép URL** (lấy lại được bất cứ lúc
+nào, mỗi lần lấy đều được ghi lại) rồi dán vào hệ thống kia. URL là chìa khoá — lộ thì bấm **Đổi URL** (URL
+cũ ngừng ngay).
 
-```
-https://<domain API EWS>/hooks/ewshk_…
-```
+**Khuôn chuẩn của EWS — mọi hệ thống đều cấu hình đúng 4 thứ:**
 
-URL này là chìa khoá — ai có nó là phát được vào topic. Cất như API key. Lộ thì bấm **Đổi URL** (URL cũ
-chết ngay). Công cụ trong mạng nội bộ cũng gọi qua domain này. Allowlist IP / Origin của app vẫn áp dụng.
-
-**Ánh xạ.** Mỗi biến `payload.*` của template lấy giá trị theo thứ tự:
-
-1. **Đường dẫn trong JSON** (kèm giá trị mặc định nếu muốn) —
-   `status` · `endpoint.name` · `alerts[0].labels.service` · `alerts[-1].summary` (phần tử cuối) ·
-   `labels["app.kubernetes.io/name"]` (tên trường có dấu chấm).
-2. **Chữ cố định** — thông tin không có trong JSON (ví dụ "Gatus").
-3. Không khai gì: lấy **trường cùng tên ở tầng đầu** của JSON (JSON `{"severity":"critical"}` -> biến
-   `payload.severity`).
-
-| Giá trị tìm thấy | Đổ vào template |
+| | Giá trị |
 | --- | --- |
-| chữ, số, `true` / `false` | giữ nguyên |
-| mảng toàn chữ / số | nối bằng `", "` — `["prod","hanoi"]` -> `prod, hanoi` |
-| không có, `null`, chuỗi rỗng | dùng giá trị mặc định; không có mặc định = thiếu |
-| object, mảng chứa object | lỗi `INVALID_PAYLOAD_VALUE` |
+| Phương thức | `POST` |
+| URL | `https://<domain API EWS>/hooks/ewshk_…` (console đưa) |
+| Header | `Content-Type: application/json` |
+| Body | JSON có các trường **trùng tên biến** của template (bỏ `payload.`) |
 
-Hai tuỳ chọn thêm:
+Ví dụ template có biến `payload.title` (bắt buộc) và `payload.name_issue` (bắt buộc):
 
-* **Điều kiện phát** — chỉ phát khi giá trị ở một đường dẫn nằm trong danh sách (ví dụ `alert.state` là
-  `TRIGGERED`). Không thoả -> `200 {"status":"skipped"}`, không gửi.
-* **Đường dẫn khoá chống trùng** — ví dụ `id`. Cùng khoá = cùng một lần phát, gọi lại bao nhiêu lần cũng
-  chỉ gửi một lần. Không khai thì EWS dùng header `Idempotency-Key` nếu có, không thì **băm cả body**:
-  cùng nội dung trong một khung thời gian (mặc định 10 phút, Super Admin chỉnh được) chỉ phát một lần.
+```json
+{ "title": "VM web-01 quá tải", "name_issue": "CPU > 95% trong 5 phút" }
+```
 
-Console có ô **"Xem trước"**: dán một JSON mẫu, thấy ngay biến nào rút được, biến bắt buộc nào thiếu và
-thư trông thế nào — không gửi gì.
+* Console tự dựng body mẫu từ template (kèm giá trị mẫu và mô tả người soạn template đã khai) và hiện
+  **thư mẫu** người nhận sẽ thấy — mục **Body mẫu** của từng webhook.
+* Hệ thống gọi thay giá trị ví dụ bằng giá trị thật — thường là biến / chỗ trống của chính hệ thống đó.
+  Chữ, số, `true` / `false`; mảng chữ / số được nối bằng dấu phẩy; chuỗi rỗng coi như không có.
+* Trường thừa bị bỏ qua. Template **không có biến** (nội dung cố định): body `{}` là đủ.
+* **Trùng lặp EWS tự lo:** cùng nội dung trong một khung thời gian (mặc định 10 phút, Super Admin chỉnh
+  được) chỉ gửi một lần. Muốn tự quyết thì gửi header `Idempotency-Key` — cùng khoá là cùng một lần gửi.
+* Giới hạn mặc định 20 lần gửi / phút mỗi hook (Super Admin chỉnh được) — chặn "bão" cảnh báo.
 
-**Mẫu Gatus** (kênh `custom`, body tự viết):
+**EWS trả về:**
+
+| HTTP | Body / mã | Nghĩa |
+| --- | --- | --- |
+| 202 | `{"status":"published","publicationId":"…","recipientCount":12}` | Đã gửi (như cách 1) |
+| 200 | `{"status":"duplicate", …}` | Trùng lần gọi trước — không gửi lại |
+| 404 | `NOT_FOUND` | URL sai, hook đã tắt hoặc đã xoá |
+| 403 | `APP_NOT_ACTIVE` · `IP_NOT_ALLOWED` · `ORIGIN_NOT_ALLOWED` | Như `/v1` |
+| 422 | `MISSING_VARIABLE` · `INVALID_PAYLOAD_VALUE` · `INCOMING_BODY_INVALID` · `PUBLICATION_TOO_LARGE` · lỗi template | Body thiếu / sai trường, hoặc template / topic chưa sẵn sàng |
+| 429 | `INCOMING_HOOK_RATE_LIMITED` | Gọi quá số lần mỗi phút |
+
+Mọi lần gọi có trong **Nhật ký** của webhook trên console 30 ngày, viết bằng lời ("Đã gửi cho 12 người",
+"Trùng lần trước", "Thiếu trường bắt buộc"). EWS không lưu body.
+
+**Ví dụ cấu hình — Gatus** (kênh `custom`, body tự viết; `send-on-resolved` quyết có báo lúc hết sự cố):
 
 ```yaml
 alerting:
@@ -555,28 +561,17 @@ alerting:
     headers:
       Content-Type: application/json
     body: |
-      { "endpoint": { "name": "[ENDPOINT_NAME]", "group": "[ENDPOINT_GROUP]", "url": "[ENDPOINT_URL]" },
-        "alert": { "state": "[ALERT_TRIGGERED_OR_RESOLVED]", "description": "[ALERT_DESCRIPTION]" },
-        "errors": "[RESULT_ERRORS]" }
+      { "title": "[ENDPOINT_NAME]", "name_issue": "[ALERT_DESCRIPTION]" }
+    default-alert:
+      send-on-resolved: false
 ```
 
-Ánh xạ tương ứng: `payload.service` ← `endpoint.name` · `payload.group` ← `endpoint.group` (mặc định
-"chung") · `payload.state` ← `alert.state` · `payload.detail` ← `alert.description` · điều kiện
-`alert.state` ∈ [`TRIGGERED`] (thêm `RESOLVED` nếu muốn báo cả lúc hết sự cố).
+Hệ thống khác cũng vậy: đặt URL, header, và body theo các trường của template bằng biến của hệ thống đó.
 
-**EWS trả về:**
-
-| HTTP | Body / mã | Nghĩa |
-| --- | --- | --- |
-| 202 | `{"status":"published","publicationId":"…","recipientCount":12}` | Đã phát (như cách 1) |
-| 200 | `{"status":"duplicate", …}` | Trùng — trả lần phát cũ, không gửi lại |
-| 200 | `{"status":"skipped","reason":"condition_not_met"}` | Không thoả điều kiện phát |
-| 404 | `NOT_FOUND` | URL sai, hook đã tắt hoặc đã xoá |
-| 403 | `APP_NOT_ACTIVE` · `IP_NOT_ALLOWED` · `ORIGIN_NOT_ALLOWED` | Như `/v1` |
-| 422 | `MISSING_VARIABLE` · `INVALID_PAYLOAD_VALUE` · `INCOMING_BODY_INVALID` · `PUBLICATION_TOO_LARGE` · lỗi template | Dữ liệu / cấu hình sai — sửa ánh xạ hoặc JSON |
-| 429 | `INCOMING_HOOK_RATE_LIMITED` | Hook phát quá số lần mỗi phút (mặc định 20, Super Admin chỉnh được) |
-
-Mọi lần gọi (kể cả bị từ chối) có trong **nhật ký** của hook trên console 30 ngày — EWS không lưu body.
+**Trường hợp đặc biệt — hệ thống chỉ gửi được JSON cố định của nó** (không sửa được body): EWS có cơ chế
+ánh xạ đường dẫn JSON (`a.b`, `a[0]`, `a[-1]`, `a["k.k"]`), điều kiện phát và đường dẫn khoá chống trùng
+(ADR-0030). Phần này **không có trên console** — liên hệ đội EWS để cấu hình qua API
+(`PATCH /admin/apps/:appId/incoming-webhooks/:hookId`).
 
 *Nguồn: `incoming-api.test.ts`, `incoming-extraction.test.ts`.*
 

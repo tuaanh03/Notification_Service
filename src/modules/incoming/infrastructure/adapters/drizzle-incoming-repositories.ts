@@ -39,6 +39,7 @@ export class DrizzleIncomingHookRepository implements IncomingHookRepository {
         condition: h.condition,
         tokenHash: h.tokenHash,
         tokenHint: h.tokenHint,
+        tokenVersion: h.tokenVersion,
         status: h.status,
         createdBy: h.createdBy,
         createdAt: h.createdAt,
@@ -83,6 +84,7 @@ export class DrizzleIncomingHookRepository implements IncomingHookRepository {
         condition: h.condition,
         tokenHash: h.tokenHash,
         tokenHint: h.tokenHint,
+        tokenVersion: h.tokenVersion,
         status: h.status,
         updatedAt: h.updatedAt,
       })
@@ -162,6 +164,7 @@ function toHook(row: HookRow): IncomingHook {
     condition: row.condition ?? null,
     tokenHash: row.tokenHash,
     tokenHint: row.tokenHint,
+    tokenVersion: row.tokenVersion,
     status: row.status,
     createdBy: row.createdBy,
     createdAt: row.createdAt,

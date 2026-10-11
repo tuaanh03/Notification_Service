@@ -5,5 +5,7 @@ export const INCOMING_HOOK_EVENTS = {
   created: 'IncomingHookCreated',
   updated: 'IncomingHookUpdated',
   tokenRotated: 'IncomingHookTokenRotated',
+  /** Ai đó lấy URL đầy đủ — URL là chìa khoá, nên mỗi lần lấy đều ghi lại. */
+  urlRevealed: 'IncomingHookUrlRevealed',
   deleted: 'IncomingHookDeleted',
 } as const;

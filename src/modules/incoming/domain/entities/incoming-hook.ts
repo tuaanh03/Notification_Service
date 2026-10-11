@@ -38,6 +38,8 @@ export interface IncomingHookProps extends TimestampInput, IncomingHookConfig {
   tokenHash: string;
   /** `ewshk_abcd…wxyz` — đủ nhận ra, không đủ dùng. */
   tokenHint: string;
+  /** Token tính lại từ khoá chủ + id + số này; đổi URL = +1. */
+  tokenVersion?: number | undefined;
   status?: IncomingHookStatus | undefined;
   createdBy?: string | null | undefined;
 }
@@ -58,6 +60,7 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
   condition: PublishCondition | null;
   tokenHash: string;
   tokenHint: string;
+  tokenVersion: number;
   status: IncomingHookStatus;
 
   constructor(props: IncomingHookProps) {
@@ -77,6 +80,7 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
     this.condition = config.condition;
     this.tokenHash = props.tokenHash;
     this.tokenHint = props.tokenHint;
+    this.tokenVersion = props.tokenVersion ?? 1;
     this.status = props.status ?? 'active';
   }
 
@@ -108,10 +112,12 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
     this.touch(at);
   }
 
-  /** Đổi URL: token cũ hết hiệu lực ngay. */
-  replaceToken(token: { hash: string; hint: string }, at: Date): void {
-    this.tokenHash = token.hash;
-    this.tokenHint = token.hint;
+  /** Đổi URL: phiên bản +1, token cũ hết hiệu lực ngay. Nơi gọi tính token của phiên bản mới. */
+  rotateToken(token: (version: number) => { hash: string; hint: string }, at: Date): void {
+    this.tokenVersion += 1;
+    const next = token(this.tokenVersion);
+    this.tokenHash = next.hash;
+    this.tokenHint = next.hint;
     this.touch(at);
   }
 }

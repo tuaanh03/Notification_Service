@@ -7,6 +7,7 @@ import type {
   DeleteIncomingHook,
   IncomingHookQueries,
   PreviewIncomingHook,
+  RevealIncomingHookUrl,
   RotateIncomingHookToken,
   UpdateIncomingHook,
 } from '../../application/index.ts';
@@ -54,14 +55,15 @@ const toConfig = (c: Omit<ConfigInput, 'name'> & { name?: string | undefined }):
 });
 
 /**
- * Quản lý incoming webhook của MỘT app (ADR-0030). Xem: `app.read`; thêm / sửa / đổi URL / xoá / xem
- * trước: `app.manage`. Response có token (`POST`, `rotate-token`) không cache.
+ * Quản lý incoming webhook của MỘT app (ADR-0030). Xem: `app.read`; thêm / sửa / đổi URL / lấy URL / xoá /
+ * xem trước: `app.manage`. Response có token (`POST`, `rotate-token`, `url`) không cache.
  */
 export function adminIncomingHooksRoutes(useCases: {
   queries: IncomingHookQueries;
   create: CreateIncomingHook;
   update: UpdateIncomingHook;
   rotateToken: RotateIncomingHookToken;
+  revealUrl: RevealIncomingHookUrl;
   remove: DeleteIncomingHook;
   preview: PreviewIncomingHook;
 }): HttpRoutes {
@@ -107,6 +109,12 @@ export function adminIncomingHooksRoutes(useCases: {
     app.post('/apps/:appId/incoming-webhooks/:hookId/rotate-token', { config: access('app.manage') }, async (request, reply) => {
       const issued = await useCases.rotateToken.execute(ids(request.params), ctx(request));
       return reply.header('cache-control', 'no-store').send(issued);
+    });
+
+    // URL đầy đủ, lấy bất cứ lúc nào — chỉ người quản lý app; mỗi lần lấy ghi audit. Không cache.
+    app.get('/apps/:appId/incoming-webhooks/:hookId/url', { config: access('app.manage') }, async (request, reply) => {
+      const url = await useCases.revealUrl.execute(ids(request.params), ctx(request));
+      return reply.header('cache-control', 'no-store').send(url);
     });
 
     app.delete('/apps/:appId/incoming-webhooks/:hookId', { config: access('app.manage') }, async (request, reply) => {

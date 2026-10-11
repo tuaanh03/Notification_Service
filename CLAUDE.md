@@ -58,7 +58,7 @@ Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm
 `templates` (ADR-0020) — xong cả 3 GĐ: admin soạn / xuất bản, app gửi bằng `templateId` + `payload`,
 màn Templates của console đã đấu API.
 
-Có trong repo: domain model 13 module · schema MySQL + 13 migration · hạ tầng dùng chung (config, db,
+Có trong repo: domain model 13 module · schema MySQL + 14 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
@@ -73,7 +73,7 @@ streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiế
 | `apps` | vòng đời app (UC-001) — tự phục vụ: tạo xong là `active`, cấp sẵn `email` (`App.register`, ADR-0023), API key (cấp / thu hồi, ≤ 2 active), allowlist IP/Origin, xác thực `/v1/*` |
 | `audit` | consumer `audit-writer` (`audit.events` -> `audit_log`), `GET /admin/audit` |
 | `webhooks` | outgoing webhook (ADR-0029): `/admin/apps/:appId/webhooks` (≤ 2 URL mỗi app — `slot` + unique; secret không lưu, tính từ `WEBHOOK_SIGNING_KEY`; gửi thử; nhật ký gọi); consumer `webhook-dispatcher` (`webhook.events` -> ghi `webhook_deliveries`); job `deliver-webhooks` gọi HTTPS ngoài transaction, chặn IP nội bộ lúc phân giải DNS, gọi lại 6 lần trong ~8,5 giờ |
-| `incoming` | incoming webhook (ADR-0030): `POST /hooks/:token` (public, token = khoá) -> ánh xạ đường dẫn JSON thành `payload` -> điều kiện -> giới hạn mỗi phút -> chống trùng -> `PublishToTopic`; quản lý dưới `/admin/apps/:appId/incoming-webhooks` (≤ 10 hook — `slot` + unique; xem trước bằng JSON mẫu; nhật ký gọi 30 ngày) |
+| `incoming` | incoming webhook (ADR-0030): `POST /hooks/:token` (public, token = khoá; token tính lại từ `WEBHOOK_SIGNING_KEY` + id + `token_version`, lấy lại qua `GET …/:hookId/url` có audit) -> ánh xạ đường dẫn JSON thành `payload` -> điều kiện -> giới hạn mỗi phút -> chống trùng -> `PublishToTopic`; quản lý dưới `/admin/apps/:appId/incoming-webhooks` (≤ 10 hook — `slot` + unique; xem trước bằng JSON mẫu; nhật ký gọi 30 ngày) |
 | `settings` | Cài đặt hệ thống do Super Admin chỉnh (ADR-0030): `GET/PUT /admin/system-settings` (`platform.manage`); danh mục cố định trong `domain/rules/system-settings.ts`; `SystemSettingsQueries.current()` đệm 30 giây cho module khác |
 | `templates` | admin tạo / đổi tên / lưu nháp / tạo nháp từ bản cũ / xuất bản / lưu trữ dưới `/admin/apps/:appId/templates` (ADR-0020); tối đa 1 nháp + 1 published mỗi template, khoá dòng `templates` trước mọi lệnh ghi; kiểm tra nội dung chạy lúc xuất bản; `POST …/ai-compose` trả đề xuất của AI (không ghi DB, chỉ biến đã khai, 10 lần/phút/admin — ADR-0020 §7); `RenderTemplate` (đổ `payload` vào bản đang xuất bản) + `TemplateQueries.labelsOf` cho module khác |
 
@@ -121,7 +121,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0027` | **Đồng bộ danh bạ M365**: Super Admin bấm `POST /admin/directory/m365-sync` -> đọc `/users` bằng app `GRAPH_*` (`User.Read.All`), tạo / gắn tài khoản cùng luật ADR-0024; hai tenant `GRAPH_*` / `M365_*` phải trùng; cột `admins.display_name`; hộp Thêm thành viên chọn từ `GET …/member-candidates` |
 | `0028` | **Phát tin vào topic**: `POST /v1/publications` -> một dòng `publications` + mỗi người theo dõi một notification con (`publication_id`), worker không đổi; người nhận chốt lúc phát bằng `emailGate` (không dùng pipeline segments); trần 100 người (422 `PUBLICATION_TOO_LARGE`), mọi thứ trong MỘT transaction; `idempotencyKey` bắt buộc; topic bắt buộc phát được |
 | `0029` | **Outgoing webhook**: module `webhooks`; 3 sự kiện kết quả thư (+ `ping`), body không có email / nội dung; consumer chỉ ghi lượt, job gọi ra ngoài; gọi ít nhất một lần, chữ ký HMAC `t=…,v1=…`; secret = HMAC(`WEBHOOK_SIGNING_KEY`, id:version) — thiếu khoá thì 503 `WEBHOOK_NOT_CONFIGURED`; chặn IP nội bộ; tối đa 2 URL bằng unique `(app_id, slot)` |
-| `0030` | **Incoming webhook + Cài đặt hệ thống**: module `incoming` (`POST /hooks/:token`, token băm SHA-256; ánh xạ đường dẫn JSON `a.b` / `a[0]` / `a[-1]` / `a["k.k"]` > chữ cố định > trường cùng tên; chuỗi rỗng = không có; điều kiện phát; chống trùng header > đường dẫn > băm body + khung; giới hạn mỗi phút trên Redis; phát bằng `PublishToTopic`); module `settings` (`system_settings`, danh mục + khoảng cho phép, chỉ Super Admin, đệm 30 giây) |
+| `0030` | **Incoming webhook + Cài đặt hệ thống**: module `incoming` (`POST /hooks/:token`, token băm SHA-256; ánh xạ đường dẫn JSON `a.b` / `a[0]` / `a[-1]` / `a["k.k"]` > chữ cố định > trường cùng tên; chuỗi rỗng = không có; điều kiện phát; chống trùng header > đường dẫn > băm body + khung; giới hạn mỗi phút trên Redis; phát bằng `PublishToTopic`); module `settings` (`system_settings`, danh mục + khoảng cho phép, chỉ Super Admin, đệm 30 giây). Bổ sung: token tính lại được (HMAC `WEBHOOK_SIGNING_KEY`), `GET …/url` lấy lại URL bất cứ lúc nào + audit `IncomingHookUrlRevealed`; console chỉ hỏi topic + template |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

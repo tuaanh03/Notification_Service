@@ -1,0 +1,1 @@
+ALTER TABLE `incoming_hooks` ADD `token_version` int DEFAULT 1 NOT NULL;

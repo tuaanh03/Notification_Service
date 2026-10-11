@@ -12,6 +12,7 @@ import {
 } from '../../src/modules/incoming/domain/index.ts';
 import { SYSTEM_SETTINGS, effectiveSettings, normalizeSetting } from '../../src/modules/settings/domain/index.ts';
 import { TemplateId, TopicId } from '../../src/shared/kernel/index.ts';
+import { NodeHookCrypto } from '../../src/modules/incoming/infrastructure/adapters/node-hook-crypto.ts';
 
 const codeOf = (fn: () => unknown): string | undefined => {
   try {
@@ -197,5 +198,25 @@ describe('Cài đặt hệ thống', () => {
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'http://ews-api.example.com'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'https://a.com/?x=1'))).toBe('SETTING_INVALID_URL');
     expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(3);
+  });
+});
+
+describe('NodeHookCrypto — token tính lại được, không lưu', () => {
+  it('cùng (khoá, hook, phiên bản) -> cùng token; đổi phiên bản / khoá -> khác; khớp định dạng route', () => {
+    const crypto = new NodeHookCrypto({ signingKey: 'k'.repeat(32) });
+    const a = crypto.tokenFor('hook-1', 1);
+    expect(a.token).toMatch(/^ewshk_[A-Za-z0-9_-]{43}$/);
+    expect(crypto.tokenFor('hook-1', 1)).toEqual(a);
+    expect(a.hash).toBe(crypto.sha256(a.token));
+    expect(a.hint).toBe(`ewshk_${a.token.slice(6, 10)}…${a.token.slice(-4)}`);
+    expect(crypto.tokenFor('hook-1', 2).token).not.toBe(a.token);
+    expect(crypto.tokenFor('hook-2', 1).token).not.toBe(a.token);
+    expect(new NodeHookCrypto({ signingKey: 'x'.repeat(32) }).tokenFor('hook-1', 1).token).not.toBe(a.token);
+  });
+
+  it('thiếu khoá -> configured false, không tính token', () => {
+    const crypto = new NodeHookCrypto({ signingKey: undefined });
+    expect(crypto.configured).toBe(false);
+    expect(() => crypto.tokenFor('hook-1', 1)).toThrow();
   });
 });

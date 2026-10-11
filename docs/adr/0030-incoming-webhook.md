@@ -69,3 +69,21 @@ hành (khung chống trùng, giới hạn mỗi phút) phải do Super Admin ch�
   mã HTTP công cụ nhận được).
 - Tài liệu cho đội app: `huong-dan-tich-hop-cho-doi-app.md` mục 6, cách 3 (kèm mẫu cấu hình Gatus).
 - Test: `test/unit/incoming-extraction.test.ts`, `test/integration/incoming-api.test.ts`.
+
+## Bổ sung — 2026-10-11: lấy lại URL bất cứ lúc nào, console tối giản
+
+Người dùng chốt: người tạo webhook tự chịu trách nhiệm cho URL của mình (theo dõi bằng audit), nên phải
+sao chép lại được URL bất cứ lúc nào; console chỉ hỏi hai câu nghiệp vụ (topic, template).
+
+1. **Token không lưu, tính lại được** — `ewshk_` + HMAC-SHA256(`WEBHOOK_SIGNING_KEY`,
+   `"incoming-hook-token:<hookId>:<token_version>"`) base64url. DB chỉ có băm (tra lời gọi vào) + đoạn gợi
+   nhớ + cột mới `token_version` (migration `0013`). Đổi URL = `token_version + 1`. Thay §1 (token ngẫu nhiên).
+2. **Phụ thuộc khoá ký của outgoing** (ADR-0029): thiếu khoá -> tạo / đổi / lấy URL trả 503
+   `WEBHOOK_NOT_CONFIGURED`, danh sách trả `configured: false`. Đổi khoá = mọi URL incoming đổi theo — đúng ý:
+   lộ khoá là lộ mọi URL. Chuỗi đầu vào khác secret outgoing nên hai thứ không trùng.
+3. **`GET /admin/apps/:appId/incoming-webhooks/:hookId/url`** (`app.manage`, `no-store`) trả URL; mỗi lần lấy
+   ghi audit `IncomingHookUrlRevealed`. App Viewer 403. Hook có băm không khớp token tính lại (tạo trước bổ
+   sung này) -> 409 `INCOMING_URL_NEEDS_ROTATION`, đổi URL là lấy được. Production lúc bổ sung có 0 hook.
+4. **Console**: không hộp thoại — thêm / sửa (topic, template) ngay trong danh sách, nút Sao chép URL / Đổi URL
+   / Tắt / Xoá, mục "Body mẫu" (khuôn chuẩn: trường trùng tên biến) và "Nhật ký" đóng sẵn. Ánh xạ đường dẫn,
+   khoá chống trùng, điều kiện phát KHÔNG có trên console — chỉ qua API cho trường hợp đặc biệt.

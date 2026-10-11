@@ -6,6 +6,7 @@ import {
   PreviewIncomingHook,
   PurgeIncomingCalls,
   ReceiveIncomingCall,
+  RevealIncomingHookUrl,
   RotateIncomingHookToken,
   UpdateIncomingHook,
 } from '../../modules/incoming/application/index.ts';
@@ -51,7 +52,7 @@ export function incomingModule(
 
   const hooks = new DrizzleIncomingHookRepository({ transactions });
   const calls = new DrizzleIncomingCallRepository({ transactions });
-  const crypto = new NodeHookCrypto();
+  const crypto = new NodeHookCrypto({ signingKey: container.env.WEBHOOK_SIGNING_KEY });
   const templates = new TemplatesCatalog(dependencies);
   const topics = new TopicsCatalog(dependencies);
   const settings = new SettingsReader(dependencies);
@@ -85,10 +86,11 @@ export function incomingModule(
       ],
       admin: [
         adminIncomingHooksRoutes({
-          queries: new IncomingHookQueries({ hooks, calls, templates, topics, settings }),
+          queries: new IncomingHookQueries({ hooks, calls, crypto, templates, topics, settings }),
           create: new CreateIncomingHook(manage),
           update: new UpdateIncomingHook(manage),
           rotateToken: new RotateIncomingHookToken(manage),
+          revealUrl: new RevealIncomingHookUrl(manage),
           remove: new DeleteIncomingHook(manage),
           preview: new PreviewIncomingHook({ crypto, templates, topics, settings }),
         }),

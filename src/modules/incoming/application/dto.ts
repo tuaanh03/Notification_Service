@@ -31,6 +31,8 @@ export interface IncomingHookDto {
 }
 
 export interface IncomingHookListDto {
+  /** false = server thiếu `WEBHOOK_SIGNING_KEY`: không tạo / lấy URL được. */
+  configured: boolean;
   /** Domain API công khai trong Cài đặt hệ thống; null = chưa khai (console chỉ hiện đường dẫn). */
   publicBaseUrl: string | null;
   hooks: IncomingHookDto[];
