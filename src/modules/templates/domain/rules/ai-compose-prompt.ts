@@ -4,8 +4,12 @@ import type { TemplateContent } from '../entities/template-version.ts';
  * AI soạn template (ADR-0020 §7) — phần THUẦN: dựng câu lệnh gửi AI và đọc câu trả lời.
  *
  * Gửi ra ngoài CHỈ: mô tả của người soạn, tên + mô tả các biến ĐÃ KHAI, nội dung đang soạn (khi sửa).
- * KHÔNG gửi giá trị mẫu, không gửi dữ liệu người nhận. AI chỉ được dùng biến đã khai — dùng biến lạ
- * thì không xoá âm thầm, `validate()` báo `VARIABLE_NOT_IN_SCHEMA` để người soạn thấy.
+ * KHÔNG gửi giá trị mẫu, không gửi dữ liệu người nhận.
+ *
+ * Biến: AI dùng biến đã khai; thiếu dữ liệu thì ĐỀ XUẤT biến `payload.*` mới (`suggestedVariables`) —
+ * KHÔNG tự thêm vào template: biến là khuôn body mà app / hệ thống ngoài phải gửi, người soạn tick
+ * duyệt mới thêm. Đề xuất sai luật bị bỏ; AI dùng biến không khai cũng không đề xuất thì
+ * `validate()` báo `VARIABLE_NOT_IN_SCHEMA`, không xoá âm thầm.
  */
 
 export type AiComposeMode = 'new' | 'revise';
@@ -31,14 +35,32 @@ export interface AiChatMessage {
 
 export type AiComposedContent = Pick<TemplateContent, 'subject' | 'html' | 'text'>;
 
+/** Biến AI đề xuất thêm — `name` đã có tiền tố `payload.`. */
+export interface AiSuggestedVariable {
+  name: string;
+  required: boolean;
+  description?: string | undefined;
+  sample?: string | undefined;
+}
+
+export interface AiComposeOutput extends AiComposedContent {
+  suggestedVariables: AiSuggestedVariable[];
+}
+
+export const MAX_SUGGESTED_VARIABLES = 10;
+const SUGGESTED_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
 const SYSTEM_RULES = [
   'You write transactional email templates for an internal notification service.',
-  'Reply with ONE JSON object and nothing else: {"subject": string, "html": string, "text": string}.',
+  'Reply with ONE JSON object and nothing else: {"subject": string, "html": string, "text": string, "variables": array}.',
   '- subject: one line, no line breaks, at most 200 characters.',
   '- html: a complete, responsive email body using inline CSS that works in email clients.',
   '- text: the same message as plain text for clients that cannot show HTML.',
-  'Placeholders MUST use the exact syntax {{ payload.<name> }} and ONLY the variables listed by the user.',
-  'Never invent new variables. If no variables are listed, write static content without placeholders.',
+  'Placeholders MUST use the exact syntax {{ payload.<name> }}.',
+  'Use the variables listed by the user first. Only when the message clearly needs data that no listed variable covers,',
+  `you may add a NEW variable: put it in "variables" as {"name": "<key>", "required": boolean, "description": string, "sample": string}`,
+  `(key: letters, digits and _ only, no "payload." prefix; at most ${MAX_SUGGESTED_VARIABLES}; description and sample in the language of the instruction) and use it as {{ payload.<key> }}.`,
+  'Never use a variable that is neither listed nor in "variables". "variables" lists ONLY new variables; [] when none.',
   'An optional variable must carry a default: {{ payload.<name> | default: "..." }}.',
   'Links must start with https:// or mailto: (a listed variable may be used as the link).',
   'Do NOT write any unsubscribe link, the word "unsubscribe", or a {{ footer }} placeholder: the system appends the footer.',
@@ -50,7 +72,7 @@ export function buildAiComposeMessages(request: AiComposeRequest): AiChatMessage
     ? request.variables
         .map((v) => `- {{ ${v.name} }} (${v.required ? 'required' : 'optional'})${v.description ? `: ${v.description}` : ''}`)
         .join('\n')
-    : '(none — do not use placeholders)';
+    : '(none yet)';
   const parts = [`Instruction:\n${request.instruction}`, `Variables you may use:\n${variables}`];
   if (request.mode === 'revise' && request.current) {
     parts.push(
@@ -71,8 +93,9 @@ export function buildAiComposeMessages(request: AiComposeRequest): AiChatMessage
 /**
  * Đọc câu trả lời của AI. Không ép JSON phía nhà cung cấp (nhiều bên không hỗ trợ) nên chịu được
  * khung ```json và chữ thừa quanh object. Sai định dạng / thiếu trường -> null.
+ * `declared` = tên biến đã khai — đề xuất trùng biến đã khai, sai tên, trùng nhau bị bỏ.
  */
-export function parseAiComposeOutput(raw: string): AiComposedContent | null {
+export function parseAiComposeOutput(raw: string, declared: readonly string[] = []): AiComposeOutput | null {
   const start = raw.indexOf('{');
   const end = raw.lastIndexOf('}');
   if (start === -1 || end <= start) return null;
@@ -83,12 +106,39 @@ export function parseAiComposeOutput(raw: string): AiComposedContent | null {
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const { subject, html, text } = parsed as Record<string, unknown>;
+  const { subject, html, text, variables } = parsed as Record<string, unknown>;
   if (typeof subject !== 'string' || typeof html !== 'string') return null;
   return {
     // Xuống dòng trong tiêu đề = không gửi được (EMAIL_SUBJECT_INVALID) — gộp thành một dòng.
     subject: subject.replace(/\s*[\r\n]+\s*/g, ' ').trim(),
     html,
     text: typeof text === 'string' ? text : '',
+    suggestedVariables: suggestedVariablesOf(variables, declared),
   };
+}
+
+const shortText = (value: unknown, max: number): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
+
+function suggestedVariablesOf(value: unknown, declared: readonly string[]): AiSuggestedVariable[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set(declared);
+  const out: AiSuggestedVariable[] = [];
+  for (const item of value) {
+    if (out.length >= MAX_SUGGESTED_VARIABLES) break;
+    if (typeof item !== 'object' || item === null) continue;
+    const entry = item as Record<string, unknown>;
+    if (typeof entry['name'] !== 'string') continue;
+    const key = entry['name'].trim().replace(/^payload\./, '');
+    const name = `payload.${key}`;
+    if (!SUGGESTED_KEY_RE.test(key) || seen.has(name)) continue;
+    seen.add(name);
+    out.push({
+      name,
+      required: entry['required'] !== false,
+      description: shortText(entry['description'], 500),
+      sample: shortText(entry['sample'], 200),
+    });
+  }
+  return out;
 }

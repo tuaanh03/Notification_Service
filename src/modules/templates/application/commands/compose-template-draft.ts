@@ -17,6 +17,7 @@ import {
   type AiComposeMode,
   type AiComposeVariable,
   type AiComposedContent,
+  type AiComposeOutput,
 } from '../../domain/rules/ai-compose-prompt.ts';
 import type { AiComposeRateLimiter, TemplateAiWriter, TemplateRepository } from '../ports/index.ts';
 
@@ -30,8 +31,11 @@ export interface ComposeTemplateDraftInput {
   current?: AiComposedContent | undefined;
 }
 
-/** Đề xuất của AI — CHƯA lưu gì. `issues` = kết quả kiểm tra y như lúc Xuất bản. */
-export interface AiComposeResultDto extends AiComposedContent {
+/**
+ * Đề xuất của AI — CHƯA lưu gì. `suggestedVariables` = biến AI muốn thêm, người soạn duyệt mới thêm.
+ * `issues` = kết quả kiểm tra y như lúc Xuất bản, coi như MỌI biến đề xuất đã được thêm.
+ */
+export interface AiComposeResultDto extends AiComposeOutput {
   issues: Issue[];
 }
 
@@ -82,7 +86,7 @@ export class ComposeTemplateDraft {
       promptTokens: completion.promptTokens,
       completionTokens: completion.completionTokens,
     };
-    const content = parseAiComposeOutput(completion.content);
+    const content = parseAiComposeOutput(completion.content, input.variables.map((v) => v.name));
     if (!content) {
       logger.warn('ai compose returned invalid output', { ...meta, ...usage });
       throw new UpstreamError('AI_PROVIDER_ERROR', 'AI returned an invalid answer (expected JSON with subject and html)');
@@ -93,15 +97,17 @@ export class ComposeTemplateDraft {
       id: TemplateVersionId.create(),
       templateId: template.id,
       version: 0,
-      ...content,
-      schema: input.variables.map((v) => ({
+      subject: content.subject,
+      html: content.html,
+      text: content.text,
+      schema: [...input.variables, ...content.suggestedVariables].map((v) => ({
         name: v.name,
         source: v.name.startsWith('user.') ? ('user' as const) : ('payload' as const),
         required: v.required,
       })),
       createdAt: clock.now(),
     }).validate();
-    logger.info('ai compose done', { ...meta, ...usage, issueCount: issues.length });
+    logger.info('ai compose done', { ...meta, ...usage, issueCount: issues.length, suggestedCount: content.suggestedVariables.length });
     return { ...content, issues };
   }
 }

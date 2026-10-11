@@ -292,6 +292,7 @@ describe('Nhờ AI soạn — POST .../ai-compose', () => {
       subject: '[Cảnh báo] {{ payload.vm_name }}',
       html: '<p>{{ payload.vm_name }}</p><a href="https://a.vn">Xem</a>',
       text: 'VM {{ payload.vm_name }}',
+      suggestedVariables: [],
       issues: [],
     });
     const sent = ai.calls.at(-1)!.map((m) => m.content).join('\n');
@@ -307,6 +308,28 @@ describe('Nhờ AI soạn — POST .../ai-compose', () => {
     const res = await compose(id, { instruction: 'x', mode: 'new', variables });
     expect(res.status).toBe(200);
     expect(codesOf(res.body).sort()).toEqual(['LINK_SCHEME_NOT_ALLOWED', 'VARIABLE_NOT_IN_SCHEMA']);
+  });
+
+  it('AI đề xuất biến mới -> trả kèm suggestedVariables, kiểm như đã thêm; template KHÔNG đổi biến', async () => {
+    const id = await createTemplate('AI đề xuất biến');
+    ai.reply = JSON.stringify({
+      subject: '{{ payload.vm_name }} quá tải',
+      html: '<p>{{ payload.vm_name }} - {{ payload.cpu }} - {{ payload.owner | default: "?" }}</p>',
+      variables: [
+        { name: 'cpu', required: true, description: 'Mức CPU', sample: '95%' },
+        { name: 'owner', required: false },
+        { name: 'vm_name' },
+      ],
+    });
+    const res = await compose(id, { instruction: 'Cảnh báo VM quá tải, kèm mức CPU và người phụ trách', mode: 'new', variables });
+    expect(res.status).toBe(200);
+    expect(res.body['suggestedVariables']).toEqual([
+      { name: 'payload.cpu', required: true, description: 'Mức CPU', sample: '95%' },
+      { name: 'payload.owner', required: false },
+    ]);
+    expect(res.body['issues']).toEqual([]);
+    const detail = (await admin('GET', `${base()}/${id}`)).body;
+    expect(detail['versions'][0]['variables']).toEqual([]);
   });
 
   it('revise gửi kèm nội dung đang soạn; thiếu current -> 422', async () => {

@@ -16,15 +16,16 @@ describe('câu lệnh gửi AI — chỉ gửi thứ cần gửi', () => {
   it('liệt kê ĐÚNG các biến đã khai, kèm bắt buộc / mô tả; luật cú pháp nằm ở system', () => {
     const [system, user] = buildAiComposeMessages({ instruction: 'Cảnh báo VM', mode: 'new', variables });
     expect(system?.content).toContain('{{ payload.<name> }}');
-    expect(system?.content).toContain('Never invent new variables');
+    expect(system?.content).toContain('Use the variables listed by the user first');
+    expect(system?.content).toContain('"variables" lists ONLY new variables');
     expect(user?.content).toContain('- {{ payload.vm_name }} (required): Tên máy ảo');
     expect(user?.content).toContain('- {{ payload.owner }} (optional)');
     expect(user?.content).toContain('Write a new template.');
   });
 
-  it('không có biến -> bảo AI viết nội dung tĩnh', () => {
+  it('chưa khai biến -> nói rõ "chưa có", AI được đề xuất biến mới', () => {
     const [, user] = buildAiComposeMessages({ instruction: 'x', mode: 'new', variables: [] });
-    expect(user?.content).toContain('(none — do not use placeholders)');
+    expect(user?.content).toContain('Variables you may use:\n(none yet)');
   });
 
   it('revise -> gửi kèm nội dung đang soạn; new -> không', () => {
@@ -38,7 +39,7 @@ describe('đọc câu trả lời của AI', () => {
   it('JSON trần, JSON trong khung ```json, JSON lẫn chữ thừa', () => {
     const json = '{"subject":"S","html":"<p>H</p>","text":"T"}';
     for (const raw of [json, '```json\n' + json + '\n```', 'Đây là template:\n' + json + '\nChúc vui']) {
-      expect(parseAiComposeOutput(raw)).toEqual({ subject: 'S', html: '<p>H</p>', text: 'T' });
+      expect(parseAiComposeOutput(raw)).toEqual({ subject: 'S', html: '<p>H</p>', text: 'T', suggestedVariables: [] });
     }
   });
 
@@ -47,7 +48,37 @@ describe('đọc câu trả lời của AI', () => {
       subject: 'Dòng 1 dòng 2',
       html: '<p>x</p>',
       text: '',
+      suggestedVariables: [],
     });
+  });
+
+  it('biến đề xuất: thêm tiền tố payload., mặc định bắt buộc, bỏ tên sai / trùng biến đã khai / trùng nhau', () => {
+    const raw = JSON.stringify({
+      subject: 'S',
+      html: '<p>{{ payload.service }}</p>',
+      variables: [
+        { name: 'service', required: true, description: ' Tên dịch vụ ', sample: 'mail-gw' },
+        { name: 'payload.severity' },
+        { name: 'occurred_at', required: false, description: '' },
+        { name: 'vm_name', required: true },
+        { name: 'service', required: false },
+        { name: 'có dấu' },
+        { name: 'a.b' },
+        { name: 42 },
+        'chuỗi',
+      ],
+    });
+    expect(parseAiComposeOutput(raw, ['payload.vm_name'])?.suggestedVariables).toEqual([
+      { name: 'payload.service', required: true, description: 'Tên dịch vụ', sample: 'mail-gw' },
+      { name: 'payload.severity', required: true, description: undefined, sample: undefined },
+      { name: 'payload.occurred_at', required: false, description: undefined, sample: undefined },
+    ]);
+  });
+
+  it('biến đề xuất: không phải mảng -> []; quá 10 -> cắt còn 10', () => {
+    expect(parseAiComposeOutput('{"subject":"S","html":"x","variables":"service"}')?.suggestedVariables).toEqual([]);
+    const many = Array.from({ length: 15 }, (_, i) => ({ name: `v${i}` }));
+    expect(parseAiComposeOutput(JSON.stringify({ subject: 'S', html: 'x', variables: many }))?.suggestedVariables).toHaveLength(10);
   });
 
   it.each(['không có JSON', '{"subject":"S"}', '{"subject":1,"html":"x"}', '{hỏng'])('%s -> null', (raw) => {

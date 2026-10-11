@@ -73,7 +73,7 @@ khi xoá cũ vì FK `app_id` đang dựa vào index cũ. `template_versions`: `h
 
 ## 7. Nhờ AI soạn — gọi AI ở BACKEND
 
-`POST /admin/apps/:appId/templates/:templateId/ai-compose` trả **đề xuất** `{ subject, html, text, issues }`.
+`POST /admin/apps/:appId/templates/:templateId/ai-compose` trả **đề xuất** `{ subject, html, text, suggestedVariables, issues }`.
 Không ghi DB, không tạo nháp: người soạn bấm "Dùng bản này" mới điền vào khung soạn rồi tự Lưu / Xuất bản.
 
 - **Vì sao ở backend, không ở console:** khoá AI nằm cùng các bí mật khác và được env kiểm lúc khởi
@@ -83,8 +83,14 @@ Không ghi DB, không tạo nháp: người soạn bấm "Dùng bản này" mớ
   `AI_API_KEY`, `AI_MODEL`. `AI_API_KEY` trống = AI tắt (503 `AI_NOT_CONFIGURED`); có khoá mà thiếu URL /
   model thì dừng khởi động. Không gửi `response_format` (nhiều bên không hỗ trợ) — câu lệnh đòi JSON,
   `parseAiComposeOutput` bóc JSON ra (chịu được khung ```json).
-- **Chỉ dùng biến đã khai.** Gửi ra ngoài: mô tả, tên + mô tả biến, nội dung đang soạn (khi `revise`) —
-  KHÔNG gửi giá trị mẫu. AI vẫn dùng biến lạ thì trả về trong `issues`, không xoá âm thầm.
+- **Dùng biến đã khai trước; thiếu thì ĐỀ XUẤT, không tự thêm** (bổ sung 10/2026 — trước đó cấm hẳn biến mới).
+  Gửi ra ngoài: mô tả, tên + mô tả biến, nội dung đang soạn (khi `revise`) — KHÔNG gửi giá trị mẫu.
+  Nội dung cần dữ liệu chưa có biến thì AI trả thêm `suggestedVariables` (`payload.<key>`, bắt buộc hay
+  không, mô tả, giá trị mẫu; ≤ 10; tên sai luật / trùng biến đã khai bị bỏ). Console hiện có ô tick —
+  người soạn duyệt mới thêm vào bảng biến, vì biến là khuôn body mà app (`/v1`) và hệ thống ngoài
+  (incoming webhook) phải gửi; biến bắt buộc tự mọc thêm là mọi bên đang gọi bị từ chối. `issues`
+  kiểm như đã thêm MỌI biến đề xuất; AI dùng biến không khai cũng không đề xuất thì vẫn báo
+  `VARIABLE_NOT_IN_SCHEMA`, không xoá âm thầm.
 - **Cố định trong code, không qua env:** chờ nhà cung cấp 60 giây; 10 lần/phút cho MỖI admin (429
   `AI_RATE_LIMITED`). Mọi lỗi phía nhà cung cấp (lỗi HTTP, quá giờ, không phải JSON) = 502 `AI_PROVIDER_ERROR`.
 - **Log** mỗi lần gọi (admin, model, thời gian, token, kết cục) — không log nội dung. Chưa ghi audit.
