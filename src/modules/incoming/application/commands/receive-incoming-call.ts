@@ -10,7 +10,7 @@ import {
   type IncomingCallOutcome,
 } from '../../../../shared/kernel/index.ts';
 import type { IncomingHook } from '../../domain/entities/incoming-hook.ts';
-import { assertNoIssues, conditionMet, extractPayload } from '../../domain/rules/index.ts';
+import { assertNoIssues, conditionMet, extractPayload, missingRequiredIssues } from '../../domain/rules/index.ts';
 import type { IncomingCallResult } from '../dto.ts';
 import type {
   AppIngress,
@@ -105,7 +105,8 @@ export class ReceiveIncomingCall {
     const template = await templates.publishedVariables(hook.appId, hook.templateId);
     if (!template) throw ValidationError.of('TEMPLATE_NOT_FOUND', `template ${hook.templateId} does not exist`, 'templateId');
     const extraction = extractPayload(input.body, hook.mappings, template.variables);
-    assertNoIssues(extraction.issues);
+    // Báo lỗi theo tên trường của body — kiểm ở đây thay vì để template báo `payload.*`.
+    assertNoIssues([...extraction.issues, ...missingRequiredIssues(extraction.variables)]);
     const topic = (await topics.topicsOf(hook.appId)).find((t) => t.topicId === hook.topicId);
     if (!topic) throw ValidationError.of('TOPIC_NOT_FOUND', `topic ${hook.topicId} does not exist`, 'topic');
 

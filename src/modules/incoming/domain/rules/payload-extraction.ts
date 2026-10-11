@@ -83,7 +83,7 @@ export function extractPayload(
 
     let value = toTemplateValue(raw);
     if (isInvalid(value)) {
-      issues.push(issue('INVALID_PAYLOAD_VALUE', `${path ?? key} is an object or an array of objects`, tv.name));
+      issues.push(issue('INVALID_PAYLOAD_VALUE', `field "${path ?? key}" must be text or a number, not an object`, path ?? key));
       value = undefined;
     } else if (value === undefined && mapping?.kind === 'path' && mapping.defaultValue !== null) {
       value = mapping.defaultValue;
@@ -118,6 +118,20 @@ export function dedupeValue(body: unknown, path: string | null): string | null {
   if (path === null) return null;
   const value = readJsonPath(body, parseJsonPath(path));
   return typeof value === 'string' || typeof value === 'number' ? String(value) : null;
+}
+
+/**
+ * Biến bắt buộc không có giá trị — báo theo TÊN TRƯỜNG người gọi gửi (`service`, hoặc đường dẫn đã ánh xạ
+ * `endpoint.name`), không theo `payload.service` của template: người cấu hình công cụ gọi vào chỉ thấy body
+ * của mình. Cùng mã `MISSING_VARIABLE` với `/v1` — nhật ký và console không phải đổi.
+ */
+export function missingRequiredIssues(variables: readonly ExtractedVariable[]): Issue[] {
+  return variables
+    .filter((v) => v.required && v.missing)
+    .map((v) => {
+      const field = v.source === 'path' && v.path !== null ? v.path : v.variable.slice('payload.'.length);
+      return issue('MISSING_VARIABLE', `field "${field}" is required but missing`, field);
+    });
 }
 
 export function assertNoIssues(issues: readonly Issue[]): void {

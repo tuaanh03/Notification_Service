@@ -230,9 +230,16 @@ describe('POST /hooks/:token', () => {
 
     const missing = await call(issued.path, { endpoint: { name: 'svc' }, alert: { state: 'TRIGGERED' } });
     expect([missing.status, codeOf(missing.body)]).toEqual([422, 'MISSING_VARIABLE']);
+    // Lỗi nói theo trường của body người gọi, không theo `payload.*`; không trả lại nguyên URL (token).
+    expect(missing.body['issues']).toEqual([
+      { code: 'MISSING_VARIABLE', message: 'field "alert.description" is required but missing', path: 'alert.description' },
+    ]);
+    expect(JSON.stringify(missing.body)).not.toContain(issued.token);
+    expect(missing.body['instance']).toBe(`/hooks/${issued.token.slice(0, 10)}…${issued.token.slice(-4)}`);
 
     const invalid = await call(issued.path, { endpoint: { name: { deep: 1 } }, alert: { state: 'TRIGGERED', description: 'x' } });
     expect([invalid.status, codeOf(invalid.body)]).toEqual([422, 'INVALID_PAYLOAD_VALUE']);
+    expect(((invalid.body['issues'] as Json[])[0] as Json)['path']).toBe('endpoint.name');
 
     expect((await call(issued.path, ['not', 'an', 'object'])).status).toBe(422);
     expect(await t.db.select().from(publications).where(eq(publications.appId, app.appId))).toHaveLength(0);

@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from '../observability/logger.ts';
 import { adminCaller, bearerToken, type AdminAuthenticator, type AdminAuthorizer, type ApiKeyAuthenticator, type RouteTarget } from './auth.ts';
 import { PROBLEM_CONTENT_TYPE, problem, toProblem } from './problem.ts';
+import { redactUrl } from './redact.ts';
 
 /** Một phụ thuộc mà `/health/ready` phải kiểm (MySQL, Redis...). Ném lỗi = chưa sẵn sàng. */
 export interface ReadinessCheck {
@@ -107,14 +108,14 @@ export async function buildHttpServer(options: {
     log.info('request completed', {
       request_id: request.id,
       method: request.method,
-      url: request.url,
+      url: redactUrl(request.url),
       status: reply.statusCode,
       ms: Math.round(reply.elapsedTime),
     });
   });
 
   app.setErrorHandler(async (err, request, reply) => {
-    const body = toProblem(err, request.url);
+    const body = toProblem(err, redactUrl(request.url));
     if (body.status >= 500) {
       log.error('unhandled error', {
         request_id: request.id,
@@ -128,7 +129,7 @@ export async function buildHttpServer(options: {
     reply
       .status(404)
       .type(PROBLEM_CONTENT_TYPE)
-      .send(problem(404, 'NOT_FOUND', `route ${request.method} ${request.url} not found`, { instance: request.url })),
+      .send(problem(404, 'NOT_FOUND', `route ${request.method} ${redactUrl(request.url)} not found`, { instance: redactUrl(request.url) })),
   );
 
   /** Process còn sống — không kiểm phụ thuộc (orchestrator restart process nếu cái này fail). */

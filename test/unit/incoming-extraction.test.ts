@@ -3,6 +3,7 @@ import {
   conditionMet,
   dedupeValue,
   extractPayload,
+  missingRequiredIssues,
   parseJsonPath,
   readJsonPath,
   stableStringify,
@@ -113,8 +114,18 @@ describe('extractPayload — ánh xạ > chữ cố định > trường cùng t�
   it('biến bắt buộc thiếu -> missing (template sẽ báo MISSING_VARIABLE); object -> INVALID_PAYLOAD_VALUE', () => {
     const r = extractPayload({ endpoint: { name: { nested: true } } }, mappings, vars);
     expect(r.variables.find((v) => v.variable === 'payload.detail')).toMatchObject({ missing: true, required: true });
-    expect(r.issues).toEqual([expect.objectContaining({ code: 'INVALID_PAYLOAD_VALUE', path: 'payload.service' })]);
+    // Lỗi theo trường của body người gọi (đường dẫn đã ánh xạ), không theo `payload.*`.
+    expect(r.issues).toEqual([expect.objectContaining({ code: 'INVALID_PAYLOAD_VALUE', path: 'endpoint.name' })]);
     expect(r.payload).not.toHaveProperty('service');
+  });
+
+  it('missingRequiredIssues: báo theo tên trường (cùng tên) hoặc đường dẫn đã ánh xạ', () => {
+    const plain = extractPayload({}, [], [{ name: 'payload.service', required: true }, { name: 'payload.note', required: false }]);
+    expect(missingRequiredIssues(plain.variables)).toEqual([
+      { code: 'MISSING_VARIABLE', message: 'field "service" is required but missing', path: 'service' },
+    ]);
+    const mapped = extractPayload({ endpoint: {} }, mappings, vars);
+    expect(missingRequiredIssues(mapped.variables).map((i) => i.path)).toContain('alert.description');
   });
 
   it('body không phải object: chỉ còn chữ cố định / mặc định', () => {
