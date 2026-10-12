@@ -4,7 +4,7 @@ import type { AuthenticatedApp } from '../dto.ts';
 import type { ApiKeyService, AppRepository, AppSecretRepository, NetworkRuleRepository } from '../ports/index.ts';
 
 /**
- * Cổng xác thực của `/v1/*`: API key -> app đang active -> qua allowlist IP / Origin.
+ * Cổng xác thực của `/v1/*`: API key -> app đang active -> qua allowlist IP.
  *
  * Mọi kiểu key sai (sai định dạng, không tồn tại, đã thu hồi, sai bí mật) trả CÙNG một lỗi — không
  * cho kẻ dò key biết mình sai ở bước nào. Lỗi 403 (app không active, IP lạ) chỉ xảy ra SAU khi key
@@ -22,7 +22,7 @@ export class AuthenticateApiKey {
     this.deps = deps;
   }
 
-  async execute(input: { apiKey: string | null; ip: string; origin: string | null }): Promise<AuthenticatedApp> {
+  async execute(input: { apiKey: string | null; ip: string }): Promise<AuthenticatedApp> {
     const { apps, secrets, networkRules, apiKeys } = this.deps;
     if (!input.apiKey) {
       throw new AuthenticationError('API_KEY_REQUIRED', 'missing API key: send Authorization: Bearer <api key>');
@@ -37,7 +37,7 @@ export class AuthenticateApiKey {
     if (!app) throw invalid;
 
     if (!app.canSend) throw new PermissionDeniedError('APP_NOT_ACTIVE', `app ${app.slug} is ${app.status}`);
-    const access = checkNetworkAccess(await networkRules.listByApp(app.id), { ip: input.ip, origin: input.origin });
+    const access = checkNetworkAccess(await networkRules.listByApp(app.id), { ip: input.ip });
     if (!access.allowed) {
       throw new PermissionDeniedError(access.reason, `request is not allowed by the network rules of app ${app.slug}`);
     }

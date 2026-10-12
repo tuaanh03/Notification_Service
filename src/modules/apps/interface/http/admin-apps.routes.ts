@@ -142,18 +142,18 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
       );
     });
 
-    app.get('/apps/:appId/network-rules', { config: access('app.read') }, async (request) => {
+    app.get('/apps/:appId/network-rules', { config: access('platform.manage') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.queries.listNetworkRules(AppId.parse(appId));
     });
 
-    app.post('/apps/:appId/network-rules', { config: access('app.manage') }, async (request, reply) => {
+    app.post('/apps/:appId/network-rules', { config: access('platform.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const rule = parseInput(ruleBody, request.body);
       return reply.status(201).send(await useCases.addNetworkRule.execute({ appId: AppId.parse(appId), ...rule }, ctx(request)));
     });
 
-    app.delete('/apps/:appId/network-rules', { config: access('app.manage') }, async (request, reply) => {
+    app.delete('/apps/:appId/network-rules', { config: access('platform.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const rule = parseInput(ruleBody, request.query);
       await useCases.removeNetworkRule.execute({ appId: AppId.parse(appId), ...rule }, ctx(request));

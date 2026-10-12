@@ -5,32 +5,22 @@ export interface NetworkRuleView {
   value: string;
 }
 
-export type NetworkAccess =
-  | { allowed: true }
-  | { allowed: false; reason: 'IP_NOT_ALLOWED' | 'ORIGIN_NOT_ALLOWED' };
+export type NetworkAccess = { allowed: true } | { allowed: false; reason: 'IP_NOT_ALLOWED' };
 
 /**
- * Allowlist của app cho `/v1/*` — hàm thuần, application tra rule rồi truyền vào.
+ * Allowlist IP của app cho `/v1/*` và `/hooks/*` — hàm thuần, application tra rule rồi truyền vào.
  *
- * Luật từng loại, ĐỘC LẬP nhau:
- *   - Chưa khai rule nào của một loại -> loại đó không giới hạn (app mới tạo gọi được ngay).
- *   - Đã khai ít nhất một rule `ip` -> IP gọi tới PHẢI nằm trong danh sách.
- *   - Đã khai rule `origin` và request có header Origin (gọi từ trình duyệt) -> Origin phải khớp.
- *     Request không có Origin (server-to-server) không bị luật origin chặn — luật ip lo phần đó.
+ *   - Chưa khai rule nào -> không giới hạn (app mới tạo gọi được ngay).
+ *   - Đã khai ít nhất một IP -> IP gọi tới PHẢI nằm trong danh sách.
  *
+ * Không có luật Origin: header Origin chỉ trình duyệt gửi, còn API key bắt buộc nằm ở server của app —
+ * luật đó chỉ chặn được trường hợp vốn đã cấm, ai cầm khoá bỏ header là qua (bổ sung ADR-0023).
  * So khớp chính xác từng giá trị. CIDR (dải IP) để sau, khi có nhu cầu thật.
  */
-export function checkNetworkAccess(
-  rules: readonly NetworkRuleView[],
-  request: { ip: string; origin: string | null },
-): NetworkAccess {
+export function checkNetworkAccess(rules: readonly NetworkRuleView[], request: { ip: string }): NetworkAccess {
   const ips = rules.filter((r) => r.kind === 'ip').map((r) => normalizeIp(r.value));
   if (ips.length > 0 && !ips.includes(normalizeIp(request.ip))) {
     return { allowed: false, reason: 'IP_NOT_ALLOWED' };
-  }
-  const origins = rules.filter((r) => r.kind === 'origin').map((r) => normalizeOrigin(r.value));
-  if (origins.length > 0 && request.origin !== null && !origins.includes(normalizeOrigin(request.origin))) {
-    return { allowed: false, reason: 'ORIGIN_NOT_ALLOWED' };
   }
   return { allowed: true };
 }
@@ -39,9 +29,4 @@ export function checkNetworkAccess(
 function normalizeIp(ip: string): string {
   const trimmed = ip.trim().toLowerCase();
   return trimmed.startsWith('::ffff:') && trimmed.includes('.') ? trimmed.slice(7) : trimmed;
-}
-
-/** Origin so theo scheme + host + port, không phân biệt hoa thường, bỏ `/` cuối. */
-function normalizeOrigin(origin: string): string {
-  return origin.trim().toLowerCase().replace(/\/+$/, '');
 }

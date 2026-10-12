@@ -32,3 +32,15 @@ lưu nhưng chưa được đối chiếu ở đâu — ADR này không đụng 
 - Rủi ro app rác / app gửi bừa: Super Admin xử lý bằng tạm ngưng / thu hồi; lớp chặn cuối vẫn là
   giới hạn gửi chung `EMAIL_MAX_PER_MINUTE`.
 - Test không dựng được app `pending_approval` qua API nữa — test của app cũ sửa thẳng dòng trong DB.
+
+## Bổ sung (2026-10-12): giới hạn IP do Super Admin quản lý, bỏ Origin
+
+7. **Giới hạn IP của app** (`/admin/apps/:appId/network-rules`) chuyển từ `app.read` / `app.manage` sang
+   `platform.manage` — chỉ Super Admin xem / thêm / gỡ. Đội app muốn giới hạn thì báo Super Admin. Luật
+   chặn không đổi: đã khai ít nhất một IP thì IP khác nhận 403 `IP_NOT_ALLOWED` ở `/v1` và `/hooks`.
+8. **Bỏ luật Origin.** Header `Origin` chỉ trình duyệt gửi, request không có Origin vốn được cho qua, còn
+   API key bắt buộc nằm ở server của app — luật này chỉ chặn được trường hợp đã bị cấm, ai cầm khoá bỏ
+   header là qua. `NETWORK_RULE_KINDS` chỉ còn `ip`; migration `0016` xoá dòng `origin` cũ rồi thu enum;
+   mã `ORIGIN_NOT_ALLOWED` không còn (hai tài liệu tích hợp + `lib/api/v1-errors.ts` của console đã sửa).
+9. Console: bỏ màn "IP & Origin" của Cài đặt App và hai ô IP / Origin ở bước tạo app; Super Admin quản lý ở
+   Quản trị EWS → Tất cả app → "Giới hạn IP".

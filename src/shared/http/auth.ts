@@ -36,9 +36,9 @@ export interface AdminCaller {
 
 export type Caller = AppCaller | AdminCaller;
 
-/** Xác thực `/v1/*` — hiện thực bởi module apps (API key + allowlist IP/origin). */
+/** Xác thực `/v1/*` — hiện thực bởi module apps (API key + allowlist IP). */
 export interface ApiKeyAuthenticator {
-  authenticate(input: { apiKey: string | null; ip: string; origin: string | null }): Promise<AppCaller>;
+  authenticate(input: { apiKey: string | null; ip: string }): Promise<AppCaller>;
 }
 
 /** Xác thực `/admin/*` — tạm thời là bootstrap token; session + RBAC thay thế sau. */

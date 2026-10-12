@@ -12,7 +12,7 @@ export class AppsApiKeyAuthenticator implements ApiKeyAuthenticator {
     this.authenticateApiKey = deps.authenticateApiKey;
   }
 
-  async authenticate(input: { apiKey: string | null; ip: string; origin: string | null }): Promise<AppCaller> {
+  async authenticate(input: { apiKey: string | null; ip: string }): Promise<AppCaller> {
     const app = await this.authenticateApiKey.execute(input);
     return { kind: 'app', ...app };
   }

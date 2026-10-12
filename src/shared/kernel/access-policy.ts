@@ -24,7 +24,7 @@ export const PERMISSIONS = [
   'app.create',
   /** Xem dữ liệu của một app. */
   'app.read',
-  /** Cấu hình app: topic, template, khoá API, IP / Origin, gửi duyệt. */
+  /** Cấu hình app: topic, template, khoá API, gửi duyệt. */
   'app.manage',
   /** Duyệt / từ chối / tạm ngưng / mở lại / thu hồi app — chỉ Super Admin. */
   'app.review',

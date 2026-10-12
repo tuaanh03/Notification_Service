@@ -30,7 +30,7 @@ import { dedupeKeyOf } from './dedupe-key.ts';
  * `POST /hooks/:token` — công cụ ngoài (Gatus, JSON tự build…) phát tin vào topic (ADR-0030).
  *
  *   token -> hook đang bật (sai / tắt -> 404, như không tồn tại)
- *   -> app gửi được + qua allowlist IP / Origin (cùng luật `/v1`)
+ *   -> app gửi được + qua allowlist IP (cùng luật `/v1`)
  *   -> điều kiện phát (không thoả -> 200 skipped, không tính giới hạn)
  *   -> giới hạn số lần phát mỗi phút của hook (429)
  *   -> rút biến theo ánh xạ -> khoá chống trùng -> `PublishToTopic` (202 mới / 200 trùng)
@@ -61,7 +61,6 @@ export class ReceiveIncomingCall {
     body: unknown;
     idempotencyKey: string | null;
     ip: string;
-    origin: string | null;
   }): Promise<IncomingCallResult> {
     const hook = await this.deps.hooks.findByTokenHash(this.deps.crypto.sha256(input.token));
     // Token sai và hook đang tắt trả CÙNG một lỗi — không cho người dò token biết mình đoán trúng.
@@ -91,10 +90,10 @@ export class ReceiveIncomingCall {
 
   private async handle(
     hook: IncomingHook,
-    input: { body: unknown; idempotencyKey: string | null; ip: string; origin: string | null },
+    input: { body: unknown; idempotencyKey: string | null; ip: string },
   ): Promise<IncomingCallResult> {
     const { clock, crypto, ingress, templates, topics, publisher, settings, limiter } = this.deps;
-    const app = await ingress.authorize({ appId: hook.appId, ip: input.ip, origin: input.origin });
+    const app = await ingress.authorize({ appId: hook.appId, ip: input.ip });
     if (input.body === null || typeof input.body !== 'object' || Array.isArray(input.body)) {
       throw ValidationError.of('INCOMING_BODY_INVALID', 'body must be a JSON object', 'body');
     }

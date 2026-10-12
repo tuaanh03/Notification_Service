@@ -12,9 +12,9 @@ export interface HookCrypto {
   sha256(text: string): string;
 }
 
-/** -> apps: app còn gửi được + qua allowlist IP / Origin, cùng luật với `/v1`. Không được -> ném 403. */
+/** -> apps: app còn gửi được + qua allowlist IP, cùng luật với `/v1`. Không được -> ném 403. */
 export interface AppIngress {
-  authorize(input: { appId: AppId; ip: string; origin: string | null }): Promise<{ grantedChannels: readonly Channel[] }>;
+  authorize(input: { appId: AppId; ip: string }): Promise<{ grantedChannels: readonly Channel[] }>;
 }
 
 /** -> templates: biến của bản đang xuất bản. Template không thuộc app -> null. */

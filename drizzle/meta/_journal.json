@@ -113,6 +113,13 @@
       "when": 1791786709403,
       "tag": "0015_admin_member_listed",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1791813995490,
+      "tag": "0016_network_rules_ip_only",
+      "breakpoints": true
     }
   ]
 }

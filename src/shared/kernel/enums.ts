@@ -47,7 +47,7 @@ export const APP_SECRET_STATUSES = ['active', 'revoked'] as const;
 export type AppSecretStatus = (typeof APP_SECRET_STATUSES)[number];
 
 /** Allowlist của app: địa chỉ IP gọi `/v1/*` hoặc origin của trình duyệt. */
-export const NETWORK_RULE_KINDS = ['ip', 'origin'] as const;
+export const NETWORK_RULE_KINDS = ['ip'] as const;
 export type NetworkRuleKind = (typeof NETWORK_RULE_KINDS)[number];
 
 export const CHANNELS = ['email', 'sms', 'push', 'in_app'] as const;

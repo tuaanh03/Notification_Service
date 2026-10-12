@@ -53,7 +53,7 @@ export function appsModule(
   adminAuthorizer: AdminAuthorizer;
   appQueries: AppQueries;
   grantAppRole: GrantAppRole;
-  /** Cho incoming webhook (ADR-0030): app gửi được + qua allowlist IP / Origin. */
+  /** Cho incoming webhook (ADR-0030): app gửi được + qua allowlist IP. */
   authorizeAppIngress: AuthorizeAppIngress;
 } {
   const { uow, outbox, clock } = container.ports;

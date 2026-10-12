@@ -17,13 +17,11 @@ export function publicHooksRoutes(useCases: { receive: ReceiveIncomingCall }): H
       const { token } = params.parse(request.params);
       if (!TOKEN.test(token)) throw new NotFoundError('incoming webhook', 'for this token');
       const header = request.headers['idempotency-key'];
-      const origin = request.headers.origin;
       const result = await useCases.receive.execute({
         token,
         body: request.body ?? null,
         idempotencyKey: typeof header === 'string' ? header.slice(0, 255) : null,
         ip: request.ip,
-        origin: typeof origin === 'string' ? origin : null,
       });
       return reply.status(result.status === 'published' ? 202 : 200).send(result);
     });

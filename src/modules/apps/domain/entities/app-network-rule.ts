@@ -1,6 +1,6 @@
 import { ValidationError, type AppId, type NetworkRuleKind } from '../../../../shared/kernel/index.ts';
 
-/** Allowlist IP / Origin cho `/v1/*`. Khoá kép (app_id, kind, value). */
+/** Allowlist IP cho `/v1/*` và `/hooks/*`. Khoá kép (app_id, kind, value). */
 export class AppNetworkRule {
   readonly appId: AppId;
   readonly kind: NetworkRuleKind;

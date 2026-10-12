@@ -164,6 +164,18 @@ describe('Member + App Admin', () => {
     expect((await appAdmin('POST', `/apps/${app.A1}/suspend`)).status).toBe(403);
   });
 
+  it('giới hạn IP: chỉ Super Admin xem / thêm / gỡ — App Admin, Owner đều 403 (bổ sung ADR-0023)', async () => {
+    for (const who of [token.appAdmin, token.owner]) {
+      const caller = as(who);
+      expect((await caller('GET', `/apps/${app.A1}/network-rules`)).status).toBe(403);
+      expect((await caller('POST', `/apps/${app.A1}/network-rules`, { kind: 'ip', value: '10.1.1.1' })).status).toBe(403);
+      expect((await caller('DELETE', `/apps/${app.A1}/network-rules?kind=ip&value=10.1.1.1`)).status).toBe(403);
+    }
+    expect((await as(SUPER)('GET', `/apps/${app.A1}/network-rules`)).status).toBe(200);
+    // Origin không còn là loại luật.
+    expect((await as(SUPER)('POST', `/apps/${app.A1}/network-rules`, { kind: 'origin', value: 'https://a.test' })).status).toBe(422);
+  });
+
   it('cấp khoá API cho app của mình — được, không chờ ai duyệt (ADR-0023)', async () => {
     expect((await as(token.appAdmin)('POST', `/apps/${app.A1}/secrets`)).status).toBe(201);
   });

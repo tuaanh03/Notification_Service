@@ -192,12 +192,7 @@ export async function buildHttpServer(options: {
   await app.register(
     async (scope) => {
       scope.addHook('onRequest', async (request) => {
-        const origin = request.headers.origin;
-        request.caller = await apiKey.authenticate({
-          apiKey: bearerToken(request),
-          ip: request.ip,
-          origin: typeof origin === 'string' ? origin : null,
-        });
+        request.caller = await apiKey.authenticate({ apiKey: bearerToken(request), ip: request.ip });
       });
       for (const register of surfaces.v1 ?? []) await register(scope);
     },

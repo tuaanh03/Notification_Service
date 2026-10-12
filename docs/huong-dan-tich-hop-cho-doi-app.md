@@ -52,13 +52,10 @@ sẵn: **có** (bước 5, cách 2).
   xoay khoá không mất kết nối: nhận khoá mới → triển khai → báo EWS thu hồi khoá cũ.
 * Giữ khoá ở phía máy chủ của app. Không nhúng vào trình duyệt hay ứng dụng di động.
 
-**Giới hạn nguồn gọi (nếu app đã khai):**
-
-* **IP:** so khớp **đúng từng địa chỉ**, chưa hỗ trợ dải (`10.20.0.0/16` sẽ **không** khớp gì).
-  Đổi IP máy chủ thì báo EWS: thêm IP mới trước, gỡ IP cũ sau, để không có lúc bị chặn.
-  Đã khai ít nhất một IP thì mọi IP khác bị chặn.
-* **Origin:** chỉ xét khi request có header `Origin` (gọi từ trình duyệt). Gọi máy-chủ-tới-máy-chủ
-  không bị luật này chặn.
+**Giới hạn IP (tuỳ chọn, do đội EWS khai):** muốn chỉ máy chủ của app gọi được thì báo đội EWS danh
+sách IP. Đã khai ít nhất một IP thì mọi IP khác bị chặn (`IP_NOT_ALLOWED`) — cả `/v1` lẫn incoming webhook.
+So khớp **đúng từng địa chỉ**, chưa hỗ trợ dải (`10.20.0.0/16` sẽ **không** khớp gì). Đổi IP máy chủ thì
+báo EWS: thêm IP mới trước, gỡ IP cũ sau, để không có lúc bị chặn.
 
 Kiểm khoá và quyền được cấp:
 
@@ -544,7 +541,7 @@ Ví dụ template có biến `payload.title` (bắt buộc) và `payload.name_is
 | 202 | `{"status":"published","publicationId":"…","recipientCount":12}` | Đã gửi (như cách 1) |
 | 200 | `{"status":"duplicate", …}` | Trùng lần gọi trước — không gửi lại |
 | 404 | `NOT_FOUND` | URL sai, hook đã tắt hoặc đã xoá |
-| 403 | `APP_NOT_ACTIVE` · `IP_NOT_ALLOWED` · `ORIGIN_NOT_ALLOWED` | Như `/v1` |
+| 403 | `APP_NOT_ACTIVE` · `IP_NOT_ALLOWED` | Như `/v1` |
 | 422 | `MISSING_VARIABLE` · `INVALID_PAYLOAD_VALUE` · `INCOMING_BODY_INVALID` · `PUBLICATION_TOO_LARGE` · lỗi template | Body thiếu / sai trường, hoặc template / topic chưa sẵn sàng |
 | 429 | `INCOMING_HOOK_RATE_LIMITED` | Gọi quá số lần mỗi phút |
 
@@ -648,8 +645,7 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | 401 | `API_KEY_REQUIRED` | mọi `/v1` | Thiếu header `Authorization`. |
 | 401 | `INVALID_API_KEY` | mọi `/v1` | Khoá sai hoặc đã thu hồi. Không thử lại — xin khoá mới. |
 | 403 | `APP_NOT_ACTIVE` | mọi `/v1` | App đang tạm ngưng hoặc đã thu hồi. Liên hệ EWS. |
-| 403 | `IP_NOT_ALLOWED` | mọi `/v1` | IP gọi tới không nằm trong danh sách đã khai (so khớp đúng từng địa chỉ). |
-| 403 | `ORIGIN_NOT_ALLOWED` | mọi `/v1` | Header `Origin` không nằm trong danh sách đã khai. |
+| 403 | `IP_NOT_ALLOWED` | mọi `/v1` | IP gọi tới không nằm trong danh sách đã khai (so khớp đúng từng địa chỉ). Báo đội EWS thêm IP. |
 | 422 | `RECIPIENT_NOT_FOUND` | gửi | Chưa khai người này — làm bước 3 rồi gọi lại. |
 | 422 | `IDEMPOTENCY_KEY_REQUIRED` | phát | Lần phát vào chủ đề phải có `idempotencyKey` (mục 6). |
 | 422 | `PUBLICATION_TOO_LARGE` | phát | Chủ đề có quá 100 người theo dõi. Không ai nhận thư — gửi lẻ từng người. |

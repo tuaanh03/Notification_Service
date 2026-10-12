@@ -83,27 +83,16 @@ describe('App.approve — duyệt kèm quyền cấp (app cũ đang chờ duyệ
   });
 });
 
-describe('allowlist mạng của /v1', () => {
-  const rules = [
-    { kind: 'ip' as const, value: '10.0.0.5' },
-    { kind: 'origin' as const, value: 'https://shop.example.com/' },
-  ];
+describe('allowlist IP của /v1 và /hooks', () => {
+  const rules = [{ kind: 'ip' as const, value: '10.0.0.5' }];
 
-  it('chưa khai rule nào -> không giới hạn', () => {
-    expect(checkNetworkAccess([], { ip: '1.2.3.4', origin: 'https://evil.test' })).toEqual({ allowed: true });
+  it('chưa khai IP nào -> không giới hạn', () => {
+    expect(checkNetworkAccess([], { ip: '1.2.3.4' })).toEqual({ allowed: true });
   });
 
   it('IP phải nằm trong danh sách; dạng IPv4-mapped IPv6 của Node được coi là một', () => {
-    expect(checkNetworkAccess(rules, { ip: '::ffff:10.0.0.5', origin: null })).toEqual({ allowed: true });
-    expect(checkNetworkAccess(rules, { ip: '10.0.0.6', origin: null })).toEqual({ allowed: false, reason: 'IP_NOT_ALLOWED' });
-  });
-
-  it('Origin chỉ xét khi request có Origin (trình duyệt); so không phân biệt hoa thường, bỏ / cuối', () => {
-    expect(checkNetworkAccess(rules, { ip: '10.0.0.5', origin: 'HTTPS://shop.example.com' })).toEqual({ allowed: true });
-    expect(checkNetworkAccess(rules, { ip: '10.0.0.5', origin: 'https://evil.test' })).toEqual({
-      allowed: false,
-      reason: 'ORIGIN_NOT_ALLOWED',
-    });
+    expect(checkNetworkAccess(rules, { ip: '::ffff:10.0.0.5' })).toEqual({ allowed: true });
+    expect(checkNetworkAccess(rules, { ip: '10.0.0.6' })).toEqual({ allowed: false, reason: 'IP_NOT_ALLOWED' });
   });
 });
 
@@ -151,7 +140,7 @@ describe('AuthenticateApiKey (use case, port giả)', () => {
     return { useCase, apiKey: issued.apiKey, theApp };
   }
   const call = (useCase: AuthenticateApiKey, apiKey: string | null, ip = '10.0.0.1') =>
-    useCase.execute({ apiKey, ip, origin: null });
+    useCase.execute({ apiKey, ip });
 
   it('key đúng, app active -> trả caller đầy đủ', async () => {
     const { useCase, apiKey, theApp } = setup();

@@ -24,7 +24,7 @@ export class AppsIngress implements AppIngress {
     this.query = deps.authorizeAppIngress;
   }
 
-  authorize(input: { appId: AppId; ip: string; origin: string | null }): Promise<{ grantedChannels: readonly Channel[] }> {
+  authorize(input: { appId: AppId; ip: string }): Promise<{ grantedChannels: readonly Channel[] }> {
     return this.query.execute(input);
   }
 }

@@ -9,7 +9,7 @@ import { requireApp } from './shared.ts';
 type Deps = { uow: UnitOfWork; outbox: EventOutbox; apps: AppRepository; networkRules: NetworkRuleRepository };
 type RuleInput = { appId: AppId; kind: NetworkRuleKind; value: string };
 
-/** Thêm một dòng allowlist IP / Origin cho `/v1/*`. */
+/** Thêm một IP vào allowlist của `/v1/*` và `/hooks/*` — chỉ Super Admin (bổ sung ADR-0023). */
 export class AddNetworkRule {
   private readonly deps: Deps;
 
