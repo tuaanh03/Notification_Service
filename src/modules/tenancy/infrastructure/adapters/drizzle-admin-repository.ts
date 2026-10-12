@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, like, or, sql, type SQL } from 'drizzle-orm';
 import { isDuplicateKeyError, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AccountId,
@@ -7,7 +7,7 @@ import {
   type AdminId as AdminIdType,
   type NormalizedEmail,
 } from '../../../../shared/kernel/index.ts';
-import type { AdminRepository } from '../../application/ports/index.ts';
+import type { AdminPage, AdminRepository } from '../../application/ports/index.ts';
 import { Admin } from '../../domain/entities/admin.ts';
 import { admins } from '../db/schema.ts';
 
@@ -46,6 +46,36 @@ export class DrizzleAdminRepository implements AdminRepository {
     return rows.map(toEntity);
   }
 
+  async listPage(page: { limit: number; offset: number; search?: string | undefined; listed?: boolean | undefined }): Promise<AdminPage> {
+    const search = page.search?.trim();
+    const filters: SQL[] = [];
+    // `like` như màn người nhận: đủ cho danh bạ một công ty, không dựng full-text.
+    if (search) filters.push(or(like(admins.email, `%${search}%`), like(admins.displayName, `%${search}%`))!);
+    if (page.listed !== undefined) filters.push(eq(admins.memberListed, page.listed));
+    const where = filters.length > 0 ? and(...filters) : undefined;
+    const db = this.transactions.executor();
+    const [rows, [totalRow]] = await Promise.all([
+      db
+        .select()
+        .from(admins)
+        .where(where)
+        .orderBy(asc(sql`coalesce(${admins.displayName}, ${admins.email})`), asc(admins.email))
+        .limit(page.limit)
+        .offset(page.offset),
+      db.select({ total: count() }).from(admins).where(where),
+    ]);
+    return { items: rows.map(toEntity), total: totalRow?.total ?? 0 };
+  }
+
+  async updateMemberListed(ids: readonly AdminIdType[], listed: boolean, at: Date): Promise<void> {
+    if (ids.length === 0) return;
+    await this.transactions
+      .executor()
+      .update(admins)
+      .set({ memberListed: listed, updatedAt: at })
+      .where(inArray(admins.adminId, [...ids]));
+  }
+
   async insert(admin: Admin): Promise<void> {
     await this.transactions.executor().insert(admins).values({
       adminId: admin.id,
@@ -55,6 +85,7 @@ export class DrizzleAdminRepository implements AdminRepository {
       passwordHash: admin.passwordHash,
       microsoftOid: admin.microsoftOid,
       displayName: admin.displayName,
+      memberListed: admin.memberListed,
       createdAt: admin.createdAt,
       updatedAt: admin.updatedAt,
     });
@@ -115,6 +146,7 @@ function toEntity(row: typeof admins.$inferSelect): Admin {
     passwordHash: row.passwordHash,
     microsoftOid: row.microsoftOid,
     displayName: row.displayName,
+    memberListed: row.memberListed,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

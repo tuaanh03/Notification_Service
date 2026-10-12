@@ -69,6 +69,10 @@ class FakeAdmins implements AdminRepository {
   async listByAccount(): Promise<Admin[]> {
     return this.rows;
   }
+  async listPage() {
+    return { items: this.rows, total: this.rows.length };
+  }
+  async updateMemberListed() {}
   async updateDisplayName(): Promise<void> {}
   async updatePassword(): Promise<void> {}
   async linkMicrosoft(): Promise<boolean> {

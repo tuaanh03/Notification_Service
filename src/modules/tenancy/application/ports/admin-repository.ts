@@ -1,6 +1,13 @@
 import type { AccountId, AdminId, NormalizedEmail } from '../../../../shared/kernel/index.ts';
 import type { Admin } from '../../domain/entities/admin.ts';
 
+/** Một trang của màn Danh bạ (Super Admin). */
+export interface AdminPage {
+  items: Admin[];
+  /** Tổng số khớp bộ lọc, không tính phân trang. */
+  total: number;
+}
+
 export interface AdminRepository {
   findById(id: AdminId): Promise<Admin | null>;
   /** Email đã chuẩn hoá — `uq_admins_account_email` duy nhất theo (account, email). */
@@ -11,6 +18,11 @@ export interface AdminRepository {
   findManyByIds(ids: readonly AdminId[]): Promise<Admin[]>;
   /** Mọi admin của một account — danh sách để chọn khi thêm thành viên (ADR-0027). */
   listByAccount(accountId: AccountId): Promise<Admin[]>;
+  /**
+   * Màn Danh bạ: mọi tài khoản, sắp theo tên (thiếu tên thì email). `search` khớp một phần email
+   * hoặc tên; `listed` lọc theo cờ hiện khi thêm thành viên, bỏ trống = cả hai.
+   */
+  listPage(page: { limit: number; offset: number; search?: string | undefined; listed?: boolean | undefined }): Promise<AdminPage>;
   insert(admin: Admin): Promise<void>;
   /**
    * Như `insert`, nhưng trùng khoá duy nhất (email trong account, `microsoft_oid`) thì trả `false`
@@ -24,6 +36,8 @@ export interface AdminRepository {
   linkMicrosoft(admin: Admin): Promise<boolean>;
   /** Chỉ ghi `display_name` + `updated_at` (ADR-0027). */
   updateDisplayName(admin: Admin): Promise<void>;
+  /** Chỉ ghi `member_listed` + `updated_at`, cho cả lô (cùng giá trị, cùng mốc giờ). */
+  updateMemberListed(ids: readonly AdminId[], listed: boolean, at: Date): Promise<void>;
   /** Chỉ ghi `password_hash` + `updated_at` — không đụng email, role. */
   updatePassword(admin: Admin): Promise<void>;
   countByAccount(accountId: AccountId): Promise<number>;

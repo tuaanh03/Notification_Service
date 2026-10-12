@@ -57,6 +57,10 @@ class FakeAdmins implements AdminRepository {
   async listByAccount() {
     return this.rows;
   }
+  async listPage() {
+    return { items: this.rows, total: this.rows.length };
+  }
+  async updateMemberListed() {}
   async insert() {}
   async insertIfAbsent(admin: Admin) {
     if (this.createdConcurrently !== null) {
@@ -125,7 +129,9 @@ describe('SyncTenantDirectory', () => {
     expect([unlinked.microsoftOid, unlinked.displayName]).toEqual(['oid-binh', 'Trần Bình']);
     expect(other.microsoftOid).toBe('oid-chi-khac');
     const created = admins.rows.find((a) => a.email === 'la@company.com')!;
-    expect(created).toMatchObject({ role: 'user', passwordHash: null, microsoftOid: 'oid-la', displayName: 'Lã Thị La' });
+    // Người mới từ danh bạ CHƯA hiện khi thêm thành viên — chờ Super Admin tích; người đã có giữ nguyên cờ.
+    expect(created).toMatchObject({ role: 'user', passwordHash: null, microsoftOid: 'oid-la', displayName: 'Lã Thị La', memberListed: false });
+    expect([known.memberListed, unlinked.memberListed]).toEqual([true, true]);
     expect(created.accountId).toBe(INSTALL.id);
 
     expect(outbox.events.map((e) => e.eventType)).toEqual(['AdminMicrosoftLinked', 'AdminCreated', 'TenantDirectorySynced']);

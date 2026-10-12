@@ -37,6 +37,25 @@ gửi mail, ADR-0018) đã có quyền application `User.Read.All` / `Directory.
    cả lượt một dòng `TenantDirectorySynced` (ai bấm + các con số). Route trả CHỈ con số
    (`total`, `created`, `linked`, `renamed`, `unchanged`, `conflicts`), không trả danh sách email.
 
+## Bổ sung (2026-10-12): Super Admin chọn ai hiện khi thêm thành viên
+
+Danh bạ M365 có thể có cả trăm người, không phải ai cũng nên hiện trong hộp "Thêm thành viên" của mọi
+org; và nút đồng bộ đặt ở màn Thành viên của một org là sai chỗ — đó là việc cấp hệ thống.
+
+8. **Cột `admins.member_listed`** (migration `0015`, `NOT NULL DEFAULT true`). Mặc định: tài khoản
+   có từ trước, tạo bằng `admin-cli`, tự đăng nhập M365 lần đầu (ADR-0024) -> **hiện**; tạo MỚI từ
+   đồng bộ danh bạ -> **ẩn** (ghi `false` tường minh, chờ Super Admin tích). Gắn `oid` cho tài khoản
+   đã có không đổi cờ.
+9. **Màn Danh bạ** (`/admin/directory` của console, chỉ Super Admin — `platform.manage`):
+   `GET /admin/directory/people?limit&offset&q&listed=yes|no` (mọi tài khoản, sắp theo tên, tìm theo
+   email / tên; mỗi dòng `adminId`, `email`, `displayName`, `isSuperAdmin`, `m365Linked`,
+   `memberListed`) và `PUT /admin/directory/people/member-listed` `{ adminIds (≤ 100), listed }` ->
+   `{ changed }`. Chỉ ghi người thật sự đổi, mỗi người một audit `AdminMemberListedChanged`; id không
+   tồn tại thì bỏ qua. Nút đồng bộ chuyển sang màn này.
+10. **Ép ở backend, không chỉ ở hộp chọn**: `member-candidates` chỉ trả người đã tích; `PUT …/members`
+    thêm MỚI người chưa tích -> 422 `ADMIN_NOT_LISTED` (path `email`). Đổi vai người đã là thành viên
+    không xét cờ; bỏ tích KHÔNG gỡ ai khỏi org. `admin-cli set-member` là lệnh hệ thống, không xét cờ.
+
 ## Không làm
 
 Không khoá / xoá tài khoản khi người đó rời tenant. Không đồng bộ nhóm. Không đổi email của tài khoản

@@ -22,7 +22,8 @@ type Outcome = 'created' | 'linked' | 'renamed' | 'unchanged' | 'conflicts';
  * tiên (ADR-0024), chỉ khác là chạy cho cả tenant một lần:
  *   đã gắn `oid`              -> chỉ cập nhật tên
  *   có email, chưa gắn `oid`  -> gắn `oid` (+ tên)
- *   chưa có                   -> tạo vai `user`, không mật khẩu, account cũ nhất, gắn sẵn `oid`
+ *   chưa có                   -> tạo vai `user`, không mật khẩu, account cũ nhất, gắn sẵn `oid`,
+ *                                CHƯA hiện khi thêm thành viên — Super Admin tích ở màn Danh bạ
  *   email gắn `oid` KHÁC       -> bỏ qua, đếm vào `conflicts`
  *
  * Mỗi người một transaction nhỏ: lỗi một người không làm hỏng cả lượt, và chạy chồng với lần đăng nhập
@@ -109,6 +110,7 @@ export class SyncTenantDirectory {
       passwordHash: null,
       microsoftOid: person.oid,
       displayName: person.displayName,
+      memberListed: false,
       createdAt: now,
     });
     const inserted = await uow.run(async () => {
@@ -119,7 +121,7 @@ export class SyncTenantDirectory {
           aggregateId: admin.id,
           eventType: 'AdminCreated',
           payload: audited(ctx, {
-            after: { email: admin.email, role: admin.role, hasPassword: false, microsoftOid: person.oid, via: 'm365_directory_sync' },
+            after: { email: admin.email, role: admin.role, hasPassword: false, microsoftOid: person.oid, memberListed: false, via: 'm365_directory_sync' },
           }),
         },
       ]);

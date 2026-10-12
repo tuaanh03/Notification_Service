@@ -1,0 +1,1 @@
+ALTER TABLE `admins` ADD `member_listed` boolean DEFAULT true NOT NULL;

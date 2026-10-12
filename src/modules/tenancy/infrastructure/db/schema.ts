@@ -1,4 +1,4 @@
-import { foreignKey, index, mysqlEnum, mysqlTable, primaryKey, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { boolean, foreignKey, index, mysqlEnum, mysqlTable, primaryKey, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 import { ADMIN_ROLES, ORG_ROLES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 
@@ -53,6 +53,12 @@ export const admins = mysqlTable(
      * NULL = chưa biết tên (admin chỉ dùng mật khẩu, hoặc M365 không trả tên). Chỉ để hiển thị, không định danh.
      */
     displayName: varchar('display_name', { length: 256 }),
+    /**
+     * Có hiện trong hộp "Thêm thành viên" của org không — Super Admin tích ở màn Danh bạ.
+     * Mặc định `true` ở DB: tài khoản có từ trước, tạo bằng CLI hay tự đăng nhập M365 lần đầu đều hiện;
+     * chỉ người mới đến từ đồng bộ danh bạ được ghi `false` tường minh (chờ Super Admin tích).
+     */
+    memberListed: boolean('member_listed').notNull().default(true),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

@@ -9,7 +9,8 @@ export interface MemberCandidateDto {
 }
 
 /**
- * Người có thể thêm vào org (ADR-0027): mọi tài khoản cùng account với org, trừ người đã là thành viên.
+ * Người có thể thêm vào org (ADR-0027): tài khoản cùng account với org mà Super Admin đã tích hiện
+ * ở màn Danh bạ, trừ người đã là thành viên.
  * Tài khoản đến từ đồng bộ danh bạ M365 hoặc lần đăng nhập M365 đầu tiên. Ba truy vấn cho cả org.
  */
 export class ListMemberCandidates {
@@ -25,7 +26,7 @@ export class ListMemberCandidates {
     const [all, members] = await Promise.all([this.deps.admins.listByAccount(org.accountId), this.deps.members.listByOrg(orgId)]);
     const taken = new Set<string>(members.map((m) => m.adminId));
     return all
-      .filter((a) => !taken.has(a.id))
+      .filter((a) => a.memberListed && !taken.has(a.id))
       .map((a) => ({ adminId: a.id as string, email: a.email as string, displayName: a.displayName }))
       .sort((a, b) => (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email));
   }

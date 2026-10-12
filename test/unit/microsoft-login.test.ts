@@ -93,6 +93,10 @@ class FakeAdmins implements AdminRepository {
   async listByAccount() {
     return this.rows;
   }
+  async listPage() {
+    return { items: this.rows, total: this.rows.length };
+  }
+  async updateMemberListed() {}
   renamed: string[] = [];
   async updateDisplayName(admin: Admin) {
     this.renamed.push(admin.id);

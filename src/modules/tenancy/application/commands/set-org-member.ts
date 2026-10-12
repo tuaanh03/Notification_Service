@@ -19,6 +19,8 @@ export interface OrgMemberDto {
  *
  * Email chưa có tài khoản -> 422 `ADMIN_NOT_REGISTERED`: người đó cần đăng nhập Microsoft 365 một
  * lần để có tài khoản (ADR-0024). Không dùng 404 — 404 trên route này nghĩa là "không thấy org".
+ * Thêm MỚI người Super Admin chưa tích ở màn Danh bạ -> 422 `ADMIN_NOT_LISTED` (gọi API thẳng cũng
+ * không lách được hộp chọn); đổi vai người đã là thành viên thì không xét cờ này.
  */
 export class SetOrgMember {
   private readonly deps: {
@@ -55,6 +57,10 @@ export class SetOrgMember {
 
       const now = clock.now();
       const current = await members.find(org.id, admin.id);
+      // `admin-cli` (actorIsOwner === undefined) là lệnh hệ thống trên máy chủ — không qua hộp chọn.
+      if (current === null && !admin.memberListed && input.actorIsOwner !== undefined) {
+        throw ValidationError.of('ADMIN_NOT_LISTED', 'this account is not available to add to organizations', 'email');
+      }
       assertMayTouchOwner({ actorIsOwner: input.actorIsOwner, currentRole: current?.role ?? null, nextRole: input.role });
       assertOwnerRemains({
         currentRole: current?.role ?? null,

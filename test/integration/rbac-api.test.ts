@@ -361,7 +361,23 @@ describe('danh bạ M365 (ADR-0027)', () => {
     const result = await must(as(SUPER)('POST', '/directory/m365-sync'), 200);
     expect(result).toMatchObject({ total: 2, created: 1, linked: 1, conflicts: 0 });
 
+    // Người mới từ danh bạ chưa hiện: không có trong hộp chọn, thêm thẳng bằng API cũng bị chặn.
     const owner = as(tk.owner);
+    const hidden = (await must(owner('GET', `/organizations/${orgId}/member-candidates`), 200)) as unknown as Json[];
+    expect(hidden.map((c) => c['email'])).not.toContain('nv1@test.local');
+    const blocked = await owner('PUT', `/organizations/${orgId}/members`, { email: 'nv1@test.local', role: 'member' });
+    expect(blocked.status).toBe(422);
+    expect((blocked.body['issues'] as Json[])[0]).toMatchObject({ code: 'ADMIN_NOT_LISTED', path: 'email' });
+
+    // Super Admin tích ở màn Danh bạ.
+    const page = await must(as(SUPER)('GET', '/directory/people?q=nv1&listed=no'), 200);
+    const nv1 = (page['items'] as Json[])[0]!;
+    expect(nv1).toMatchObject({ email: 'nv1@test.local', displayName: 'Nhân Viên Một', m365Linked: true, memberListed: false });
+    expect(page['total']).toBe(1);
+    expect(await must(as(SUPER)('PUT', '/directory/people/member-listed', { adminIds: [nv1['adminId']], listed: true }), 200)).toEqual({
+      changed: 1,
+    });
+
     const candidates = (await must(owner('GET', `/organizations/${orgId}/member-candidates`), 200)) as unknown as Json[];
     expect(candidates).toContainEqual(expect.objectContaining({ email: 'nv1@test.local', displayName: 'Nhân Viên Một' }));
     // Người đã là thành viên org không nằm trong danh sách.
@@ -375,6 +391,26 @@ describe('danh bạ M365 (ADR-0027)', () => {
     expect(after.map((c) => c['email'])).not.toContain('nv1@test.local');
   });
 
+  it('màn Danh bạ chỉ Super Admin; bỏ tích không gỡ người đang là thành viên, vẫn đổi vai được', async () => {
+    expect((await as(tk.owner)('GET', '/directory/people')).status).toBe(403);
+    expect((await as(tk.owner)('PUT', '/directory/people/member-listed', { adminIds: [], listed: true })).status).toBe(403);
+
+    const page = await must(as(SUPER)('GET', '/directory/people?q=dir-member'), 200);
+    const member = (page['items'] as Json[])[0]!;
+    expect(await must(as(SUPER)('PUT', '/directory/people/member-listed', { adminIds: [member['adminId']], listed: false }), 200)).toEqual({
+      changed: 1,
+    });
+    // Tích lại cùng giá trị -> không đổi gì.
+    expect(await must(as(SUPER)('PUT', '/directory/people/member-listed', { adminIds: [member['adminId']], listed: false }), 200)).toEqual({
+      changed: 0,
+    });
+    const owner = as(tk.owner);
+    const members = (await must(owner('GET', `/organizations/${orgId}/members`), 200)) as unknown as Json[];
+    expect(members.map((m) => m['email'])).toContain('dir-member@test.local');
+    await must(owner('PUT', `/organizations/${orgId}/members`, { email: 'dir-member@test.local', role: 'org_admin' }), 200);
+    await must(owner('PUT', `/organizations/${orgId}/members`, { email: 'dir-member@test.local', role: 'member' }), 200);
+  });
+
   it('Member không xem được danh sách để chọn (403); người ngoài org -> 404', async () => {
     expect((await as(tk.member)('GET', `/organizations/${orgId}/member-candidates`)).status).toBe(403);
     expect((await as(token.outsider)('GET', `/organizations/${orgId}/member-candidates`)).status).toBe(404);
@@ -386,7 +422,7 @@ describe('danh bạ M365 (ADR-0027)', () => {
     expect(rejected(results)).toEqual([]);
     const created = results.map((r) => (r.status === 'fulfilled' ? (r.value['created'] as number) : -1));
     expect(created.reduce((a, b) => a + b, 0)).toBe(5);
-    const candidates = (await must(as(tk.owner)('GET', `/organizations/${orgId}/member-candidates`), 200)) as unknown as Json[];
-    expect(candidates.filter((c) => String(c['email']).startsWith('song-'))).toHaveLength(5);
+    const page = await must(as(SUPER)('GET', '/directory/people?q=song-&listed=no'), 200);
+    expect(page['total']).toBe(5);
   });
 });

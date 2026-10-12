@@ -58,13 +58,13 @@ Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm
 `templates` (ADR-0020) — xong cả 3 GĐ: admin soạn / xuất bản, app gửi bằng `templateId` + `payload`,
 màn Templates của console đã đấu API.
 
-Có trong repo: domain model 13 module · schema MySQL + 15 migration · hạ tầng dùng chung (config, db,
+Có trong repo: domain model 13 module · schema MySQL + 16 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
 | Module | Có gì |
 | --- | --- |
-| `tenancy` | tạo account / organization (người dùng tự tạo org và thành Owner — ADR-0025); query `FindOrganization` cho module khác; đồng bộ danh bạ M365 thành tài khoản + danh sách người để thêm vào org (ADR-0027) |
+| `tenancy` | tạo account / organization (người dùng tự tạo org và thành Owner — ADR-0025); query `FindOrganization` cho module khác; đồng bộ danh bạ M365 thành tài khoản + danh sách người để thêm vào org (ADR-0027); màn Danh bạ của Super Admin (`/admin/directory/people`) tích ai hiện khi thêm thành viên — người mới từ đồng bộ mặc định ẩn, thêm người chưa tích -> 422 `ADMIN_NOT_LISTED` |
 | `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác; `GET /admin/apps/:appId/users` (danh sách người nhận, phân trang + tìm) và `GET /admin/apps/:appId/users/:externalId` (một người, khớp đủ mã — cùng `FindUserByExternalId.get` với `/v1`) |
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
 | `topics` | admin tạo / kích hoạt / đình chỉ topic (chỉ admin đặt `mandatory`); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `GET /admin/apps/:appId/users/:externalId/preferences` (chỉ đọc); `ConsentQueries` cho module khác |
@@ -118,7 +118,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0024` | **Tự tạo tài khoản ở lần đăng nhập M365 đầu tiên**: vai `user`, chưa thuộc org, không mật khẩu, vào account cũ nhất (`findOldest`); chỉ người trong tenant M365 qua được; race lần đầu -> `insertIfAbsent` rồi đọc lại theo `oid`. Thay bước 3 của ADR-0021 |
 | `0025` | **Org tự phục vụ**: quyền `org.create` (ai đăng nhập cũng có), `POST /admin/organizations` tạo org trong account của chính mình + ghi mình là Owner trong CÙNG transaction. Chưa làm hạn mức / đổi tên / xoá / chuyển Owner |
 | `0026` | **Màn Thành viên**: quyền `org.manage` (Owner, Org Admin); thêm / đổi vai / gỡ thành viên, cấp / thu hồi vai app qua `/admin`; CHỈ Owner động được vai Owner (`OWNER_REQUIRED`); email chưa có tài khoản -> 422 `ADMIN_NOT_REGISTERED`; gỡ khỏi org thu hồi vai app CÙNG transaction (`apps/RemoveMemberFromOrg` gọi tenancy qua port) |
-| `0027` | **Đồng bộ danh bạ M365**: Super Admin bấm `POST /admin/directory/m365-sync` -> đọc `/users` bằng app `GRAPH_*` (`User.Read.All`), tạo / gắn tài khoản cùng luật ADR-0024; hai tenant `GRAPH_*` / `M365_*` phải trùng; cột `admins.display_name`; hộp Thêm thành viên chọn từ `GET …/member-candidates` |
+| `0027` | **Đồng bộ danh bạ M365**: Super Admin bấm `POST /admin/directory/m365-sync` -> đọc `/users` bằng app `GRAPH_*` (`User.Read.All`), tạo / gắn tài khoản cùng luật ADR-0024; hai tenant `GRAPH_*` / `M365_*` phải trùng; cột `admins.display_name`; hộp Thêm thành viên chọn từ `GET …/member-candidates`; bổ sung: cột `admins.member_listed`, Super Admin tích ở màn Danh bạ, nút đồng bộ chuyển sang đó |
 | `0028` | **Phát tin vào topic**: `POST /v1/publications` -> một dòng `publications` + mỗi người theo dõi một notification con (`publication_id`), worker không đổi; người nhận chốt lúc phát bằng `emailGate` (không dùng pipeline segments); trần 100 người (422 `PUBLICATION_TOO_LARGE`), mọi thứ trong MỘT transaction; `idempotencyKey` bắt buộc; topic bắt buộc phát được |
 | `0029` | **Outgoing webhook**: module `webhooks`; 3 sự kiện kết quả thư (+ `ping`), body không có email / nội dung; consumer chỉ ghi lượt, job gọi ra ngoài; gọi ít nhất một lần, chữ ký HMAC `t=…,v1=…`; secret = HMAC(`WEBHOOK_SIGNING_KEY`, id:version) — thiếu khoá thì 503 `WEBHOOK_NOT_CONFIGURED`; chặn IP nội bộ; tối đa 2 URL bằng unique `(app_id, slot)` |
 | `0030` | **Incoming webhook + Cài đặt hệ thống**: module `incoming` (`POST /hooks/:token`, token băm SHA-256; ánh xạ đường dẫn JSON `a.b` / `a[0]` / `a[-1]` / `a["k.k"]` > chữ cố định > trường cùng tên; chuỗi rỗng = không có; điều kiện phát; chống trùng header > đường dẫn > băm body + khung; giới hạn mỗi phút trên Redis; phát bằng `PublishToTopic`); module `settings` (`system_settings`, danh mục + khoảng cho phép, chỉ Super Admin, đệm 30 giây). Bổ sung: token tính lại được (HMAC `WEBHOOK_SIGNING_KEY`), `GET …/url` lấy lại URL bất cứ lúc nào + audit `IncomingHookUrlRevealed`; console chỉ hỏi topic + template |

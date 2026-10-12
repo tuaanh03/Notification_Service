@@ -23,6 +23,8 @@ export interface AdminProps extends TimestampInput {
   microsoftOid?: string | null | undefined;
   /** Tên hiển thị từ Microsoft 365 (ADR-0027). `null` = chưa biết. */
   displayName?: string | null | undefined;
+  /** Có hiện trong hộp "Thêm thành viên" của org không. Thiếu = `true` (cùng mặc định với DB). */
+  memberListed?: boolean | undefined;
 }
 
 /**
@@ -36,6 +38,7 @@ export class Admin extends BaseEntity<AdminId> {
   passwordHash: string | null;
   microsoftOid: string | null;
   displayName: string | null;
+  memberListed: boolean;
 
   constructor(props: AdminProps) {
     super(props.id, props);
@@ -45,6 +48,7 @@ export class Admin extends BaseEntity<AdminId> {
     this.passwordHash = props.passwordHash ?? null;
     this.microsoftOid = props.microsoftOid ?? null;
     this.displayName = props.displayName ?? null;
+    this.memberListed = props.memberListed ?? true;
   }
 
   /** Chưa đặt mật khẩu thì không có đường đăng nhập nào — đặt bằng CLI (`admin-cli`). */
@@ -77,6 +81,17 @@ export class Admin extends BaseEntity<AdminId> {
     const next = displayName?.trim().slice(0, 256) || null;
     if (next === null || next === this.displayName) return false;
     this.displayName = next;
+    this.touch(at);
+    return true;
+  }
+
+  /**
+   * Super Admin tích / bỏ tích ở màn Danh bạ. Trả `false` khi không có gì đổi. Bỏ tích KHÔNG gỡ người
+   * khỏi org họ đang ở — chỉ là không thêm mới vào org nào được nữa.
+   */
+  setMemberListed(listed: boolean, at: Date): boolean {
+    if (this.memberListed === listed) return false;
+    this.memberListed = listed;
     this.touch(at);
     return true;
   }

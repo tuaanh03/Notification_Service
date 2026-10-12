@@ -7,15 +7,29 @@ import type {
   CreateOrganization,
   CreateOwnOrganization,
   FindOrganization,
+  ListDirectoryPeople,
   ListMemberCandidates,
   ListOrgMembers,
+  SetMemberListed,
   SetOrgMember,
   SyncTenantDirectory,
 } from '../../application/index.ts';
+import { MAX_DIRECTORY_PAGE, MAX_MEMBER_LISTED_BATCH } from '../../application/index.ts';
 
 const nameBody = z.object({ name: z.string().trim().min(1).max(200) }).strict();
 const accountParams = z.object({ accountId: z.string().uuid() });
 const orgParams = z.object({ orgId: z.string().uuid() });
+const directoryQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_DIRECTORY_PAGE).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+  /** Khớp một phần email hoặc tên. Rỗng = không lọc. */
+  q: z.string().trim().max(255).optional(),
+  /** `yes` / `no` = lọc theo cờ hiện khi thêm thành viên; bỏ trống = cả hai. */
+  listed: z.enum(['yes', 'no']).optional(),
+});
+const memberListedBody = z
+  .object({ adminIds: z.array(z.string().uuid()).min(1).max(MAX_MEMBER_LISTED_BATCH), listed: z.boolean() })
+  .strict();
 const memberBody = z.object({ email: z.string().trim().min(3).max(320), role: z.enum(ORG_ROLES) }).strict();
 
 /**
@@ -30,6 +44,8 @@ export function adminTenancyRoutes(useCases: {
   listOrgMembers: ListOrgMembers;
   listMemberCandidates: ListMemberCandidates;
   setOrgMember: SetOrgMember;
+  listDirectoryPeople: ListDirectoryPeople;
+  setMemberListed: SetMemberListed;
   syncTenantDirectory: SyncTenantDirectory;
 }): HttpRoutes {
   return (app) => {
@@ -79,6 +95,22 @@ export function adminTenancyRoutes(useCases: {
     app.post('/directory/m365-sync', { config: access('platform.manage') }, async (request) =>
       useCases.syncTenantDirectory.execute(ctx(request)),
     );
+
+    // Màn Danh bạ: Super Admin chọn ai hiện trong hộp "Thêm thành viên" của mọi org.
+    app.get('/directory/people', { config: access('platform.manage') }, async (request) => {
+      const { limit, offset, q, listed } = parseInput(directoryQuery, request.query);
+      return useCases.listDirectoryPeople.execute({
+        limit,
+        offset,
+        search: q,
+        listed: listed === undefined ? undefined : listed === 'yes',
+      });
+    });
+
+    app.put('/directory/people/member-listed', { config: access('platform.manage') }, async (request) => {
+      const body = parseInput(memberListedBody, request.body);
+      return useCases.setMemberListed.execute({ adminIds: body.adminIds.map(AdminId.parse), listed: body.listed }, ctx(request));
+    });
 
     app.put('/organizations/:orgId/members', { config: access('org.manage') }, async (request) => {
       const { orgId } = parseInput(orgParams, request.params);
