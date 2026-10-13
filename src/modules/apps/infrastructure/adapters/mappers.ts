@@ -68,8 +68,10 @@ export function toAppSecret(row: AppSecretRow): AppSecret {
     appId: AppId.parse(row.appId),
     secretHash: row.secretHash,
     hint: row.hint,
+    name: row.name,
     status: row.status,
     revokedAt: row.revokedAt,
+    lastUsedAt: row.lastUsedAt,
     createdAt: row.createdAt,
   });
 }

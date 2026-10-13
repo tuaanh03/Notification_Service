@@ -1,7 +1,10 @@
-import { AuthenticationError, PermissionDeniedError } from '../../../../shared/kernel/index.ts';
+import type { Logger } from '../../../../shared/observability/logger.ts';
+import { AuthenticationError, PermissionDeniedError, type Clock } from '../../../../shared/kernel/index.ts';
 import { checkNetworkAccess } from '../../domain/rules/network-access.ts';
 import type { AuthenticatedApp } from '../dto.ts';
 import type { ApiKeyService, AppRepository, AppSecretRepository, NetworkRuleRepository } from '../ports/index.ts';
+
+const LAST_USED_RESOLUTION_MS = 5 * 60_000;
 
 /**
  * Cổng xác thực của `/v1/*`: API key -> app đang active -> qua allowlist IP.
@@ -16,6 +19,8 @@ export class AuthenticateApiKey {
     secrets: AppSecretRepository;
     networkRules: NetworkRuleRepository;
     apiKeys: ApiKeyService;
+    clock: Clock;
+    logger: Logger;
   };
 
   constructor(deps: AuthenticateApiKey['deps']) {
@@ -23,7 +28,7 @@ export class AuthenticateApiKey {
   }
 
   async execute(input: { apiKey: string | null; ip: string }): Promise<AuthenticatedApp> {
-    const { apps, secrets, networkRules, apiKeys } = this.deps;
+    const { apps, secrets, networkRules, apiKeys, clock, logger } = this.deps;
     if (!input.apiKey) {
       throw new AuthenticationError('API_KEY_REQUIRED', 'missing API key: send Authorization: Bearer <api key>');
     }
@@ -40,6 +45,16 @@ export class AuthenticateApiKey {
     const access = checkNetworkAccess(await networkRules.listByApp(app.id), { ip: input.ip });
     if (!access.allowed) {
       throw new PermissionDeniedError(access.reason, `request is not allowed by the network rules of app ${app.slug}`);
+    }
+
+    // "Dùng lần cuối" chỉ cần đúng tới vài phút: ghi thưa để request `/v1` không thành lệnh ghi DB.
+    // Ghi hỏng không được làm hỏng request — khoá đã đúng.
+    const now = clock.now();
+    const staleBefore = new Date(now.getTime() - LAST_USED_RESOLUTION_MS);
+    if (!secret.lastUsedAt || secret.lastUsedAt < staleBefore) {
+      await secrets.touchLastUsed(secret.id, now, staleBefore).catch((error: unknown) => {
+        logger.warn('failed to record API key last use', { secretId: secret.id, error: String(error) });
+      });
     }
 
     return {

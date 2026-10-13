@@ -74,12 +74,16 @@ export const appSecrets = mysqlTable(
     /** argon2 hash. Plaintext chỉ trả về đúng một lần, không bao giờ lưu. */
     secretHash: varchar('secret_hash', { length: 255 }).notNull(),
     hint: varchar('hint', { length: 64 }).notNull(),
+    /** Tên để biết khoá dùng ở đâu — khoá cấp trước khi có cột này là null. */
+    name: varchar('name', { length: 100 }),
     status: mysqlEnum('status', APP_SECRET_STATUSES).notNull().default('active'),
     createdAt: tsNow('created_at'),
     rotatedAt: ts('rotated_at'),
     revokedAt: ts('revoked_at'),
+    /** Cập nhật tối đa mỗi 5 phút một lần — không ghi DB ở mọi request `/v1`. */
+    lastUsedAt: ts('last_used_at'),
   },
-  // "≤ 2 secret active" KHÔNG ép được ở MySQL (không có partial unique index).
+  // "≤ N secret active" KHÔNG ép được ở MySQL (không có partial unique index).
   // Command phải đếm trong cùng transaction — xem AppSecret.assertCanAddActive.
   (t) => [uniqueIndex('uq_app_secrets_app_hint').on(t.appId, t.hint)],
 );

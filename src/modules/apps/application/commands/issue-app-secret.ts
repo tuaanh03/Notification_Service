@@ -3,13 +3,13 @@ import { NotFoundError, type AppId, type Clock } from '../../../../shared/kernel
 import { AppSecret } from '../../domain/entities/app-secret.ts';
 import { toAppSecretDto, type IssuedAppSecretDto } from '../dto.ts';
 import { APP_AGGREGATE, APP_EVENTS } from '../events.ts';
-import type { ApiKeyService, AppRepository, AppSecretRepository } from '../ports/index.ts';
+import type { ApiKeyService, AppLimits, AppRepository, AppSecretRepository } from '../ports/index.ts';
 import { requireApp } from './shared.ts';
 
 /**
  * Cấp API key mới (cũng là cách "xoay vòng": cấp key mới, chuyển app service sang, rồi thu hồi key cũ).
  *
- * "Tối đa 2 key active" KHÔNG ép được ở MySQL (ADR-0009): khoá dòng `apps` TRƯỚC khi đếm, để hai
+ * "Tối đa N key active" (cài đặt hệ thống `apps.max_active_api_keys`) KHÔNG ép được ở MySQL (ADR-0009): khoá dòng `apps` TRƯỚC khi đếm, để hai
  * lệnh cấp song song xếp hàng thay vì cùng đếm ra 1 rồi cùng INSERT.
  * Plaintext chỉ nằm trong response này — không vào DB, không vào event, không vào log.
  */
@@ -21,19 +21,21 @@ export class IssueAppSecret {
     apps: AppRepository;
     secrets: AppSecretRepository;
     apiKeys: ApiKeyService;
+    limits: AppLimits;
   };
 
   constructor(deps: IssueAppSecret['deps']) {
     this.deps = deps;
   }
 
-  async execute(input: { appId: AppId }, ctx: CommandContext): Promise<IssuedAppSecretDto> {
-    const { uow, outbox, clock, apps, secrets, apiKeys } = this.deps;
+  async execute(input: { appId: AppId; name?: string | null | undefined }, ctx: CommandContext): Promise<IssuedAppSecretDto> {
+    const { uow, outbox, clock, apps, secrets, apiKeys, limits } = this.deps;
+    const maxActive = await limits.maxActiveApiKeys();
     return uow.run(async () => {
       if (!(await apps.lockForUpdate(input.appId))) throw new NotFoundError('app', input.appId);
       const app = await requireApp(apps, input.appId);
       app.assertAcceptsNewSecret();
-      AppSecret.assertCanAddActive(await secrets.countActive(app.id));
+      AppSecret.assertCanAddActive(await secrets.countActive(app.id), maxActive);
 
       const issued = apiKeys.issue();
       const secret = new AppSecret({
@@ -41,6 +43,7 @@ export class IssueAppSecret {
         appId: app.id,
         secretHash: issued.secretHash,
         hint: issued.hint,
+        name: input.name,
         createdAt: clock.now(),
       });
       await secrets.insert(secret);
@@ -49,7 +52,7 @@ export class IssueAppSecret {
           aggregateType: APP_AGGREGATE,
           aggregateId: app.id,
           eventType: APP_EVENTS.secretIssued,
-          payload: audited(ctx, { after: { secretId: secret.id, hint: secret.hint } }),
+          payload: audited(ctx, { after: { secretId: secret.id, hint: secret.hint, name: secret.name } }),
         },
       ]);
       return { ...toAppSecretDto(secret), apiKey: issued.apiKey };

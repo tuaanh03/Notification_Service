@@ -22,6 +22,7 @@ import {
   DrizzleAppRepository,
   DrizzleAppSecretRepository,
   DrizzleNetworkRuleRepository,
+  SettingsAppLimits,
   TenancyMembershipLookup,
   TenancyOrganizationLookup,
   TenancyOrgMemberRemoval,
@@ -34,6 +35,7 @@ import {
   AppsApiKeyAuthenticator,
   v1AppsRoutes,
 } from '../../modules/apps/interface/index.ts';
+import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
 import type { FindOrganization, FindOrgMemberships, RemoveOrgMember } from '../../modules/tenancy/application/index.ts';
 import type { AdminAuthorizer, ApiKeyAuthenticator } from '../../shared/http/index.ts';
 import type { Container } from '../container.ts';
@@ -46,7 +48,12 @@ import type { ModuleDefinition } from '../module-definition.ts';
  */
 export function appsModule(
   container: Container,
-  dependencies: { findOrganization: FindOrganization; findOrgMemberships: FindOrgMemberships; removeOrgMember: RemoveOrgMember },
+  dependencies: {
+    findOrganization: FindOrganization;
+    findOrgMemberships: FindOrgMemberships;
+    removeOrgMember: RemoveOrgMember;
+    systemSettings: SystemSettingsQueries;
+  },
 ): {
   definition: ModuleDefinition;
   apiKeyAuthenticator: ApiKeyAuthenticator;
@@ -56,13 +63,14 @@ export function appsModule(
   /** Cho incoming webhook (ADR-0030): app gửi được + qua allowlist IP. */
   authorizeAppIngress: AuthorizeAppIngress;
 } {
-  const { uow, outbox, clock } = container.ports;
+  const { uow, outbox, clock, logger } = container.ports;
   const { transactions } = container.infra;
 
   const apps = new DrizzleAppRepository({ transactions });
   const secrets = new DrizzleAppSecretRepository({ transactions });
   const networkRules = new DrizzleNetworkRuleRepository({ transactions });
   const apiKeys = new CryptoApiKeyService();
+  const limits = new SettingsAppLimits({ systemSettings: dependencies.systemSettings });
   const organizations = new TenancyOrganizationLookup({ findOrganization: dependencies.findOrganization });
   const queries = new AppQueries({ apps, secrets, networkRules });
   const roles = new DrizzleAdminAppRoleRepository({ transactions });
@@ -75,7 +83,7 @@ export function appsModule(
     adminAuthorizer: new AppsAdminAuthorizer({ authorizeAdmin: new AuthorizeAdmin({ apps, roles, memberships }) }),
     grantAppRole,
     apiKeyAuthenticator: new AppsApiKeyAuthenticator({
-      authenticateApiKey: new AuthenticateApiKey({ apps, secrets, networkRules, apiKeys }),
+      authenticateApiKey: new AuthenticateApiKey({ apps, secrets, networkRules, apiKeys, clock, logger }),
     }),
     definition: {
       name: 'apps',
@@ -85,7 +93,7 @@ export function appsModule(
             createApp: new CreateApp({ uow, outbox, clock, apps, organizations }),
             transitionApp: new TransitionApp({ uow, outbox, clock, apps }),
             approveApp: new ApproveApp({ uow, outbox, clock, apps }),
-            issueAppSecret: new IssueAppSecret({ uow, outbox, clock, apps, secrets, apiKeys }),
+            issueAppSecret: new IssueAppSecret({ uow, outbox, clock, apps, secrets, apiKeys, limits }),
             revokeAppSecret: new RevokeAppSecret({ uow, outbox, clock, apps, secrets }),
             addNetworkRule: new AddNetworkRule({ uow, outbox, apps, networkRules }),
             removeNetworkRule: new RemoveNetworkRule({ uow, outbox, apps, networkRules }),

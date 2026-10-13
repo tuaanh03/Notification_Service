@@ -212,6 +212,7 @@ describe('Cài đặt hệ thống', () => {
       'incoming.dedupe_window_minutes': 10,
       'incoming.max_publications_per_minute': 20,
       'api.public_base_url': null,
+      'apps.max_active_api_keys': 20,
     });
     expect(effectiveSettings(new Map([['incoming.dedupe_window_minutes', 99999]]))['incoming.dedupe_window_minutes']).toBe(10);
   });
@@ -223,7 +224,8 @@ describe('Cài đặt hệ thống', () => {
     expect(normalizeSetting('api.public_base_url', 'https://ews-api.example.com/')).toBe('https://ews-api.example.com');
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'http://ews-api.example.com'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'https://a.com/?x=1'))).toBe('SETTING_INVALID_URL');
-    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(3);
+    expect(codeOf(() => normalizeSetting('apps.max_active_api_keys', 101))).toBe('SETTING_OUT_OF_RANGE');
+    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(4);
   });
 });
 

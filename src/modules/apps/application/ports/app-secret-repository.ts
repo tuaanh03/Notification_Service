@@ -7,4 +7,6 @@ export interface AppSecretRepository {
   countActive(appId: AppId): Promise<number>;
   insert(secret: AppSecret): Promise<void>;
   update(secret: AppSecret): Promise<void>;
+  /** Ghi `last_used_at = at` chỉ khi lần ghi trước cũ hơn `staleBefore` (hoặc chưa có) — một UPDATE có điều kiện. */
+  touchLastUsed(id: AppSecretId, at: Date, staleBefore: Date): Promise<void>;
 }

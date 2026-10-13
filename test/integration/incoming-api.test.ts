@@ -428,7 +428,7 @@ describe('lấy lại URL bất cứ lúc nào', () => {
 describe('Cài đặt hệ thống', () => {
   it('GET đủ danh mục + mặc định; PUT ngoài khoảng / khoá lạ -> 422, không ghi gì', async () => {
     const list = (await admin('GET', '/system-settings')).body['settings'] as Json[];
-    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'api.public_base_url']);
+    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'api.public_base_url', 'apps.max_active_api_keys']);
     expect(list[0]).toMatchObject({ value: 10, default: 10, min: 1, max: 1440, customized: false });
 
     const bad = await admin('PUT', '/system-settings', { values: { 'incoming.dedupe_window_minutes': 30, 'incoming.max_publications_per_minute': 0 } });

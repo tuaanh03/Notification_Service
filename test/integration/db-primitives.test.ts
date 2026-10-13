@@ -161,7 +161,7 @@ describe('ProcessedMessageStore — chốt idempotent của consumer', () => {
   });
 });
 
-// ADR-0009: "≤ 2 secret active" không ép được ở MySQL -> khoá dòng cha rồi mới đếm.
+// ADR-0009: "≤ N secret active" (ở đây N = 2) không ép được ở MySQL -> khoá dòng cha rồi mới đếm.
 // Đây là test của MẪU khoá (helper + domain guard); command thật thuộc module apps (lượt 4).
 describe('lockParentRow — tuần tự hoá trên dòng cha', () => {
   async function addActiveSecret(appId: AppId): Promise<void> {
@@ -171,7 +171,7 @@ describe('lockParentRow — tuần tự hoá trên dòng cha', () => {
         .select({ n: count() })
         .from(appSecrets)
         .where(and(eq(appSecrets.appId, appId), eq(appSecrets.status, 'active')));
-      AppSecret.assertCanAddActive(row?.n ?? 0);
+      AppSecret.assertCanAddActive(row?.n ?? 0, 2);
       const appSecretId = AppSecretId.create();
       await tx().insert(appSecrets).values({
         appSecretId,

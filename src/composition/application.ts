@@ -33,10 +33,10 @@ export interface Application {
 
 /**
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
- * Thứ tự dựng theo phụ thuộc: tenancy -> apps (cần findOrganization); subscriptions -> directory
+ * Thứ tự dựng theo phụ thuộc: settings -> tenancy -> apps (cần findOrganization, settings); subscriptions -> directory
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
  * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, templates, delivery)
- * -> webhooks (cần notifications) -> settings -> incoming (cần apps, templates, topics, notifications, settings).
+ * -> webhooks (cần notifications) -> incoming (cần apps, templates, topics, notifications, settings).
  */
 export interface ApplicationOverrides {
   /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
@@ -52,6 +52,7 @@ export interface ApplicationOverrides {
 }
 
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
+  const settings = settingsModule(container);
   const tenancy = tenancyModule(container, {
     microsoftIdentity: overrides.microsoftIdentity,
     tenantDirectory: overrides.tenantDirectory,
@@ -60,6 +61,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     findOrganization: tenancy.findOrganization,
     findOrgMemberships: tenancy.findOrgMemberships,
     removeOrgMember: tenancy.removeOrgMember,
+    systemSettings: settings.systemSettings,
   });
   const subscriptions = subscriptionsModule(container);
   const directory = directoryModule(container, subscriptions);
@@ -83,7 +85,6 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     notificationOutcomes: notifications.notificationOutcomes,
     transport: overrides.webhookTransport,
   });
-  const settings = settingsModule(container);
   const incoming = incomingModule(container, {
     authorizeAppIngress: apps.authorizeAppIngress,
     templateQueries: templates.templateQueries,

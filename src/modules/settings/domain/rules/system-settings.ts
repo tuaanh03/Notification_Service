@@ -12,6 +12,8 @@ export const SYSTEM_SETTINGS = {
   'incoming.max_publications_per_minute': { kind: 'int', default: 20, min: 1, max: 600 },
   /** Domain API công khai — console ghép URL đầy đủ của hook. null = chưa khai. */
   'api.public_base_url': { kind: 'url', default: null },
+  /** Số khoá API đang hoạt động tối đa mỗi app — mỗi nơi gọi một khoá, có trần để khoá bỏ quên không tích tụ. */
+  'apps.max_active_api_keys': { kind: 'int', default: 20, min: 1, max: 100 },
 } as const satisfies Record<string, SettingSpec>;
 
 type SettingSpec = { kind: 'int'; default: number; min: number; max: number } | { kind: 'url'; default: string | null };
@@ -24,6 +26,7 @@ export interface SystemSettingsValues {
   'incoming.dedupe_window_minutes': number;
   'incoming.max_publications_per_minute': number;
   'api.public_base_url': string | null;
+  'apps.max_active_api_keys': number;
 }
 
 export const isSystemSettingKey = (key: string): key is SystemSettingKey => Object.hasOwn(SYSTEM_SETTINGS, key);
@@ -42,6 +45,7 @@ export function effectiveSettings(stored: ReadonlyMap<string, unknown>): SystemS
     'incoming.dedupe_window_minutes': pick('incoming.dedupe_window_minutes'),
     'incoming.max_publications_per_minute': pick('incoming.max_publications_per_minute'),
     'api.public_base_url': pick('api.public_base_url'),
+    'apps.max_active_api_keys': pick('apps.max_active_api_keys'),
   };
 }
 

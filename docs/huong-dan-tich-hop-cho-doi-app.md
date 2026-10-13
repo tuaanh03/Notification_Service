@@ -48,8 +48,10 @@ sẵn: **có** (bước 5, cách 2).
 **Khoá API:**
 
 * Gửi thẳng: `Authorization: Bearer <khoá>`. **Không có bước đổi khoá lấy token.**
-* Một app có **tối đa 2 khoá đang dùng**. Cấp khoá mới **không** thu hồi khoá cũ — đúng để bạn
-  xoay khoá không mất kết nối: nhận khoá mới → triển khai → báo EWS thu hồi khoá cũ.
+* Mỗi nơi gọi EWS (backend, job, môi trường thử…) nên dùng **một khoá riêng**, đặt tên lúc cấp để biết
+  khoá nào dùng ở đâu. Màn Credentials hiện "Dùng lần cuối" của từng khoá.
+* Cấp khoá mới **không** thu hồi khoá cũ — đổi khoá không mất kết nối: cấp khoá mới → triển khai →
+  thu hồi khoá cũ. Số khoá đang dùng có giới hạn (mặc định 20 mỗi app); đủ thì thu hồi bớt khoá cũ.
 * Giữ khoá ở phía máy chủ của app. Không nhúng vào trình duyệt hay ứng dụng di động.
 
 **Giới hạn IP (tuỳ chọn, do đội EWS khai):** muốn chỉ máy chủ của app gọi được thì báo đội EWS danh

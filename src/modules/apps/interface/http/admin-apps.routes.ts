@@ -64,6 +64,8 @@ const orgFrom =
     const orgId = (request[where] as { orgId?: unknown } | undefined)?.orgId;
     return typeof orgId === 'string' ? { kind: 'org', orgId } : { kind: 'none' };
   };
+/** Tên khoá tuỳ chọn (gọi cũ không gửi body vẫn chạy); console luôn gửi. */
+const issueSecretBody = z.object({ name: z.string().trim().max(100).optional() }).strict();
 const ruleBody = z.object({ kind: z.enum(NETWORK_RULE_KINDS), value: z.string().trim().min(1).max(255) }).strict();
 
 export interface AdminAppsUseCases {
@@ -130,7 +132,8 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
     // Response DUY NHẤT chứa plaintext API key (UC-001 BR-4) — không cache.
     app.post('/apps/:appId/secrets', { config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
-      const issued = await useCases.issueAppSecret.execute({ appId: AppId.parse(appId) }, ctx(request));
+      const { name } = parseInput(issueSecretBody, request.body ?? {});
+      const issued = await useCases.issueAppSecret.execute({ appId: AppId.parse(appId), name }, ctx(request));
       return reply.status(201).header('cache-control', 'no-store').send(issued);
     });
 

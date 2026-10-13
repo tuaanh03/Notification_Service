@@ -24,9 +24,11 @@ export interface AppDto {
 export interface AppSecretDto {
   id: string;
   hint: string;
+  name: string | null;
   status: string;
   createdAt: string;
   revokedAt: string | null;
+  lastUsedAt: string | null;
 }
 
 /** Trả về DUY NHẤT một lần, ngay lúc tạo (UC-001 BR-4). */
@@ -71,9 +73,11 @@ export const toAppDto = (a: App): AppDto => ({
 export const toAppSecretDto = (s: AppSecret): AppSecretDto => ({
   id: s.id,
   hint: s.hint,
+  name: s.name,
   status: s.status,
   createdAt: s.createdAt.toISOString(),
   revokedAt: s.revokedAt?.toISOString() ?? null,
+  lastUsedAt: s.lastUsedAt?.toISOString() ?? null,
 });
 
 export const toNetworkRuleDto = (r: AppNetworkRule): NetworkRuleDto => ({ kind: r.kind, value: r.value });

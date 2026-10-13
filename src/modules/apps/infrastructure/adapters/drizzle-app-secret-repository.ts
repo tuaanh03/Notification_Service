@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, lt, or } from 'drizzle-orm';
 import type { TransactionContext } from '../../../../shared/db/index.ts';
 import type { AppId, AppSecretId } from '../../../../shared/kernel/index.ts';
 import type { AppSecretRepository } from '../../application/ports/index.ts';
@@ -43,6 +43,7 @@ export class DrizzleAppSecretRepository implements AppSecretRepository {
       appId: secret.appId,
       secretHash: secret.secretHash,
       hint: secret.hint,
+      name: secret.name,
       status: secret.status,
       createdAt: secret.createdAt,
       revokedAt: secret.revokedAt,
@@ -55,5 +56,18 @@ export class DrizzleAppSecretRepository implements AppSecretRepository {
       .update(appSecrets)
       .set({ status: secret.status, revokedAt: secret.revokedAt })
       .where(eq(appSecrets.appSecretId, secret.id));
+  }
+
+  async touchLastUsed(id: AppSecretId, at: Date, staleBefore: Date): Promise<void> {
+    await this.transactions
+      .executor()
+      .update(appSecrets)
+      .set({ lastUsedAt: at })
+      .where(
+        and(
+          eq(appSecrets.appSecretId, id),
+          or(isNull(appSecrets.lastUsedAt), lt(appSecrets.lastUsedAt, staleBefore)),
+        ),
+      );
   }
 }

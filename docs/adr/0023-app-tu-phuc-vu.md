@@ -44,3 +44,15 @@ lưu nhưng chưa được đối chiếu ở đâu — ADR này không đụng 
    mã `ORIGIN_NOT_ALLOWED` không còn (hai tài liệu tích hợp + `lib/api/v1-errors.ts` của console đã sửa).
 9. Console: bỏ màn "IP & Origin" của Cài đặt App và hai ô IP / Origin ở bước tạo app; Super Admin quản lý ở
    Quản trị EWS → Tất cả app → "Giới hạn IP".
+
+## Bổ sung (2026-10-13): số khoá API theo cài đặt hệ thống, tên khoá, dùng lần cuối
+
+10. **Bỏ trần cứng 2 khoá active.** Một app thường có nhiều nơi gọi `/v1`; mỗi nơi một khoá thì lộ khoá nào
+    thu hồi đúng khoá đó. Trần nay là cài đặt hệ thống `apps.max_active_api_keys` (mặc định 20, cho phép
+    1–100, chỉ Super Admin chỉnh). Vẫn giữ trần để khoá bỏ quên không tích tụ. Cách ép không đổi (ADR-0009):
+    khoá dòng `apps` rồi mới đếm; vượt -> 422 `ACTIVE_SECRET_LIMIT`.
+11. **Tên khoá** (`app_secrets.name`, ≤ 100 ký tự, tuỳ chọn ở API — console bắt buộc nhập). Khoá cũ và khoá
+    đầu tiên cấp từ wizard có tên `null`.
+12. **Dùng lần cuối** (`app_secrets.last_used_at`): `AuthenticateApiKey` ghi sau khi khoá đúng, chỉ khi lần
+    ghi trước cũ hơn 5 phút (một UPDATE có điều kiện) — request `/v1` không thành lệnh ghi DB mỗi lần. Ghi
+    hỏng chỉ log cảnh báo, không làm hỏng request. Migration `0017`.

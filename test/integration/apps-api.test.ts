@@ -229,12 +229,32 @@ describe('API key và bề mặt /v1', () => {
     expect(suspended.body['code']).toBe('APP_NOT_ACTIVE');
   });
 
-  // ADR-0009 qua HTTP thật: 5 request song song, app đang có 1 key -> chỉ thêm được đúng 1.
-  it('5 request cấp key song song -> vẫn tối đa 2 key active', async () => {
+  it('tên khoá lưu kèm khoá; mặc định cho cấp quá 2 khoá; dùng khoá -> có "dùng lần cuối"', async () => {
+    const { appId } = await activeApp('named');
+    const issued = await admin('POST', `/apps/${appId}/secrets`, { name: '  backend prod  ' });
+    expect(issued.status).toBe(201);
+    expect(issued.body['name']).toBe('backend prod');
+    expect(issued.body['lastUsedAt']).toBeNull();
+    for (let i = 0; i < 3; i++) expect((await admin('POST', `/apps/${appId}/secrets`)).status).toBe(201);
+    expect((await admin('POST', `/apps/${appId}/secrets`, { name: 'x'.repeat(101) })).status).toBe(422);
+
+    expect((await http('GET', '/v1/me', { token: issued.body['apiKey'] })).status).toBe(200);
+    const listed = (await admin('GET', `/apps/${appId}/secrets`)).body as unknown as Json[];
+    const used = listed.find((s) => s['id'] === issued.body['id']);
+    expect(used?.['name']).toBe('backend prod');
+    expect(used?.['lastUsedAt']).toEqual(expect.any(String));
+    expect(listed.filter((s) => s['id'] !== issued.body['id']).every((s) => s['lastUsedAt'] === null)).toBe(true);
+  });
+
+  // ADR-0009 qua HTTP thật: trần hạ xuống 2, 5 request song song, app đang có 1 key -> chỉ thêm được đúng 1.
+  it('5 request cấp key song song -> không vượt trần cài đặt hệ thống', async () => {
+    expect((await admin('PUT', '/system-settings', { values: { 'apps.max_active_api_keys': 2 } })).status).toBe(200);
     const { appId } = await activeApp('race');
     await admin('POST', `/apps/${appId}/secrets`);
 
-    const results = await race(5, () => admin('POST', `/apps/${appId}/secrets`));
+    const results = await race(5, () => admin('POST', `/apps/${appId}/secrets`)).finally(() =>
+      admin('PUT', '/system-settings', { values: { 'apps.max_active_api_keys': null } }),
+    );
     const responses = results.map((r) => (r.status === 'fulfilled' ? r.value : null));
     expect(responses.filter((r) => r?.status === 201)).toHaveLength(1);
     const rejected = responses.filter((r) => r?.status === 422);

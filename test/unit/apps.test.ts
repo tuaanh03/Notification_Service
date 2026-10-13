@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Logger } from '../../src/shared/observability/logger.ts';
 import {
   AuthenticateApiKey,
   type AppRepository,
@@ -13,6 +14,7 @@ import { CryptoApiKeyService } from '../../src/modules/apps/infrastructure/adapt
 import {
   AccountId,
   AppId,
+  AppSecretId,
   AuthenticationError,
   OrgId,
   PermissionDeniedError,
@@ -96,6 +98,22 @@ describe('allowlist IP của /v1 và /hooks', () => {
   });
 });
 
+describe('AppSecret — tên khoá và trần khoá đang hoạt động', () => {
+  const base = { id: AppSecretId.create(), appId: AppId.create(), secretHash: 'h', hint: 'ews_x', createdAt: AT };
+
+  it('tên được cắt khoảng trắng; rỗng -> null; quá 100 ký tự -> SECRET_NAME_TOO_LONG', () => {
+    expect(new AppSecret({ ...base, name: '  job sync ' }).name).toBe('job sync');
+    expect(new AppSecret({ ...base, name: '   ' }).name).toBeNull();
+    expect(new AppSecret(base).name).toBeNull();
+    expect(() => new AppSecret({ ...base, name: 'x'.repeat(101) })).toThrow(ValidationError);
+  });
+
+  it('đủ trần -> ACTIVE_SECRET_LIMIT; dưới trần -> qua', () => {
+    expect(() => AppSecret.assertCanAddActive(19, 20)).not.toThrow();
+    expect(() => AppSecret.assertCanAddActive(20, 20)).toThrow(ValidationError);
+  });
+});
+
 describe('CryptoApiKeyService', () => {
   const service = new CryptoApiKeyService();
 
@@ -122,7 +140,9 @@ describe('CryptoApiKeyService', () => {
 describe('AuthenticateApiKey (use case, port giả)', () => {
   const keys = new CryptoApiKeyService();
 
-  function setup(opts: { appStatus?: AppStatus; secretStatus?: 'active' | 'revoked'; rules?: AppNetworkRule[] } = {}) {
+  function setup(
+    opts: { appStatus?: AppStatus; secretStatus?: 'active' | 'revoked'; rules?: AppNetworkRule[]; lastUsedAt?: Date } = {},
+  ) {
     const theApp = app(opts.appStatus ?? 'active');
     const issued = keys.issue();
     const secret = new AppSecret({
@@ -131,20 +151,40 @@ describe('AuthenticateApiKey (use case, port giả)', () => {
       secretHash: issued.secretHash,
       hint: issued.hint,
       status: opts.secretStatus ?? 'active',
+      lastUsedAt: opts.lastUsedAt,
       createdAt: AT,
     });
     const apps = { findById: async (id: AppId) => (id === theApp.id ? theApp : null) } as unknown as AppRepository;
-    const secrets = { findById: async (id: string) => (id === secret.id ? secret : null) } as unknown as AppSecretRepository;
+    const touched: Date[] = [];
+    const secrets = {
+      findById: async (id: string) => (id === secret.id ? secret : null),
+      touchLastUsed: async (_id: string, at: Date) => void touched.push(at),
+    } as unknown as AppSecretRepository;
     const networkRules = { listByApp: async () => opts.rules ?? [] } as unknown as NetworkRuleRepository;
-    const useCase = new AuthenticateApiKey({ apps, secrets, networkRules, apiKeys: keys });
-    return { useCase, apiKey: issued.apiKey, theApp };
+    const clock = { now: () => AT };
+    const logger = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return logger; } } as unknown as Logger;
+    const useCase = new AuthenticateApiKey({ apps, secrets, networkRules, apiKeys: keys, clock, logger });
+    return { useCase, apiKey: issued.apiKey, theApp, touched };
   }
   const call = (useCase: AuthenticateApiKey, apiKey: string | null, ip = '10.0.0.1') =>
     useCase.execute({ apiKey, ip });
 
-  it('key đúng, app active -> trả caller đầy đủ', async () => {
-    const { useCase, apiKey, theApp } = setup();
+  it('key đúng, app active -> trả caller đầy đủ, ghi "dùng lần cuối"', async () => {
+    const { useCase, apiKey, theApp, touched } = setup();
     expect(await call(useCase, apiKey)).toMatchObject({ appId: theApp.id, slug: 'shop', grantedChannels: ['email'] });
+    expect(touched).toEqual([AT]);
+  });
+
+  it('khoá vừa dùng chưa tới 5 phút -> không ghi lại "dùng lần cuối"', async () => {
+    const { useCase, apiKey, touched } = setup({ lastUsedAt: new Date(AT.getTime() - 60_000) });
+    await call(useCase, apiKey);
+    expect(touched).toEqual([]);
+  });
+
+  it('key sai -> không ghi "dùng lần cuối"', async () => {
+    const { useCase, touched } = setup();
+    await call(useCase, 'garbage').catch(() => undefined);
+    expect(touched).toEqual([]);
   });
 
   it('thiếu key -> 401 API_KEY_REQUIRED', async () => {
