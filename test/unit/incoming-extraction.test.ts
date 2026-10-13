@@ -15,6 +15,7 @@ import {
 import { SYSTEM_SETTINGS, effectiveSettings, normalizeSetting } from '../../src/modules/settings/domain/index.ts';
 import { TemplateId, TopicId } from '../../src/shared/kernel/index.ts';
 import { NodeHookCrypto } from '../../src/modules/incoming/infrastructure/adapters/node-hook-crypto.ts';
+import { IncomingHook } from '../../src/modules/incoming/domain/entities/incoming-hook.ts';
 
 const codeOf = (fn: () => unknown): string | undefined => {
   try {
@@ -206,13 +207,25 @@ describe('validateHookConfig — báo hết lỗi một lần', () => {
   });
 });
 
+describe('IncomingHook — chỗ của hook theo trần cài đặt', () => {
+  it('chỗ nhỏ nhất còn trống trong 1…max; đủ max hook (kể cả khi trần vừa bị hạ) -> null', () => {
+    expect(IncomingHook.freeSlot([], 20)).toBe(1);
+    expect(IncomingHook.freeSlot([1, 2, 4], 20)).toBe(3);
+    expect(IncomingHook.freeSlot([1, 2, 3], 3)).toBeNull();
+    expect(IncomingHook.freeSlot([11, 12, 13], 3)).toBeNull();
+    expect(codeOf(() => IncomingHook.assertHasFreeSlot(null, 3))).toBe('INCOMING_HOOK_LIMIT_REACHED');
+  });
+});
+
 describe('Cài đặt hệ thống', () => {
   it('mặc định khi chưa lưu; giá trị lưu ngoài khoảng -> mặc định', () => {
     expect(effectiveSettings(new Map())).toEqual({
       'incoming.dedupe_window_minutes': 10,
       'incoming.max_publications_per_minute': 20,
       'api.public_base_url': null,
+      'incoming.max_hooks_per_app': 20,
       'apps.max_active_api_keys': 20,
+      'webhooks.max_endpoints_per_app': 10,
     });
     expect(effectiveSettings(new Map([['incoming.dedupe_window_minutes', 99999]]))['incoming.dedupe_window_minutes']).toBe(10);
   });
@@ -225,7 +238,7 @@ describe('Cài đặt hệ thống', () => {
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'http://ews-api.example.com'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'https://a.com/?x=1'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('apps.max_active_api_keys', 101))).toBe('SETTING_OUT_OF_RANGE');
-    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(4);
+    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(6);
   });
 });
 

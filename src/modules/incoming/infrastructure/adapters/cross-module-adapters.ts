@@ -99,6 +99,7 @@ export class SettingsReader implements IncomingSettings {
     return {
       dedupeWindowMinutes: values['incoming.dedupe_window_minutes'],
       maxPublicationsPerMinute: values['incoming.max_publications_per_minute'],
+      maxHooksPerApp: values['incoming.max_hooks_per_app'],
       publicBaseUrl: values['api.public_base_url'],
     };
   }

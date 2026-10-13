@@ -67,3 +67,12 @@ ADR-0028) nhiều lần. Kết quả gửi đã có sẵn dạng event trong out
   scheduler.
 - Tài liệu cho đội app: `huong-dan-tich-hop-cho-doi-app.md` mục 5 (nhận webhook, kiểm chữ ký, xử lý trùng).
 - Test: `test/unit/webhooks.test.ts`, `test/integration/webhooks-api.test.ts`.
+
+## Bổ sung — 2026-10-13: trần số URL thành cài đặt hệ thống
+
+- Bỏ trần cứng 2 URL (§8). Trần nay là cài đặt hệ thống `webhooks.max_endpoints_per_app` (mặc định 10, cho
+  phép 1–50, chỉ Super Admin chỉnh). Một app thường cần gửi về nhiều nơi (prod, staging, hệ thống log); vẫn
+  giữ trần vì mỗi URL là thêm một lần gọi cho mỗi thư.
+- Cách chốt không đổi: mỗi URL giữ một chỗ `slot`, nay là 1…N; unique `(app_id, slot)` quyết khi chạy song
+  song. Đếm theo SỐ URL đang có — trần vừa bị hạ thì URL cũ giữ nguyên, chỉ không cho thêm. Không migration.
+- Console bỏ dòng đếm "x/2 URL"; vượt trần -> 422 `WEBHOOK_LIMIT_REACHED` như cũ.

@@ -36,7 +36,7 @@ export interface Application {
  * Thứ tự dựng theo phụ thuộc: settings -> tenancy -> apps (cần findOrganization, settings); subscriptions -> directory
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
  * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, templates, delivery)
- * -> webhooks (cần notifications) -> incoming (cần apps, templates, topics, notifications, settings).
+ * -> webhooks (cần notifications, settings) -> incoming (cần apps, templates, topics, notifications, settings).
  */
 export interface ApplicationOverrides {
   /** Test thay provider email để kịch bản hoá kết quả gửi (MockEmailProvider.respondWith). */
@@ -83,6 +83,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
   });
   const webhooks = webhooksModule(container, {
     notificationOutcomes: notifications.notificationOutcomes,
+    systemSettings: settings.systemSettings,
     transport: overrides.webhookTransport,
   });
   const incoming = incomingModule(container, {

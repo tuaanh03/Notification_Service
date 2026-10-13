@@ -97,3 +97,10 @@ sao chép lại được URL bất cứ lúc nào; console chỉ hỏi hai câu 
    `payload.service`; trường sai kiểu chỉ báo một lỗi `INVALID_PAYLOAD_VALUE`. Mã lỗi giữ nguyên.
 7. **Nhật ký có tên trường**: cột `incoming_calls.error_fields` (JSON, migration `0014`) — chỉ tên trường của lỗi
    thiếu / sai kiểu, không giá trị; console hiện "Thiếu trường bắt buộc: service, detail".
+
+## Bổ sung — 2026-10-13: trần số hook thành cài đặt hệ thống
+
+- Bỏ trần cứng 10 hook mỗi app. Trần nay là cài đặt hệ thống `incoming.max_hooks_per_app` (mặc định 20, cho
+  phép 1–50, chỉ Super Admin chỉnh) — mỗi công cụ ngoài nên có hook riêng.
+- Chốt như cũ: `slot` 1…N + unique `(app_id, slot)`; đếm theo SỐ hook đang có. Không migration.
+- Console bỏ dòng "Tối đa 10 webhook mỗi app"; vượt trần -> 422 `INCOMING_HOOK_LIMIT_REACHED` như cũ.

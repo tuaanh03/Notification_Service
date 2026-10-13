@@ -1,4 +1,5 @@
 import type { GetNotificationOutcome } from '../../modules/notifications/application/index.ts';
+import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
 import {
   CreateWebhookEndpoint,
   DeleteWebhookEndpoint,
@@ -18,6 +19,7 @@ import {
   HmacWebhookSecrets,
   HttpsWebhookTransport,
   NotificationsOutcomeLookup,
+  SettingsWebhookLimits,
 } from '../../modules/webhooks/infrastructure/adapters/index.ts';
 import { adminWebhooksRoutes, deliverWebhooksJob, webhookDispatcherHandler } from '../../modules/webhooks/interface/index.ts';
 import { STREAMS } from '../../shared/streams/index.ts';
@@ -34,6 +36,7 @@ export function webhooksModule(
   container: Container,
   dependencies: {
     notificationOutcomes: GetNotificationOutcome;
+    systemSettings: SystemSettingsQueries;
     /** Test thay bằng bản giả — không gọi mạng thật. */
     transport?: WebhookTransport | undefined;
   },
@@ -54,7 +57,7 @@ export function webhooksModule(
       admin: [
         adminWebhooksRoutes({
           queries: new WebhookQueries({ endpoints, deliveries, secrets }),
-          create: new CreateWebhookEndpoint(manage),
+          create: new CreateWebhookEndpoint({ ...manage, limits: new SettingsWebhookLimits({ systemSettings: dependencies.systemSettings }) }),
           update: new UpdateWebhookEndpoint(manage),
           rotateSecret: new RotateWebhookSecret(manage),
           remove: new DeleteWebhookEndpoint(manage),

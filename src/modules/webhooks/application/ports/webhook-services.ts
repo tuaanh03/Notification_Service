@@ -33,3 +33,8 @@ export interface NotificationOutcome {
 export interface NotificationOutcomes {
   get(id: NotificationId): Promise<NotificationOutcome | null>;
 }
+
+/** -> settings: trần số URL mỗi app do Super Admin chỉnh (cài đặt `webhooks.max_endpoints_per_app`). */
+export interface WebhookLimits {
+  maxEndpointsPerApp(): Promise<number>;
+}

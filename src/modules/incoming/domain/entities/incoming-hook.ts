@@ -13,8 +13,6 @@ import {
 import { parseJsonPath } from '../rules/json-path.ts';
 import type { PublishCondition, VariableMapping } from '../types/hook-config.ts';
 
-/** Tối đa 10 hook mỗi app — mỗi hook giữ một "chỗ", unique `(app_id, slot)` chốt khi chạy song song. */
-export const MAX_INCOMING_HOOKS = 10;
 export const MAX_MAPPINGS = 30;
 export const MAX_TEXT_LENGTH = 500;
 export const MAX_CONDITION_VALUES = 20;
@@ -65,7 +63,7 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
 
   constructor(props: IncomingHookProps) {
     super(props.id, props);
-    if (!Number.isInteger(props.slot) || props.slot < 1 || props.slot > MAX_INCOMING_HOOKS) {
+    if (!Number.isInteger(props.slot) || props.slot < 1) {
       throw new Error(`invalid incoming hook slot ${props.slot}`);
     }
     this.appId = props.appId;
@@ -84,15 +82,20 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
     this.status = props.status ?? 'active';
   }
 
-  /** Chỗ trống cho hook mới; null = đã đủ 10. */
-  static freeSlot(used: readonly number[]): number | null {
-    for (let slot = 1; slot <= MAX_INCOMING_HOOKS; slot++) if (!used.includes(slot)) return slot;
+  /**
+   * Tối đa N hook mỗi app — N là cài đặt hệ thống `incoming.max_hooks_per_app`. Mỗi hook giữ một
+   * "chỗ" 1…N, unique `(app_id, slot)` chốt khi chạy song song. Chỗ nhỏ nhất còn trống; null = đã đủ.
+   * Đếm theo SỐ hook đang có: trần vừa bị hạ (hook cũ giữ chỗ > max) thì vẫn không cho thêm khi đã đủ.
+   */
+  static freeSlot(used: readonly number[], max: number): number | null {
+    if (used.length >= max) return null;
+    for (let slot = 1; slot <= max; slot++) if (!used.includes(slot)) return slot;
     return null;
   }
 
-  static assertHasFreeSlot(slot: number | null): asserts slot is number {
+  static assertHasFreeSlot(slot: number | null, max: number): asserts slot is number {
     if (slot === null) {
-      throw ValidationError.of('INCOMING_HOOK_LIMIT_REACHED', `an app can have at most ${MAX_INCOMING_HOOKS} incoming webhooks`);
+      throw ValidationError.of('INCOMING_HOOK_LIMIT_REACHED', `an app can have at most ${max} incoming webhooks`);
     }
   }
 

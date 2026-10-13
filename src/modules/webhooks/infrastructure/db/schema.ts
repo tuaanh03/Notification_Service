@@ -11,7 +11,7 @@ export const webhookEndpoints = mysqlTable(
     appId: uuid('app_id')
       .notNull()
       .references(() => apps.appId),
-    /** 1 hoặc 2 — unique theo app là chốt "tối đa 2 URL" khi hai lệnh thêm chạy song song. */
+    /** 1…N — unique theo app là chốt "tối đa N URL" khi hai lệnh thêm chạy song song. */
     slot: tinyint('slot').notNull(),
     url: varchar('url', { length: 2048 }).notNull(),
     events: json('events').$type<string[]>().notNull(),

@@ -6,11 +6,11 @@ import {
   type WebhookEndpointStatus,
   type WebhookEventType,
 } from '../../../../shared/kernel/index.ts';
-import { WebhookEndpoint, WEBHOOK_SLOTS } from '../../domain/entities/webhook-endpoint.ts';
+import { WebhookEndpoint } from '../../domain/entities/webhook-endpoint.ts';
 import { toWebhookEndpointDto, type IssuedWebhookSecretDto, type WebhookEndpointDto } from '../dto.ts';
 import { WebhookSlotTakenError } from '../errors.ts';
 import { WEBHOOK_ENDPOINT_AGGREGATE, WEBHOOK_EVENTS } from '../events.ts';
-import type { WebhookDeliveryRepository, WebhookEndpointRepository, WebhookSecrets } from '../ports/index.ts';
+import type { WebhookDeliveryRepository, WebhookEndpointRepository, WebhookLimits, WebhookSecrets } from '../ports/index.ts';
 import { requireConfigured, requireEndpoint } from './shared.ts';
 
 interface Deps {
@@ -30,14 +30,14 @@ const auditEvent = (endpoint: WebhookEndpoint, eventType: string, ctx: CommandCo
 });
 
 /**
- * Thêm URL nhận webhook (ADR-0029). Tối đa 2 URL mỗi app — mỗi URL giữ một chỗ, unique `(app_id, slot)`
+ * Thêm URL nhận webhook (ADR-0029). Tối đa N URL mỗi app (cài đặt hệ thống) — mỗi URL giữ một chỗ, unique `(app_id, slot)`
  * quyết khi hai lệnh chạy song song: bên thua đọc lại rồi thử chỗ còn lại; hết chỗ -> 422
  * WEBHOOK_LIMIT_REACHED. Secret chỉ nằm trong response này.
  */
 export class CreateWebhookEndpoint {
-  private readonly deps: Deps;
+  private readonly deps: Deps & { limits: WebhookLimits };
 
-  constructor(deps: Deps) {
+  constructor(deps: Deps & { limits: WebhookLimits }) {
     this.deps = deps;
   }
 
@@ -45,15 +45,16 @@ export class CreateWebhookEndpoint {
     input: { appId: AppId; url: string; events: readonly WebhookEventType[] },
     ctx: CommandContext,
   ): Promise<IssuedWebhookSecretDto> {
-    const { uow, outbox, clock, endpoints, secrets } = this.deps;
+    const { uow, outbox, clock, endpoints, secrets, limits } = this.deps;
     requireConfigured(secrets);
+    const max = await limits.maxEndpointsPerApp();
     // Mỗi lần thua cuộc đua là một chỗ vừa bị lấy — số lần thử đủ để thấy app đã đầy.
     for (let attempt = 0; ; attempt++) {
       try {
         const endpoint = await uow.run(async () => {
           const used = (await endpoints.listByApp(input.appId)).map((e) => e.slot);
-          const slot = WebhookEndpoint.freeSlot(used);
-          WebhookEndpoint.assertHasFreeSlot(slot);
+          const slot = WebhookEndpoint.freeSlot(used, max);
+          WebhookEndpoint.assertHasFreeSlot(slot, max);
           const created = new WebhookEndpoint({
             id: WebhookEndpointId.create(),
             appId: input.appId,
@@ -69,7 +70,7 @@ export class CreateWebhookEndpoint {
         });
         return { endpoint: toWebhookEndpointDto(endpoint), secret: secrets.secretFor(endpoint.id, endpoint.secretVersion) };
       } catch (err) {
-        if (!(err instanceof WebhookSlotTakenError) || attempt >= WEBHOOK_SLOTS.length) throw err;
+        if (!(err instanceof WebhookSlotTakenError) || attempt >= max) throw err;
       }
     }
   }

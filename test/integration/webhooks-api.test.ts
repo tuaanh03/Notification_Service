@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import {
   buildApplication,
   consumerRegistry,
@@ -154,8 +154,12 @@ describe('quản lý URL webhook', () => {
     expect((await app.addHook({ events: ['ping'] })).status).toBe(422);
   });
 
-  // "Tối đa 2 URL mỗi app" = unique (app_id, slot); bên thua đọc lại và thử chỗ còn lại.
-  it('5 lệnh thêm cùng lúc -> đúng 2 URL, còn lại 422 WEBHOOK_LIMIT_REACHED', async () => {
+  // "Tối đa N URL mỗi app" (cài đặt hệ thống, ở đây hạ xuống 2) = unique (app_id, slot); bên thua đọc lại và thử chỗ còn lại.
+  it('5 lệnh thêm cùng lúc, trần 2 -> đúng 2 URL, còn lại 422 WEBHOOK_LIMIT_REACHED', async () => {
+    expect((await admin('PUT', '/system-settings', { values: { 'webhooks.max_endpoints_per_app': 2 } })).status).toBe(200);
+    onTestFinished(async () => {
+      await admin('PUT', '/system-settings', { values: { 'webhooks.max_endpoints_per_app': null } });
+    });
     const app = await freshApp('wh-race');
     const results = await race(5, (i) => app.addHook({ url: `https://wh-race-${i}.example.com/h` }));
     const statuses = results.map((r) => (r.status === 'fulfilled' ? r.value.status : 0));

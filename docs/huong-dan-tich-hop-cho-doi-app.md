@@ -378,7 +378,7 @@ Thay vì hỏi `GET` nhiều lần, app dựng **một route nhận** và để 
 **Đăng ký** trên console EWS: app → **Webhooks** → Thêm URL (người có quyền quản lý app).
 
 * URL phải là `https://`, gọi được từ internet. URL trỏ vào mạng nội bộ (`10.x`, `192.168.x`, `localhost`…) bị từ chối.
-* Chọn sự kiện muốn nhận. Mỗi app tối đa **2 URL**.
+* Chọn sự kiện muốn nhận. Mỗi app đăng ký được nhiều URL (mặc định tối đa 10).
 * EWS hiện **secret** (`whsec_…`) **một lần duy nhất** — cất vào cấu hình như API key. Mất thì bấm
   "Đổi secret" (secret cũ hết hiệu lực ngay).
 

@@ -5,7 +5,7 @@ import {
   type Clock,
   type IncomingHookStatus,
 } from '../../../../shared/kernel/index.ts';
-import { IncomingHook, MAX_INCOMING_HOOKS, type IncomingHookConfig } from '../../domain/entities/incoming-hook.ts';
+import { IncomingHook, type IncomingHookConfig } from '../../domain/entities/incoming-hook.ts';
 import { ConflictError } from '../../../../shared/kernel/index.ts';
 import type { IncomingHookDto, IssuedHookUrlDto } from '../dto.ts';
 import { IncomingSlotTakenError } from '../errors.ts';
@@ -60,7 +60,7 @@ async function issuedUrl(deps: Deps, hook: IncomingHook, token: string): Promise
 }
 
 /**
- * Thêm hook (ADR-0030). Tối đa 10 mỗi app — unique `(app_id, slot)` quyết khi chạy song song: bên thua
+ * Thêm hook (ADR-0030). Tối đa N mỗi app (cài đặt `incoming.max_hooks_per_app`) — unique `(app_id, slot)` quyết khi chạy song song: bên thua
  * đọc lại rồi thử chỗ khác; hết chỗ -> 422 INCOMING_HOOK_LIMIT_REACHED. Token chỉ nằm trong response này.
  */
 export class CreateIncomingHook {
@@ -71,16 +71,17 @@ export class CreateIncomingHook {
   }
 
   async execute(input: { appId: AppId; config: IncomingHookConfig }, ctx: CommandContext): Promise<IssuedHookUrlDto> {
-    const { uow, outbox, clock, hooks, crypto } = this.deps;
+    const { uow, outbox, clock, hooks, crypto, settings } = this.deps;
     requireConfigured(crypto);
     await assertTargetsBelongToApp(this.deps, input.appId, input.config);
+    const max = (await settings.current()).maxHooksPerApp;
     const id = IncomingHookId.create();
     const token = crypto.tokenFor(id, 1);
     for (let attempt = 0; ; attempt++) {
       try {
         const hook = await uow.run(async () => {
-          const slot = IncomingHook.freeSlot((await hooks.listByApp(input.appId)).map((h) => h.slot));
-          IncomingHook.assertHasFreeSlot(slot);
+          const slot = IncomingHook.freeSlot((await hooks.listByApp(input.appId)).map((h) => h.slot), max);
+          IncomingHook.assertHasFreeSlot(slot, max);
           const created = new IncomingHook({
             id,
             appId: input.appId,
@@ -98,7 +99,7 @@ export class CreateIncomingHook {
         });
         return issuedUrl(this.deps, hook, token.token);
       } catch (err) {
-        if (!(err instanceof IncomingSlotTakenError) || attempt >= MAX_INCOMING_HOOKS) throw err;
+        if (!(err instanceof IncomingSlotTakenError) || attempt >= max) throw err;
       }
     }
   }

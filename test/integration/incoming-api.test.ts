@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import {
   buildApplication,
   consumerRegistry,
@@ -313,14 +313,18 @@ describe('quản lý hook', () => {
     ).toBe('TEMPLATE_NOT_FOUND');
   });
 
-  // "Tối đa 10 hook mỗi app" = unique (app_id, slot); bên thua đọc lại và thử chỗ khác.
-  it('12 lệnh thêm cùng lúc -> đúng 10 hook, 2 lệnh 422 INCOMING_HOOK_LIMIT_REACHED; danh sách không có token', async () => {
+  // "Tối đa N hook mỗi app" (cài đặt hệ thống, ở đây hạ xuống 3) = unique (app_id, slot); bên thua đọc lại và thử chỗ khác.
+  it('5 lệnh thêm cùng lúc, trần 3 -> đúng 3 hook, 2 lệnh 422 INCOMING_HOOK_LIMIT_REACHED; danh sách không có token', async () => {
+    expect((await admin('PUT', '/system-settings', { values: { 'incoming.max_hooks_per_app': 3 } })).status).toBe(200);
+    onTestFinished(async () => {
+      await admin('PUT', '/system-settings', { values: { 'incoming.max_hooks_per_app': null } });
+    });
     const app = await freshApp('in-race');
-    const results = await race(12, (i) => admin('POST', `/apps/${app.appId}/incoming-webhooks`, { ...gatusConfig(app), name: `h${i}` }));
+    const results = await race(5, (i) => admin('POST', `/apps/${app.appId}/incoming-webhooks`, { ...gatusConfig(app), name: `h${i}` }));
     const statuses = results.map((r) => (r.status === 'fulfilled' ? r.value.status : 0));
-    expect(statuses.filter((s) => s === 201)).toHaveLength(10);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(3);
     expect(statuses.filter((s) => s === 422)).toHaveLength(2);
-    expect(await t.db.select().from(incomingHooks).where(eq(incomingHooks.appId, app.appId))).toHaveLength(10);
+    expect(await t.db.select().from(incomingHooks).where(eq(incomingHooks.appId, app.appId))).toHaveLength(3);
     const list = (await admin('GET', `/apps/${app.appId}/incoming-webhooks`)).body;
     expect(JSON.stringify(list)).not.toMatch(/ewshk_[A-Za-z0-9_-]{43}/);
     expect((list['hooks'] as Json[])[0]!['tokenHint']).toMatch(/^ewshk_.{4}….{4}$/);
@@ -428,7 +432,7 @@ describe('lấy lại URL bất cứ lúc nào', () => {
 describe('Cài đặt hệ thống', () => {
   it('GET đủ danh mục + mặc định; PUT ngoài khoảng / khoá lạ -> 422, không ghi gì', async () => {
     const list = (await admin('GET', '/system-settings')).body['settings'] as Json[];
-    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'api.public_base_url', 'apps.max_active_api_keys']);
+    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'incoming.max_hooks_per_app', 'api.public_base_url', 'apps.max_active_api_keys', 'webhooks.max_endpoints_per_app']);
     expect(list[0]).toMatchObject({ value: 10, default: 10, min: 1, max: 1440, customized: false });
 
     const bad = await admin('PUT', '/system-settings', { values: { 'incoming.dedupe_window_minutes': 30, 'incoming.max_publications_per_minute': 0 } });

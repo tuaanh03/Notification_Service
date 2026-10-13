@@ -12,7 +12,7 @@ import {
 import { WebhookSlotTakenError } from '../../application/errors.ts';
 import type { WebhookDeliveryRepository, WebhookEndpointRepository } from '../../application/ports/index.ts';
 import { WebhookDelivery } from '../../domain/entities/webhook-delivery.ts';
-import { WEBHOOK_SLOTS, WebhookEndpoint, type WebhookSlot } from '../../domain/entities/webhook-endpoint.ts';
+import { WebhookEndpoint } from '../../domain/entities/webhook-endpoint.ts';
 import { webhookDeliveries, webhookEndpoints } from '../db/schema.ts';
 
 type EndpointRow = typeof webhookEndpoints.$inferSelect;
@@ -170,12 +170,10 @@ export class DrizzleWebhookDeliveryRepository implements WebhookDeliveryReposito
 }
 
 function toEndpoint(row: EndpointRow): WebhookEndpoint {
-  const slot = WEBHOOK_SLOTS.find((s) => s === row.slot);
-  if (slot === undefined) throw new Error(`unexpected webhook slot: ${row.slot}`);
   return new WebhookEndpoint({
     id: WebhookEndpointId.parse(row.endpointId),
     appId: AppId.parse(row.appId),
-    slot: slot satisfies WebhookSlot,
+    slot: row.slot,
     url: row.url,
     // Sự kiện đã bỏ khỏi danh mục thì lặng lẽ bỏ — đừng để một URL cũ làm hỏng cả màn danh sách.
     events: row.events.filter((e): e is WebhookEventType => (WEBHOOK_EVENT_TYPES as readonly string[]).includes(e)),

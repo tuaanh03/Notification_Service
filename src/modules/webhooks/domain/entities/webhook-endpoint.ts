@@ -11,16 +11,15 @@ import {
 import { parseWebhookUrl } from '../rules/webhook-url.ts';
 
 /**
- * Tối đa 2 URL mỗi app (ADR-0029). Mỗi URL giữ một "chỗ" (`slot` 1 hoặc 2); unique `(app_id, slot)` ở DB
- * là chốt cuối khi hai lệnh thêm chạy song song — không cần khoá bảng của module apps.
+ * Tối đa N URL mỗi app — N là cài đặt hệ thống `webhooks.max_endpoints_per_app` (bổ sung ADR-0029).
+ * Mỗi URL giữ một "chỗ" (`slot` 1…N); unique `(app_id, slot)` ở DB là chốt cuối khi hai lệnh thêm
+ * chạy song song — không cần khoá bảng của module apps.
  */
-export const WEBHOOK_SLOTS = [1, 2] as const;
-export type WebhookSlot = (typeof WEBHOOK_SLOTS)[number];
 
 export interface WebhookEndpointProps extends TimestampInput {
   id: WebhookEndpointId;
   appId: AppId;
-  slot: WebhookSlot;
+  slot: number;
   url: string;
   events: readonly WebhookEventType[];
   /** Secret không lưu — tính lại từ khoá chủ + id + số này (ADR-0029 §7a). Đổi secret = +1. */
@@ -32,7 +31,7 @@ export interface WebhookEndpointProps extends TimestampInput {
 /** Một URL của app nhận webhook. */
 export class WebhookEndpoint extends BaseEntity<WebhookEndpointId> {
   readonly appId: AppId;
-  readonly slot: WebhookSlot;
+  readonly slot: number;
   readonly url: string;
   readonly createdBy: string | null;
   events: readonly WebhookEventType[];
@@ -41,6 +40,7 @@ export class WebhookEndpoint extends BaseEntity<WebhookEndpointId> {
 
   constructor(props: WebhookEndpointProps) {
     super(props.id, props);
+    if (!Number.isInteger(props.slot) || props.slot < 1) throw ValidationError.of('WEBHOOK_SLOT_INVALID', 'slot must be a positive integer', 'slot');
     this.appId = props.appId;
     this.slot = props.slot;
     this.url = parseWebhookUrl(props.url);
@@ -50,14 +50,19 @@ export class WebhookEndpoint extends BaseEntity<WebhookEndpointId> {
     this.createdBy = props.createdBy ?? null;
   }
 
-  /** Chỗ còn trống cho URL mới; null = app đã đủ 2 URL. */
-  static freeSlot(used: readonly number[]): WebhookSlot | null {
-    return WEBHOOK_SLOTS.find((slot) => !used.includes(slot)) ?? null;
+  /**
+   * Chỗ nhỏ nhất còn trống trong 1…max; null = app đã đủ `max` URL. Đếm theo SỐ URL đang có, không
+   * theo số chỗ: trần vừa bị hạ (URL cũ giữ chỗ > max) thì vẫn không cho thêm khi đã đủ.
+   */
+  static freeSlot(used: readonly number[], max: number): number | null {
+    if (used.length >= max) return null;
+    for (let slot = 1; slot <= max; slot++) if (!used.includes(slot)) return slot;
+    return null;
   }
 
-  static assertHasFreeSlot(slot: WebhookSlot | null): asserts slot is WebhookSlot {
+  static assertHasFreeSlot(slot: number | null, max: number): asserts slot is number {
     if (slot === null) {
-      throw ValidationError.of('WEBHOOK_LIMIT_REACHED', `an app can have at most ${WEBHOOK_SLOTS.length} webhook URLs`, 'url');
+      throw ValidationError.of('WEBHOOK_LIMIT_REACHED', `an app can have at most ${max} webhook URLs`, 'url');
     }
   }
 

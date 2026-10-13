@@ -68,12 +68,18 @@ describe('WebhookEndpoint', () => {
     expect(codeOf(() => make(['ping']))).toBe('WEBHOOK_EVENT_UNKNOWN');
   });
 
-  it('tối đa 2 chỗ mỗi app', () => {
-    expect(WebhookEndpoint.freeSlot([])).toBe(1);
-    expect(WebhookEndpoint.freeSlot([1])).toBe(2);
-    expect(WebhookEndpoint.freeSlot([2])).toBe(1);
-    expect(WebhookEndpoint.freeSlot([1, 2])).toBeNull();
-    expect(codeOf(() => WebhookEndpoint.assertHasFreeSlot(null))).toBe('WEBHOOK_LIMIT_REACHED');
+  it('chỗ nhỏ nhất còn trống trong 1…max; đủ max URL -> hết chỗ', () => {
+    expect(WebhookEndpoint.freeSlot([], 2)).toBe(1);
+    expect(WebhookEndpoint.freeSlot([1], 2)).toBe(2);
+    expect(WebhookEndpoint.freeSlot([2], 2)).toBe(1);
+    expect(WebhookEndpoint.freeSlot([1, 2], 2)).toBeNull();
+    expect(WebhookEndpoint.freeSlot([1, 2], 10)).toBe(3);
+    expect(codeOf(() => WebhookEndpoint.assertHasFreeSlot(null, 2))).toBe('WEBHOOK_LIMIT_REACHED');
+  });
+
+  it('trần bị hạ thấp hơn số URL đang có -> không cho thêm dù còn chỗ số nhỏ', () => {
+    expect(WebhookEndpoint.freeSlot([5, 6, 7, 8], 3)).toBeNull();
+    expect(WebhookEndpoint.freeSlot([5, 6], 3)).toBe(1);
   });
 
   it('URL tắt thì không nhận sự kiện nào', () => {

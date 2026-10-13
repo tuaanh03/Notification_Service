@@ -54,7 +54,12 @@ export interface TopicPublisher {
 
 /** -> settings: con số do Super Admin chỉnh (ADR-0030 §8). */
 export interface IncomingSettings {
-  current(): Promise<{ dedupeWindowMinutes: number; maxPublicationsPerMinute: number; publicBaseUrl: string | null }>;
+  current(): Promise<{
+    dedupeWindowMinutes: number;
+    maxPublicationsPerMinute: number;
+    maxHooksPerApp: number;
+    publicBaseUrl: string | null;
+  }>;
 }
 
 /** Giới hạn số lần phát mỗi phút của MỘT hook, đếm chung mọi bản api (Redis). */

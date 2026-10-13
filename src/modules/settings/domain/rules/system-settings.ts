@@ -10,10 +10,14 @@ export const SYSTEM_SETTINGS = {
   'incoming.dedupe_window_minutes': { kind: 'int', default: 10, min: 1, max: 1440 },
   /** Mỗi hook phát tối đa chừng này lần mỗi phút — chặn "bão" cảnh báo. */
   'incoming.max_publications_per_minute': { kind: 'int', default: 20, min: 1, max: 600 },
+  /** Số incoming hook tối đa mỗi app (mỗi công cụ ngoài một hook). */
+  'incoming.max_hooks_per_app': { kind: 'int', default: 20, min: 1, max: 50 },
   /** Domain API công khai — console ghép URL đầy đủ của hook. null = chưa khai. */
   'api.public_base_url': { kind: 'url', default: null },
   /** Số khoá API đang hoạt động tối đa mỗi app — mỗi nơi gọi một khoá, có trần để khoá bỏ quên không tích tụ. */
   'apps.max_active_api_keys': { kind: 'int', default: 20, min: 1, max: 100 },
+  /** Số URL nhận outgoing webhook tối đa mỗi app — mỗi URL là thêm một lần gọi cho mỗi thư. */
+  'webhooks.max_endpoints_per_app': { kind: 'int', default: 10, min: 1, max: 50 },
 } as const satisfies Record<string, SettingSpec>;
 
 type SettingSpec = { kind: 'int'; default: number; min: number; max: number } | { kind: 'url'; default: string | null };
@@ -25,8 +29,10 @@ export const SYSTEM_SETTING_KEYS = Object.keys(SYSTEM_SETTINGS) as SystemSetting
 export interface SystemSettingsValues {
   'incoming.dedupe_window_minutes': number;
   'incoming.max_publications_per_minute': number;
+  'incoming.max_hooks_per_app': number;
   'api.public_base_url': string | null;
   'apps.max_active_api_keys': number;
+  'webhooks.max_endpoints_per_app': number;
 }
 
 export const isSystemSettingKey = (key: string): key is SystemSettingKey => Object.hasOwn(SYSTEM_SETTINGS, key);
@@ -44,8 +50,10 @@ export function effectiveSettings(stored: ReadonlyMap<string, unknown>): SystemS
   return {
     'incoming.dedupe_window_minutes': pick('incoming.dedupe_window_minutes'),
     'incoming.max_publications_per_minute': pick('incoming.max_publications_per_minute'),
+    'incoming.max_hooks_per_app': pick('incoming.max_hooks_per_app'),
     'api.public_base_url': pick('api.public_base_url'),
     'apps.max_active_api_keys': pick('apps.max_active_api_keys'),
+    'webhooks.max_endpoints_per_app': pick('webhooks.max_endpoints_per_app'),
   };
 }
 
