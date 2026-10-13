@@ -78,6 +78,35 @@ describe('topic — chỉ admin quản lý (ADR-0016 D6)', () => {
     expect(await keys()).not.toContain('alerts');
   });
 
+  // Bổ sung ADR-0022: người quản lý app tự đặt / bỏ bắt buộc sau khi tạo. Lựa chọn của người nhận KHÔNG bị xoá.
+  it('đặt / bỏ bắt buộc: người đã tắt nhận lại khi bắt buộc, bỏ bắt buộc thì về đúng lựa chọn cũ', async () => {
+    await admin('POST', `/apps/${shop.appId}/topics`, { key: 'promo_flip', name: 'Promo' });
+    await admin('POST', `/apps/${shop.appId}/topics/promo_flip/activate`);
+    await v1('PUT', '/users/u_flip', { email: 'u.flip@company.com' });
+    await v1('PUT', '/users/u_flip/preferences', { topics: { promo_flip: false } });
+    const events = async () => (await t.db.select().from(outbox).where(eq(outbox.eventType, 'TopicMandatoryChanged'))).length;
+
+    const on = await admin('PUT', `/apps/${shop.appId}/topics/promo_flip/mandatory`, { mandatory: true });
+    expect([on.status, on.body['mandatory']]).toEqual([200, true]);
+    let prefs = (await v1('GET', '/users/u_flip/preferences')).body;
+    expect(topicOf(prefs, 'promo_flip')).toMatchObject({ mandatory: true, optedIn: false, effectiveOptIn: true });
+    expect((await v1('PUT', '/users/u_flip/preferences', { topics: { promo_flip: false } })).status).toBe(422);
+    expect(await events()).toBe(1);
+
+    // Đặt lại đúng giá trị đang có: không ghi, không event.
+    expect((await admin('PUT', `/apps/${shop.appId}/topics/promo_flip/mandatory`, { mandatory: true })).status).toBe(200);
+    expect(await events()).toBe(1);
+
+    const off = await admin('PUT', `/apps/${shop.appId}/topics/promo_flip/mandatory`, { mandatory: false });
+    expect([off.status, off.body['mandatory']]).toEqual([200, false]);
+    prefs = (await v1('GET', '/users/u_flip/preferences')).body;
+    expect(topicOf(prefs, 'promo_flip')).toMatchObject({ mandatory: false, optedIn: false, effectiveOptIn: false });
+    expect(await events()).toBe(2);
+
+    expect((await admin('PUT', `/apps/${shop.appId}/topics/no_such/mandatory`, { mandatory: true })).status).toBe(404);
+    expect((await admin('PUT', `/apps/${shop.appId}/topics/promo_flip/mandatory`, { mandatory: 'yes' })).status).toBe(422);
+  });
+
   it('app service KHÔNG tạo được topic (không có route ghi ở /v1)', async () => {
     const res = await v1('POST', '/topics', { key: 'sneaky', name: 'x', mandatory: true });
     expect(res.status).toBe(404);

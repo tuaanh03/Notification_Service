@@ -6,5 +6,6 @@ export const TOPIC_EVENTS = {
   created: 'TopicCreated',
   activated: 'TopicActivated',
   suspended: 'TopicSuspended',
+  mandatoryChanged: 'TopicMandatoryChanged',
   preferenceChanged: 'UserTopicPreferenceChanged',
 } as const;

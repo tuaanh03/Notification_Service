@@ -16,7 +16,7 @@ const user = (orgRole?: OrgRole, appRole?: AppRole): AdminAccess => ({
 describe('decide() — luật phân quyền /admin (ADR-0022)', () => {
   it('Super Admin làm được mọi thứ, kể cả việc cấp hệ thống', () => {
     const superAdmin: AdminAccess = { isSuperAdmin: true, orgRoles: new Map(), appRoles: new Map() };
-    for (const p of ['platform.manage', 'app.review', 'topic.mandatory', 'app.manage'] as Permission[]) {
+    for (const p of ['platform.manage', 'app.review', 'app.manage'] as Permission[]) {
       expect(decide(superAdmin, p, onApp)).toBe('allow');
       expect(decide(superAdmin, p, null)).toBe('allow');
     }
@@ -64,9 +64,8 @@ describe('decide() — luật phân quyền /admin (ADR-0022)', () => {
     expect(decide(user('member', 'app_admin'), 'app.manage', onApp)).toBe('allow');
   });
 
-  it('duyệt app và đặt topic bắt buộc: chỉ Super Admin — Owner cũng không', () => {
+  it('duyệt app: chỉ Super Admin — Owner cũng không', () => {
     expect(decide(user('owner'), 'app.review', onApp)).toBe('deny');
-    expect(decide(user('owner'), 'topic.mandatory', onApp)).toBe('deny');
     expect(decide(user('member', 'app_admin'), 'app.review', onApp)).toBe('deny');
   });
 });

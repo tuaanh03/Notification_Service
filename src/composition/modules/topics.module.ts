@@ -5,6 +5,7 @@ import {
   ConsentQueries,
   CreateTopic,
   GetUserPreferences,
+  SetTopicMandatory,
   SetUserPreferences,
   TopicQueries,
   TransitionTopic,
@@ -43,6 +44,7 @@ export function topicsModule(
           adminTopicsRoutes({
             createTopic: new CreateTopic({ uow, outbox, clock, topics, apps: new AppsAppLookup(dependencies) }),
             transitionTopic: new TransitionTopic({ uow, outbox, clock, topics }),
+            setTopicMandatory: new SetTopicMandatory({ uow, outbox, clock, topics }),
             queries,
             getUserPreferences,
           }),

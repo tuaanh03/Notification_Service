@@ -71,7 +71,7 @@ export class DrizzleTopicRepository implements TopicRepository {
     const [result] = (await this.transactions
       .executor()
       .update(topics)
-      .set({ name: topic.name, status: topic.status, updatedAt: topic.updatedAt })
+      .set({ name: topic.name, status: topic.status, mandatory: topic.mandatory, updatedAt: topic.updatedAt })
       .where(and(eq(topics.topicId, topic.id), eq(topics.status, expectedStatus)))) as unknown as WriteResult;
     if (result.affectedRows === 0) throw new ConcurrentTransitionError('Topic', topic.id, expectedStatus);
   }

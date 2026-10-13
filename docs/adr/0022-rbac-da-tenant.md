@@ -26,11 +26,10 @@ Owner / Org Admin **ngầm** là App Admin trên mọi app của org — tính l
 | --- | --- |
 | `platform.manage` — tạo account / org (tạm), audit ngoài phạm vi app | Super Admin |
 | `app.review` — duyệt / từ chối / tạm ngưng / mở lại / thu hồi app | Super Admin |
-| `topic.mandatory` — tạo topic bắt buộc | Super Admin |
 | `org.read` | mọi thành viên org |
 | `app.create` | Owner, Org Admin |
 | `app.read` | Owner, Org Admin, App Admin / App Viewer của app đó |
-| `app.manage` — topic, template, khoá API, IP / Origin, gửi duyệt | Owner, Org Admin, App Admin của app đó |
+| `app.manage` — topic (kể cả đặt / bỏ bắt buộc — bổ sung 2026-10-13), template, khoá API, gửi duyệt | Owner, Org Admin, App Admin của app đó |
 
 Không phải thành viên org chứa đối tượng -> **404** (y như đối tượng không tồn tại, id sai định dạng
 cũng 404). Là thành viên nhưng thiếu vai -> **403** `FORBIDDEN`.
@@ -60,3 +59,16 @@ MySQL strict mode từ chối thu hẹp khi còn giá trị cũ.
 
 `admin-cli create-admin` bắt buộc `--role super_admin|user`. Gán người: `set-member`, `grant-app-role`.
 Màn Thành viên trên console là task 1.5; tự tạo org là task 1.3.
+
+## Bổ sung 2026-10-13 — topic bắt buộc do người quản lý app tự quyết
+
+Bỏ quyền `topic.mandatory` (trước chỉ Super Admin). Đặt / bỏ bắt buộc nay thuộc `app.manage`: Owner,
+Org Admin, App Admin của app — lúc tạo (`POST /admin/apps/:appId/topics` với `mandatory`) và **sau khi
+tạo** (`PUT /admin/apps/:appId/topics/:key/mandatory` `{ mandatory }`, mới). Không đòi lý do, không
+chờ duyệt; thay đổi vẫn vào audit (event `TopicMandatoryChanged`, `before` / `after` có `mandatory`).
+
+Giữ nguyên:
+- App service vẫn KHÔNG đặt được `mandatory` qua `/v1` (ADR-0016 D6 — bên gọi API không tự lách opt-out).
+- Bỏ bắt buộc không xoá lựa chọn của người nhận: ai từng tắt quay về đúng lựa chọn cũ (dòng
+  `user_topic_preferences` vẫn còn). Đặt lại đúng giá trị đang có -> không ghi, không event.
+- Bắt buộc vẫn KHÔNG bỏ qua L0 (email đã ngắt / hỏng).

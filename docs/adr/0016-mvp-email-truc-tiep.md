@@ -16,7 +16,7 @@ chia lô, duyệt gửi) — quá nặng cho giai đoạn này.
 | D3 | **At-most-once**: đã giao cho Graph thì không gửi lại; không chắc -> `failed` / `outcome_unknown` |
 | D4 | Chỉ nội dung trực tiếp `{ subject, html, text? }`; `templates` sau MVP |
 | D5 | Người nhận chỉ theo `external_id` (có user -> có subscription -> có L0/L1/L3) |
-| D6 | Topic do admin tạo; `/v1/topics` chỉ đọc (app không tự đặt `mandatory` để lách opt-out) |
+| D6 | Topic do admin tạo; `/v1/topics` chỉ đọc (app không tự đặt `mandatory` để lách opt-out). Ai trong admin đặt được `mandatory`: xem ADR-0022 (bổ sung 2026-10-13 — người quản lý app) |
 | D7 | Consent kiểm ở worker ngay trước lúc gửi; API luôn 202 trừ lỗi input |
 | D8 | Dùng lại `channelGate` + `effectiveOptIn` (ADR-0010), không viết rule mới |
 | D9 | Route theo `external_id`; mỗi user một email mỗi app |

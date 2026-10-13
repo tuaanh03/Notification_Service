@@ -24,12 +24,10 @@ export const PERMISSIONS = [
   'app.create',
   /** Xem dữ liệu của một app. */
   'app.read',
-  /** Cấu hình app: topic, template, khoá API, gửi duyệt. */
+  /** Cấu hình app: topic (kể cả đặt / bỏ bắt buộc), template, khoá API, gửi duyệt. */
   'app.manage',
   /** Duyệt / từ chối / tạm ngưng / mở lại / thu hồi app — chỉ Super Admin. */
   'app.review',
-  /** Đặt topic bắt buộc (bỏ qua quyền tắt thư của người nhận) — chỉ Super Admin. */
-  'topic.mandatory',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -50,7 +48,7 @@ export type AccessTarget = { orgId: string; appId?: string | undefined } | null;
  */
 export type AccessDecision = 'allow' | 'hidden' | 'deny';
 
-const SUPER_ADMIN_ONLY: ReadonlySet<Permission> = new Set(['platform.manage', 'app.review', 'topic.mandatory']);
+const SUPER_ADMIN_ONLY: ReadonlySet<Permission> = new Set(['platform.manage', 'app.review']);
 const ORG_MANAGERS: ReadonlySet<OrgRole> = new Set(['owner', 'org_admin']);
 
 export function decide(access: AdminAccess, permission: Permission, target: AccessTarget): AccessDecision {

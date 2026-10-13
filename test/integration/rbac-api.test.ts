@@ -157,9 +157,19 @@ describe('Member + App Admin', () => {
     expect((await as(token.appAdmin)('POST', `/apps/${app.A1}/topics`, { key: 'by_app_admin', name: 'OK' })).status).toBe(201);
   });
 
-  it('topic BẮT BUỘC, duyệt / tạm ngưng app: chỉ Super Admin -> 403', async () => {
+  it('topic BẮT BUỘC: người quản lý app tự đặt / bỏ (bổ sung ADR-0022); App Viewer -> 403', async () => {
     const appAdmin = as(token.appAdmin);
-    expect((await appAdmin('POST', `/apps/${app.A1}/topics`, { key: 'must_read', name: 'M', mandatory: true })).status).toBe(403);
+    const created = await appAdmin('POST', `/apps/${app.A1}/topics`, { key: 'must_read', name: 'M', mandatory: true });
+    expect([created.status, created.body['mandatory']]).toEqual([201, true]);
+    const off = await appAdmin('PUT', `/apps/${app.A1}/topics/must_read/mandatory`, { mandatory: false });
+    expect([off.status, off.body['mandatory']]).toEqual([200, false]);
+    const viewer = as(token.viewer);
+    expect((await viewer('PUT', `/apps/${app.A1}/topics/must_read/mandatory`, { mandatory: true })).status).toBe(403);
+    expect((await viewer('POST', `/apps/${app.A1}/topics`, { key: 'v_must', name: 'V', mandatory: true })).status).toBe(403);
+  });
+
+  it('duyệt / tạm ngưng app: chỉ Super Admin -> 403', async () => {
+    const appAdmin = as(token.appAdmin);
     expect((await appAdmin('POST', `/apps/${app.A1}/approve`, { grantedChannels: ['email'] })).status).toBe(403);
     expect((await appAdmin('POST', `/apps/${app.A1}/suspend`)).status).toBe(403);
   });

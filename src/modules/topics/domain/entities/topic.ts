@@ -37,7 +37,7 @@ export class Topic extends BaseEntity<TopicId> {
   name: string;
   status: TopicStatus;
   defaultMode: TopicDefaultMode;
-  readonly mandatory: boolean;
+  mandatory: boolean;
   defaultChannels: readonly Channel[];
 
   constructor(props: TopicProps) {
@@ -71,6 +71,15 @@ export class Topic extends BaseEntity<TopicId> {
   /** Mọi đổi trạng thái đi qua đây — không ai set `status` trực tiếp. */
   apply(event: TopicTransitionEvent, at: Date): void {
     this.status = nextTopicStatus(this.status, event);
+    this.touch(at);
+  }
+
+  /**
+   * Đặt / bỏ bắt buộc. Lựa chọn của người nhận KHÔNG bị xoá: bỏ bắt buộc thì ai từng tắt quay về đúng
+   * lựa chọn cũ (L3 đọc lại dòng preference như trước).
+   */
+  setMandatory(mandatory: boolean, at: Date): void {
+    this.mandatory = mandatory;
     this.touch(at);
   }
 
