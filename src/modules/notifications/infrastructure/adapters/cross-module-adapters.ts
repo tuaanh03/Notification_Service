@@ -132,9 +132,9 @@ export class AppsOpenTrackingConfig implements OpenTrackingConfig {
     this.systemSettings = deps.systemSettings;
   }
 
-  async publicBaseUrlFor(appId: AppId): Promise<string | null> {
-    if (!(await this.appQueries.get(appId)).trackOpens) return null;
-    return (await this.systemSettings.current())['api.public_base_url'];
+  async forApp(appId: AppId): Promise<{ enabled: boolean; publicBaseUrl: string | null }> {
+    const [app, settings] = await Promise.all([this.appQueries.get(appId), this.systemSettings.current()]);
+    return { enabled: app.trackOpens, publicBaseUrl: settings['api.public_base_url'] };
   }
 }
 

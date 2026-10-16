@@ -1,11 +1,11 @@
 import type { AppId, NotificationId } from '../../../../shared/kernel/index.ts';
 
 /**
- * -> apps + settings: thư của app này có chèn ảnh đếm "đã mở" không (ADR-0031). Trả domain API công
- * khai để ghép URL ảnh khi app BẬT đếm VÀ Super Admin đã khai `api.public_base_url`; null = không chèn.
+ * -> apps + settings: cờ đếm "đã mở" của app (ADR-0031) + domain API công khai để ghép URL ảnh
+ * (`api.public_base_url`, null = Super Admin chưa khai). Chèn ảnh khi `enabled` VÀ có domain.
  */
 export interface OpenTrackingConfig {
-  publicBaseUrlFor(appId: AppId): Promise<string | null>;
+  forApp(appId: AppId): Promise<{ enabled: boolean; publicBaseUrl: string | null }>;
 }
 
 /**

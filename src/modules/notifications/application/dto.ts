@@ -127,7 +127,8 @@ export interface NotificationSummaryDto extends Omit<NotificationDto, 'recipient
   externalId: string | null;
   /** Như `NotificationDto.template`, kèm tên template cho người đọc. */
   template: { id: string; name: string; version: number } | null;
-  recipient: Omit<NotificationRecipientDto, 'address'> | null;
+  /** `firstOpenedAt` / `openCount`: đếm "đã mở" ƯỚC LƯỢNG (ADR-0031) — chỉ màn quản trị, không có ở `/v1`. */
+  recipient: (Omit<NotificationRecipientDto, 'address'> & { firstOpenedAt: string | null; openCount: number }) | null;
 }
 
 /** Một trang lịch sử gửi. `total` để biết còn bao nhiêu trang. */
@@ -147,10 +148,24 @@ export function toNotificationSummaryDto(
     ...rest,
     externalId: extra.externalId,
     template: extra.template ? { id: extra.template.templateId, name: extra.template.name, version: extra.template.version } : null,
-    recipient: recipient
-      ? { status: recipient.status, exclusionReason: recipient.exclusionReason, error: recipient.error, sentAt: recipient.sentAt }
-      : null,
+    recipient:
+      recipient && extra.recipient
+        ? {
+            status: recipient.status,
+            exclusionReason: recipient.exclusionReason,
+            error: recipient.error,
+            sentAt: recipient.sentAt,
+            firstOpenedAt: iso(extra.recipient.firstOpenedAt),
+            openCount: extra.recipient.openCount,
+          }
+        : null,
   };
+}
+
+/** Trang "Theo dõi mở thư" (ADR-0031). `ready` = server có khoá ký + domain API công khai — thiếu thì bật cũng không chèn ảnh. */
+export interface OpenTrackingDto {
+  enabled: boolean;
+  ready: boolean;
 }
 
 /**

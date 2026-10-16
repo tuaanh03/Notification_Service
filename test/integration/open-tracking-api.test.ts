@@ -96,6 +96,7 @@ const pixel = (path: string) => fetch(`${api.url}${path}`);
 describe('Đếm "đã mở" (ADR-0031)', () => {
   it('mặc định tắt: thư đi nguyên HTML, app trả trackOpens=false', async () => {
     expect((await admin('GET', `/apps/${shop.appId}`)).body['trackOpens']).toBe(false);
+    expect((await admin('GET', `/apps/${shop.appId}/open-tracking`)).body).toEqual({ enabled: false, ready: true });
     await sendTo('emp_off');
     expect(mail.delivered[0]!.html).toBe('<html><body><p>Đơn của bạn đã giao.</p></body></html>');
   });
@@ -124,6 +125,11 @@ describe('Đếm "đã mở" (ADR-0031)', () => {
 
     await pixel(path!);
     expect(await recipientOf(id)).toMatchObject({ openCount: 2, firstOpenedAt: opened.firstOpenedAt });
+    expect((await admin('GET', `/apps/${shop.appId}/open-tracking`)).body).toEqual({ enabled: true, ready: true });
+    // Màn Lịch sử gửi thấy lượt mở; `/v1` thì không (ngoài hợp đồng với đội app).
+    const rows = (await admin('GET', `/apps/${shop.appId}/notifications?externalId=emp_on`)).body['rows'];
+    expect(rows[0].recipient).toMatchObject({ openCount: 2, firstOpenedAt: opened.firstOpenedAt!.toISOString() });
+    expect((await v1('GET', `/notifications/${id}`)).body['recipient']).not.toHaveProperty('openCount');
 
     // Chữ ký sai / chữ ký của thư khác / không phải .gif -> cùng ảnh, không đếm.
     const forged = `${signature![0] === 'A' ? 'B' : 'A'}${signature!.slice(1)}`;
@@ -157,6 +163,18 @@ describe('Đếm "đã mở" (ADR-0031)', () => {
     const rows = await t.db.select().from(auditLog).where(eq(auditLog.action, 'AppOpenTrackingChanged')).orderBy(asc(auditLog.at));
     // Bật ở test trước + tắt ở test này = 2 lần đổi thật; bật khi đang bật / tắt khi đang tắt không ghi gì.
     expect(rows.map((r) => r.afterData)).toEqual([{ trackOpens: true }, { trackOpens: false }]);
+  });
+
+  it('thiếu domain công khai -> ready=false, bật cũng không chèn ảnh', async () => {
+    await admin('PUT', `/apps/${shop.appId}/open-tracking`, { enabled: true });
+    await admin('PUT', '/system-settings', { values: { 'api.public_base_url': null } });
+    try {
+      expect((await admin('GET', `/apps/${shop.appId}/open-tracking`)).body).toEqual({ enabled: true, ready: false });
+      await sendTo('emp_no_domain');
+      expect(mail.delivered[0]!.html).not.toContain('/t/o/');
+    } finally {
+      await admin('PUT', '/system-settings', { values: { 'api.public_base_url': `${BASE}/` } });
+    }
   });
 
   it('body sai -> 422', async () => {

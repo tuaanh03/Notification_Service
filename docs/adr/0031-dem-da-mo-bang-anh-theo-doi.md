@@ -1,6 +1,6 @@
 # ADR-0031 — Đếm "đã mở" bằng ảnh theo dõi trong thư
 
-**Trạng thái:** chấp nhận — 2026-10-16. Bước 1 (backend, mặc định tắt); console và webhook làm sau.
+**Trạng thái:** chấp nhận — 2026-10-16. Bước 1 (backend, mặc định tắt) + bước 2 (console: công tắc, dấu "đã mở"); webhook làm sau.
 
 ## Bối cảnh
 
@@ -37,7 +37,11 @@ Read receipt (xác nhận đã đọc) cũng bỏ: người nhận bấm từ ch
    `notification_recipients` (không đọc trước, hai lượt cùng lúc không mất lượt). Sai gì cũng trả CÙNG
    ảnh GIF 43 byte, 200 — không dò được URL nào là thật. `Cache-Control: no-store`. Không event, không
    audit cho từng lượt mở.
-6. **Con số là ƯỚC LƯỢNG**, phải ghi rõ ở mọi nơi hiển thị:
+6. **Đọc cho console:** `GET /admin/apps/:appId/open-tracking` (`app.read`, module notifications) trả
+   `{ enabled, ready }` — `ready` = khoá ký + domain công khai, cùng điều kiện worker dùng. Lịch sử gửi
+   (`GET /admin/apps/:appId/notifications`) có thêm `recipient.firstOpenedAt` / `openCount`; `/v1` KHÔNG có
+   (ngoài hợp đồng với đội app). Console: trang Cài đặt App › Theo dõi mở thư, dấu "đã mở" trong ô Kết cục.
+7. **Con số là ƯỚC LƯỢNG**, phải ghi rõ ở mọi nơi hiển thị:
    - Outlook bản cài máy thường chặn ảnh -> đã mở mà không đếm;
    - Apple Mail Privacy Protection, bộ quét bảo mật tải sẵn ảnh -> chưa mở mà đã đếm;
    - proxy ảnh của nhà mail có thể cache -> lượt mở sau không tới;
@@ -45,7 +49,7 @@ Read receipt (xác nhận đã đọc) cũng bỏ: người nhận bấm từ ch
 
 ## Không làm (bước sau, khi số đo thật cho thấy đáng làm)
 
-- Hiện "đã mở" trên console (lịch sử gửi, Tổng quan) và công tắc trên màn app.
+- Tỉ lệ mở trên màn Tổng quan.
 - Đếm bấm link (đổi link qua EWS rồi chuyển tiếp, lọc lượt bấm của bộ quét bảo mật).
 - Sự kiện webhook `email.opened` / `email.clicked`, trường "đã mở" trong `GET /v1/notifications/:id`.
 - Giới hạn tốc độ riêng cho `/t/o/*` (chữ ký sai không chạm DB; chữ ký đúng chỉ một UPDATE theo PK).

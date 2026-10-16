@@ -208,9 +208,9 @@ export class DeliverEmailNotification {
   private async withOpenTracking(notification: Notification, html: string): Promise<string> {
     const { tracking, signer } = this.deps;
     if (!signer.configured) return html;
-    const baseUrl = await tracking.publicBaseUrlFor(notification.appId);
-    if (baseUrl === null) return html;
-    return withOpenPixel(html, `${baseUrl}${openPixelPath(notification.id, signer.sign(notification.id))}`);
+    const { enabled, publicBaseUrl } = await tracking.forApp(notification.appId);
+    if (!enabled || publicBaseUrl === null) return html;
+    return withOpenPixel(html, `${publicBaseUrl}${openPixelPath(notification.id, signer.sign(notification.id))}`);
   }
 
   /**

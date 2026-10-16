@@ -10,6 +10,7 @@ import {
   GetNotificationOutcome,
   GetPublication,
   ListNotifications,
+  GetOpenTracking,
   PublishToTopic,
   RecordEmailOpen,
 } from '../../modules/notifications/application/index.ts';
@@ -47,7 +48,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
  * Ghép module notifications — cắm vào CẢ BA process:
  *   api       GET /t/o/:notificationId/:sig.gif (công khai — ảnh đếm "đã mở", ADR-0031)
  *             · POST/GET /v1/notifications · POST/GET /v1/publications (phát vào topic, ADR-0028) · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
- *             · GET /admin/apps/:appId/overview (màn Tổng quan, chỉ đọc)
+ *             · GET /admin/apps/:appId/overview (màn Tổng quan, chỉ đọc) · GET /admin/apps/:appId/open-tracking
  *   worker    consumer `email-sender` (notif.queued, idempotency: 'handler')
  *   scheduler job `fail-stuck-sending`
  */
@@ -77,6 +78,7 @@ export function notificationsModule(
   const renderer = new TemplatesRenderer(dependencies);
   const publications = new DrizzlePublicationRepository({ transactions });
   const signer = new HmacOpenTrackingSigner({ signingKey: container.env.WEBHOOK_SIGNING_KEY });
+  const tracking = new AppsOpenTrackingConfig(dependencies);
   const publishToTopic = new PublishToTopic({
     uow,
     outbox,
@@ -101,6 +103,7 @@ export function notificationsModule(
           adminNotificationsRoutes({
             list: new ListNotifications({ notifications, recipients, users, topics, templates }),
             overview: new GetAppOverview({ clock, stats: new DrizzleNotificationStats({ transactions }), users, emails, topics }),
+            openTracking: new GetOpenTracking({ tracking, signer }),
           }),
         ],
         v1: [
@@ -140,7 +143,7 @@ export function notificationsModule(
               emails,
               topics,
               sender: new DeliveryEmailSender(dependencies),
-              tracking: new AppsOpenTrackingConfig(dependencies),
+              tracking,
               signer,
             }),
           }),

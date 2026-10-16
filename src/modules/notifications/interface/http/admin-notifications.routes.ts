@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { access, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AppId, NOTIFICATION_STATUSES } from '../../../../shared/kernel/index.ts';
-import { MAX_NOTIFICATION_PAGE, type GetAppOverview, type ListNotifications } from '../../application/index.ts';
+import { MAX_NOTIFICATION_PAGE, type GetAppOverview, type GetOpenTracking, type ListNotifications } from '../../application/index.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
 const listQuery = z.object({
@@ -23,7 +23,11 @@ const listQuery = z.object({
  *
  * Chỉ đọc — không huỷ, không gửi lại. MVP không có lệnh nào như vậy.
  */
-export function adminNotificationsRoutes(useCases: { list: ListNotifications; overview: GetAppOverview }): HttpRoutes {
+export function adminNotificationsRoutes(useCases: {
+  list: ListNotifications;
+  overview: GetAppOverview;
+  openTracking: GetOpenTracking;
+}): HttpRoutes {
   return (app) => {
     app.get('/apps/:appId/notifications', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
@@ -34,6 +38,12 @@ export function adminNotificationsRoutes(useCases: { list: ListNotifications; ov
     app.get('/apps/:appId/overview', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.overview.execute({ appId: AppId.parse(appId) });
+    });
+
+    // Đọc cờ đếm "đã mở" + server đã sẵn sàng chưa (ADR-0031). Đổi cờ: `PUT` cùng đường, module apps.
+    app.get('/apps/:appId/open-tracking', { config: access('app.read') }, async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      return useCases.openTracking.execute({ appId: AppId.parse(appId) });
     });
   };
 }

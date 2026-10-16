@@ -181,7 +181,9 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
             : { kind: 'accepted', providerMessageId: 'graph-1' };
         },
       },
-      tracking: { publicBaseUrlFor: async () => options.trackingBaseUrl ?? null },
+      tracking: {
+        forApp: async () => ({ enabled: options.trackingBaseUrl != null, publicBaseUrl: options.trackingBaseUrl ?? null }),
+      },
       signer: {
         configured: options.signerConfigured ?? true,
         sign: (id) => `sig-${id}`,
