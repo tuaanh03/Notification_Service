@@ -35,7 +35,7 @@ export interface Application {
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
  * Thứ tự dựng theo phụ thuộc: settings -> tenancy -> apps (cần findOrganization, settings); subscriptions -> directory
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
- * -> templates (cần apps) -> delivery (provider email) -> notifications (cần directory, subscriptions, topics, templates, delivery)
+ * -> templates (cần apps) -> delivery (provider email) -> notifications (cần apps, settings, directory, subscriptions, topics, templates, delivery)
  * -> webhooks (cần notifications, settings) -> incoming (cần apps, templates, topics, notifications, settings).
  */
 export interface ApplicationOverrides {
@@ -80,6 +80,8 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     sendRateLimiter: delivery.sendRateLimiter,
     renderTemplate: templates.renderTemplate,
     templateQueries: templates.templateQueries,
+    appQueries: apps.appQueries,
+    systemSettings: settings.systemSettings,
   });
   const webhooks = webhooksModule(container, {
     notificationOutcomes: notifications.notificationOutcomes,

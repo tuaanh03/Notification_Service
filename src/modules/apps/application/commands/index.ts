@@ -4,6 +4,7 @@ export * from './create-app.ts';
 export * from './issue-app-secret.ts';
 export * from './manage-network-rules.ts';
 export * from './revoke-app-secret.ts';
+export * from './set-open-tracking.ts';
 export * from './transition-app.ts';
 export * from './grant-app-role.ts';
 export * from './revoke-app-role.ts';

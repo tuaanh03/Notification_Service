@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { TransactionContext } from '../../../../shared/db/index.ts';
 import {
   NotificationId,
@@ -72,6 +72,24 @@ export class DrizzleRecipientRepository implements RecipientRepository {
         ),
       );
   }
+
+  async recordOpen(notificationId: NotificationIdType, at: Date): Promise<boolean> {
+    const [result] = (await this.transactions
+      .executor()
+      .update(notificationRecipients)
+      .set({
+        openCount: sql`${notificationRecipients.openCount} + 1`,
+        firstOpenedAt: sql`COALESCE(${notificationRecipients.firstOpenedAt}, ${at})`,
+      })
+      .where(
+        and(
+          eq(notificationRecipients.notificationId, notificationId),
+          eq(notificationRecipients.channel, 'email'),
+          eq(notificationRecipients.status, 'sent'),
+        ),
+      )) as unknown as [{ affectedRows: number }, unknown];
+    return result.affectedRows > 0;
+  }
 }
 
 function toRecipient(row: Row): NotificationRecipient {
@@ -89,5 +107,7 @@ function toRecipient(row: Row): NotificationRecipient {
     providerMessageId: row.providerMessageId,
     error: row.error,
     sentAt: row.sentAt,
+    firstOpenedAt: row.firstOpenedAt,
+    openCount: row.openCount,
   });
 }

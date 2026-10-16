@@ -28,6 +28,9 @@ export class NotificationRecipient {
   providerMessageId: string | null;
   error: string | null;
   sentAt: Date | null;
+  /** Đếm "đã mở" (ADR-0031) — chỉ đường ảnh theo dõi ghi, worker không đụng tới. */
+  readonly firstOpenedAt: Date | null;
+  readonly openCount: number;
 
   constructor(props: {
     notificationId: NotificationId;
@@ -43,6 +46,8 @@ export class NotificationRecipient {
     providerMessageId?: string | null | undefined;
     error?: string | null | undefined;
     sentAt?: Date | null | undefined;
+    firstOpenedAt?: Date | null | undefined;
+    openCount?: number | undefined;
   }) {
     this.notificationId = props.notificationId;
     this.userId = props.userId;
@@ -57,6 +62,8 @@ export class NotificationRecipient {
     this.providerMessageId = props.providerMessageId ?? null;
     this.error = props.error ?? null;
     this.sentAt = props.sentAt ?? null;
+    this.firstOpenedAt = props.firstOpenedAt ?? null;
+    this.openCount = props.openCount ?? 0;
   }
 
   /** `providerMessageId` null khi provider không trả id (Graph sendMail trả 202 không kèm id). */

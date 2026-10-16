@@ -191,6 +191,9 @@ export const notificationRecipients = mysqlTable(
     providerMessageId: varchar('provider_message_id', { length: 255 }),
     error: varchar('error', { length: 500 }),
     sentAt: ts('sent_at'),
+    /** Lần đầu ảnh theo dõi được tải (ADR-0031) — ƯỚC LƯỢNG "đã mở", không phải bằng chứng đã đọc. */
+    firstOpenedAt: ts('first_opened_at'),
+    openCount: int('open_count').notNull().default(0),
     createdAt: tsNow('created_at'),
   },
   (t) => [

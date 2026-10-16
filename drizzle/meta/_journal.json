@@ -127,6 +127,13 @@
       "when": 1791858602629,
       "tag": "0017_app_secret_name_last_used",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1792135431519,
+      "tag": "0018_open_tracking",
+      "breakpoints": true
     }
   ]
 }

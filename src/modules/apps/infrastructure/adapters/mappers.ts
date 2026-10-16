@@ -37,6 +37,7 @@ export function toApp(row: AppRow): App {
     maxRecipientsPerEvent: row.maxRecipientsPerEvent,
     includedInOrgBroadcast: row.includedInOrgBroadcast,
     isSystem: row.isSystem,
+    trackOpens: row.trackOpens,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -57,6 +58,7 @@ export function fromApp(app: App): typeof apps.$inferInsert {
     maxRecipientsPerEvent: app.maxRecipientsPerEvent,
     includedInOrgBroadcast: app.includedInOrgBroadcast,
     isSystem: app.isSystem,
+    trackOpens: app.trackOpens,
     createdAt: app.createdAt,
     updatedAt: app.updatedAt,
   };

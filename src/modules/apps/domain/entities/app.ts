@@ -30,6 +30,8 @@ export interface AppProps extends TimestampInput {
   includedInOrgBroadcast?: boolean | undefined;
   /** App SYS: chạm được mọi user trong org, chỉ Super Admin thấy và setup. */
   isSystem?: boolean | undefined;
+  /** Chèn ảnh theo dõi vào thư để đếm "đã mở" (ADR-0031). Mặc định tắt. */
+  trackOpens?: boolean | undefined;
 }
 
 /**
@@ -62,6 +64,7 @@ export class App extends BaseEntity<AppId> {
   rateLimitPerMinute: number;
   maxRecipientsPerEvent: number;
   includedInOrgBroadcast: boolean;
+  trackOpens: boolean;
 
   constructor(props: AppProps) {
     super(props.id, props);
@@ -86,6 +89,7 @@ export class App extends BaseEntity<AppId> {
     this.maxRecipientsPerEvent = props.maxRecipientsPerEvent ?? 1000;
     this.includedInOrgBroadcast = props.includedInOrgBroadcast ?? true;
     this.isSystem = props.isSystem ?? false;
+    this.trackOpens = props.trackOpens ?? false;
   }
 
   /**
@@ -128,6 +132,14 @@ export class App extends BaseEntity<AppId> {
     this.status = nextAppStatus(from, event);
     this.touch(at);
     return this.status;
+  }
+
+  /** Bật / tắt đếm "đã mở" (ADR-0031). Trả false nếu giá trị không đổi — không ghi, không audit. */
+  setOpenTracking(enabled: boolean, at: Date): boolean {
+    if (this.trackOpens === enabled) return false;
+    this.trackOpens = enabled;
+    this.touch(at);
+    return true;
   }
 
   /** App đã thu hồi là trạng thái kết thúc: không cấp thêm credential nào nữa. */

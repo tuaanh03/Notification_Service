@@ -16,6 +16,8 @@ export interface AppDto {
   maxRecipientsPerEvent: number;
   includedInOrgBroadcast: boolean;
   isSystem: boolean;
+  /** Đếm "đã mở" bằng ảnh theo dõi (ADR-0031). */
+  trackOpens: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -66,6 +68,7 @@ export const toAppDto = (a: App): AppDto => ({
   maxRecipientsPerEvent: a.maxRecipientsPerEvent,
   includedInOrgBroadcast: a.includedInOrgBroadcast,
   isSystem: a.isSystem,
+  trackOpens: a.trackOpens,
   createdAt: a.createdAt.toISOString(),
   updatedAt: a.updatedAt.toISOString(),
 });

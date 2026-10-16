@@ -53,4 +53,9 @@ export interface RecipientRepository {
   findByNotifications(notificationIds: readonly NotificationId[]): Promise<Map<NotificationId, NotificationRecipient>>;
   insert(recipient: NotificationRecipient): Promise<void>;
   update(recipient: NotificationRecipient): Promise<void>;
+  /**
+   * Một lượt tải ảnh theo dõi (ADR-0031): `open_count + 1`, `first_opened_at` giữ lần đầu — MỘT UPDATE,
+   * không đọc trước nên hai lượt cùng lúc không mất lượt nào. Chỉ thư đã `sent`. false = không dòng nào khớp.
+   */
+  recordOpen(notificationId: NotificationId, at: Date): Promise<boolean>;
 }

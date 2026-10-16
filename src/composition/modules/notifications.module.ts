@@ -1,3 +1,4 @@
+import type { AppQueries } from '../../modules/apps/application/index.ts';
 import type { SendEmail, SendRateLimiter } from '../../modules/delivery/application/index.ts';
 import type { FindUserByExternalId } from '../../modules/directory/application/index.ts';
 import {
@@ -10,14 +11,17 @@ import {
   GetPublication,
   ListNotifications,
   PublishToTopic,
+  RecordEmailOpen,
 } from '../../modules/notifications/application/index.ts';
 import {
+  AppsOpenTrackingConfig,
   DeliveryEmailSender,
   DirectoryRecipientLookup,
   DrizzleNotificationRepository,
   DrizzleNotificationStats,
   DrizzlePublicationRepository,
   DrizzleRecipientRepository,
+  HmacOpenTrackingSigner,
   SubscriptionsEmailLookup,
   TemplatesLabels,
   TemplatesRenderer,
@@ -27,9 +31,11 @@ import {
   adminNotificationsRoutes,
   emailSenderHandler,
   failStuckSendingJob,
+  publicTrackingRoutes,
   v1NotificationsRoutes,
   v1PublicationsRoutes,
 } from '../../modules/notifications/interface/index.ts';
+import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
 import type { FindUserEmail } from '../../modules/subscriptions/application/index.ts';
 import type { RenderTemplate, TemplateQueries } from '../../modules/templates/application/index.ts';
 import type { ConsentQueries } from '../../modules/topics/application/index.ts';
@@ -39,7 +45,8 @@ import type { ModuleDefinition } from '../module-definition.ts';
 
 /**
  * Ghép module notifications — cắm vào CẢ BA process:
- *   api       POST/GET /v1/notifications · POST/GET /v1/publications (phát vào topic, ADR-0028) · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
+ *   api       GET /t/o/:notificationId/:sig.gif (công khai — ảnh đếm "đã mở", ADR-0031)
+ *             · POST/GET /v1/notifications · POST/GET /v1/publications (phát vào topic, ADR-0028) · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
  *             · GET /admin/apps/:appId/overview (màn Tổng quan, chỉ đọc)
  *   worker    consumer `email-sender` (notif.queued, idempotency: 'handler')
  *   scheduler job `fail-stuck-sending`
@@ -54,6 +61,8 @@ export function notificationsModule(
     sendRateLimiter: SendRateLimiter;
     renderTemplate: RenderTemplate;
     templateQueries: TemplateQueries;
+    appQueries: AppQueries;
+    systemSettings: SystemSettingsQueries;
   },
 ): { definition: ModuleDefinition; notificationOutcomes: GetNotificationOutcome; publishToTopic: PublishToTopic } {
   const { uow, outbox, clock, logger } = container.ports;
@@ -67,6 +76,7 @@ export function notificationsModule(
   const templates = new TemplatesLabels(dependencies);
   const renderer = new TemplatesRenderer(dependencies);
   const publications = new DrizzlePublicationRepository({ transactions });
+  const signer = new HmacOpenTrackingSigner({ signingKey: container.env.WEBHOOK_SIGNING_KEY });
   const publishToTopic = new PublishToTopic({
     uow,
     outbox,
@@ -86,6 +96,7 @@ export function notificationsModule(
     definition: {
       name: 'notifications',
       http: {
+        public: [publicTrackingRoutes({ recordOpen: new RecordEmailOpen({ clock, signer, recipients }) })],
         admin: [
           adminNotificationsRoutes({
             list: new ListNotifications({ notifications, recipients, users, topics, templates }),
@@ -129,6 +140,8 @@ export function notificationsModule(
               emails,
               topics,
               sender: new DeliveryEmailSender(dependencies),
+              tracking: new AppsOpenTrackingConfig(dependencies),
+              signer,
             }),
           }),
         },

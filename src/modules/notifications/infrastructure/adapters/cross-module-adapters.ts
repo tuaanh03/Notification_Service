@@ -1,4 +1,6 @@
+import type { AppQueries } from '../../../apps/application/index.ts';
 import type { SendEmail, SendRateLimiter } from '../../../delivery/application/index.ts';
+import type { SystemSettingsQueries } from '../../../settings/application/index.ts';
 import type { FindUserByExternalId } from '../../../directory/application/index.ts';
 import type { EmailSubscriptionDto, FindUserEmail } from '../../../subscriptions/application/index.ts';
 import type { ConsentQueries } from '../../../topics/application/index.ts';
@@ -17,6 +19,7 @@ import type {
   EmailDeliveryOutcome,
   EmailLookup,
   EmailSender,
+  OpenTrackingConfig,
   RecipientLookup,
   TopicConsentLookup,
   TopicForDelivery,
@@ -116,6 +119,22 @@ export class DeliveryEmailSender implements EmailSender {
 
   send(email: { to: string; subject: string; html: string; text: string | null; notificationId: string }): Promise<EmailDeliveryOutcome> {
     return this.sendEmail.execute(email);
+  }
+}
+
+/** notifications -> apps + settings: cờ đếm "đã mở" của app + domain API công khai (ADR-0031). */
+export class AppsOpenTrackingConfig implements OpenTrackingConfig {
+  private readonly appQueries: AppQueries;
+  private readonly systemSettings: SystemSettingsQueries;
+
+  constructor(deps: { appQueries: AppQueries; systemSettings: SystemSettingsQueries }) {
+    this.appQueries = deps.appQueries;
+    this.systemSettings = deps.systemSettings;
+  }
+
+  async publicBaseUrlFor(appId: AppId): Promise<string | null> {
+    if (!(await this.appQueries.get(appId)).trackOpens) return null;
+    return (await this.systemSettings.current())['api.public_base_url'];
   }
 }
 

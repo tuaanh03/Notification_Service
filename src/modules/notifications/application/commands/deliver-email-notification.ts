@@ -12,6 +12,7 @@ import type { Notification } from '../../domain/entities/notification.ts';
 import { NotificationRecipient } from '../../domain/entities/notification-recipient.ts';
 import { addCounters } from '../../domain/rules/counters.ts';
 import { emailGate } from '../../domain/rules/email-gate.ts';
+import { openPixelPath, withOpenPixel } from '../../domain/rules/open-pixel.ts';
 import type { Counters } from '../../domain/types/counters.ts';
 import { EMAIL_SENDER_ACTOR, NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS, OUTCOME_UNKNOWN } from '../events.ts';
 import type {
@@ -19,6 +20,8 @@ import type {
   EmailLookup,
   EmailSender,
   NotificationRepository,
+  OpenTrackingConfig,
+  OpenTrackingSigner,
   RecipientRepository,
   TopicConsentLookup,
 } from '../ports/index.ts';
@@ -34,6 +37,7 @@ interface DeliveryTrace {
   topic?: string | undefined;
   exclusionReason?: ExclusionReason | undefined;
   providerResult?: EmailDeliveryOutcome['kind'] | undefined;
+  openTracking?: boolean | undefined;
 }
 
 /** Lý do bị gate chặn -> ô counters tương ứng. */
@@ -72,6 +76,8 @@ export class DeliverEmailNotification {
     emails: EmailLookup;
     topics: TopicConsentLookup;
     sender: EmailSender;
+    tracking: OpenTrackingConfig;
+    signer: OpenTrackingSigner;
   };
 
   constructor(deps: DeliverEmailNotification['deps']) {
@@ -95,6 +101,7 @@ export class DeliverEmailNotification {
       outcome,
       provider_result: trace.providerResult ?? null,
       exclusion_reason: trace.exclusionReason ?? null,
+      open_tracking: trace.openTracking ?? null,
       duration_ms: this.deps.clock.now().getTime() - startedAt.getTime(),
     });
     return outcome;
@@ -145,6 +152,11 @@ export class DeliverEmailNotification {
       return won ? 'no_recipient' : 'skipped';
     }
 
+    // Ảnh đếm "đã mở" (ADR-0031): tra TRƯỚC khi nhận việc — lỗi ở đây thì notification vẫn `queued`,
+    // không thành `outcome_unknown` oan.
+    const html = await this.withOpenTracking(notification, content.html);
+    trace.openTracking = html !== content.html;
+
     // --- 2: chờ lượt gửi, rồi tx1 nhận việc ---
     await sender.awaitCapacity();
     const recipient = new NotificationRecipient(recipientProps);
@@ -159,7 +171,7 @@ export class DeliverEmailNotification {
     const result = await sender.send({
       to: recipient.address,
       subject: content.subject,
-      html: content.html,
+      html,
       text: content.text,
       notificationId: notification.id,
     });
@@ -190,6 +202,15 @@ export class DeliverEmailNotification {
       return 'skipped';
     }
     return result.kind === 'accepted' ? 'sent' : 'failed';
+  }
+
+  /** App bật đếm + có domain công khai + server có khoá ký -> HTML kèm ảnh; thiếu một thứ -> HTML gốc. */
+  private async withOpenTracking(notification: Notification, html: string): Promise<string> {
+    const { tracking, signer } = this.deps;
+    if (!signer.configured) return html;
+    const baseUrl = await tracking.publicBaseUrlFor(notification.appId);
+    if (baseUrl === null) return html;
+    return withOpenPixel(html, `${baseUrl}${openPixelPath(notification.id, signer.sign(notification.id))}`);
   }
 
   /**

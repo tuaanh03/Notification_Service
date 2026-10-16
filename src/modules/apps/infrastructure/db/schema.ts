@@ -44,6 +44,8 @@ export const apps = mysqlTable(
     includedInOrgBroadcast: boolean('included_in_org_broadcast').notNull().default(true),
     /** App SYS: chạm mọi user trong org, chỉ Super Admin thấy. */
     isSystem: boolean('is_system').notNull().default(false),
+    /** Đếm "đã mở" bằng ảnh theo dõi trong thư (ADR-0031). Mặc định tắt. */
+    trackOpens: boolean('track_opens').notNull().default(false),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

@@ -19,6 +19,7 @@ import type {
   IssueAppSecret,
   RemoveNetworkRule,
   RevokeAppSecret,
+  SetOpenTracking,
   SimpleAppTransition,
   TransitionApp,
 } from '../../application/index.ts';
@@ -66,6 +67,7 @@ const orgFrom =
   };
 /** Tên khoá tuỳ chọn (gọi cũ không gửi body vẫn chạy); console luôn gửi. */
 const issueSecretBody = z.object({ name: z.string().trim().max(100).optional() }).strict();
+const openTrackingBody = z.object({ enabled: z.boolean() }).strict();
 const ruleBody = z.object({ kind: z.enum(NETWORK_RULE_KINDS), value: z.string().trim().min(1).max(255) }).strict();
 
 export interface AdminAppsUseCases {
@@ -76,6 +78,7 @@ export interface AdminAppsUseCases {
   revokeAppSecret: RevokeAppSecret;
   addNetworkRule: AddNetworkRule;
   removeNetworkRule: RemoveNetworkRule;
+  setOpenTracking: SetOpenTracking;
   queries: AppQueries;
 }
 
@@ -143,6 +146,13 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
         { appId: AppId.parse(appId), secretId: AppSecretId.parse(secretId) },
         ctx(request),
       );
+    });
+
+    // Đếm "đã mở" (ADR-0031) — cùng quyền với cấp khoá API: việc của người quản lý app.
+    app.put('/apps/:appId/open-tracking', { config: access('app.manage') }, async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      const { enabled } = parseInput(openTrackingBody, request.body);
+      return useCases.setOpenTracking.execute({ appId: AppId.parse(appId), enabled }, ctx(request));
     });
 
     app.get('/apps/:appId/network-rules', { config: access('platform.manage') }, async (request) => {

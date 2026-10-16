@@ -4,3 +4,4 @@ export * from './drizzle-recipient-repository.ts';
 export * from './drizzle-notification-stats.ts';
 export * from './template-adapters.ts';
 export * from './drizzle-publication-repository.ts';
+export * from './hmac-open-tracking-signer.ts';

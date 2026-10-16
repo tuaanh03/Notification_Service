@@ -129,8 +129,16 @@ describe('Notification — mốc vòng đời', () => {
 
 describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (ĐX-0001)', () => {
   /** Fake tối thiểu: chỉ đủ để chạy hết 4 nhánh DeliveryOutcome, không chạm DB. */
-  function harness(options: { notification: Notification | null; email?: UserEmailForDelivery | null; sendKind?: EmailDeliveryOutcome['kind'] }) {
+  function harness(options: {
+    notification: Notification | null;
+    email?: UserEmailForDelivery | null;
+    sendKind?: EmailDeliveryOutcome['kind'];
+    /** Domain công khai khi app bật đếm "đã mở" (ADR-0031); vắng = app tắt. */
+    trackingBaseUrl?: string | null;
+    signerConfigured?: boolean;
+  }) {
     const lines: Array<{ msg: string; meta: Record<string, unknown> }> = [];
+    const sentHtml: string[] = [];
     const capture: Logger = { ...silent, info: (msg, meta) => void lines.push({ msg, meta: meta ?? {} }), child: () => capture };
     // Clock nhích 5ms mỗi lần đọc -> duration_ms tính được mà không cần hẹn giờ thật.
     let tick = 0;
@@ -154,6 +162,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         findByNotifications: async () => new Map(),
         insert: async () => undefined,
         update: async () => undefined,
+        recordOpen: async () => false,
       },
       emails: { find: async () => options.email ?? null, listByApp: async () => new Map() },
       topics: {
@@ -165,13 +174,21 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
       },
       sender: {
         awaitCapacity: async () => undefined,
-        send: async () =>
-          options.sendKind === 'rejected'
+        send: async (email) => {
+          sentHtml.push(email.html);
+          return options.sendKind === 'rejected'
             ? { kind: 'rejected', reason: 'mailbox full' }
-            : { kind: 'accepted', providerMessageId: 'graph-1' },
+            : { kind: 'accepted', providerMessageId: 'graph-1' };
+        },
+      },
+      tracking: { publicBaseUrlFor: async () => options.trackingBaseUrl ?? null },
+      signer: {
+        configured: options.signerConfigured ?? true,
+        sign: (id) => `sig-${id}`,
+        verify: () => true,
       },
     });
-    return { deliver, lines };
+    return { deliver, lines, sentHtml };
   }
 
   function queued() {
@@ -222,5 +239,26 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
     expect(await deliver.execute(id)).toBe('skipped');
     expect(lines).toHaveLength(1);
     expect(lines[0]?.meta).toMatchObject({ notification_id: id, outcome: 'skipped', app_id: null, topic: null });
+  });
+
+  it('app bật đếm "đã mở" -> thư đi kèm ảnh có chữ ký; log ghi open_tracking (ADR-0031)', async () => {
+    const notification = queued();
+    const { deliver, lines, sentHtml } = harness({ notification, email: reachable, trackingBaseUrl: 'https://api.example.com' });
+    expect(await deliver.execute(notification.id)).toBe('sent');
+    expect(sentHtml[0]).toBe(
+      `h<img src="https://api.example.com/t/o/${notification.id}/sig-${notification.id}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;" />`,
+    );
+    expect(lines[0]?.meta).toMatchObject({ open_tracking: true });
+  });
+
+  it.each([
+    ['app tắt đếm', { trackingBaseUrl: null }],
+    ['server thiếu khoá ký', { trackingBaseUrl: 'https://api.example.com', signerConfigured: false }],
+  ])('%s -> HTML gửi đi y nguyên', async (_name, extra) => {
+    const notification = queued();
+    const { deliver, lines, sentHtml } = harness({ notification, email: reachable, ...extra });
+    expect(await deliver.execute(notification.id)).toBe('sent');
+    expect(sentHtml).toEqual(['h']);
+    expect(lines[0]?.meta).toMatchObject({ open_tracking: false });
   });
 });
