@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, like } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, like } from 'drizzle-orm';
 import { duplicateKeyName, lockParentRow, type TransactionContext } from '../../../../shared/db/index.ts';
 import { AppId, OrgId, PersonId, UserId, type AppId as AppIdType, type UserId as UserIdType } from '../../../../shared/kernel/index.ts';
 import { UserAlreadyExistsError } from '../../application/errors.ts';
@@ -13,21 +13,20 @@ export class DrizzleUserRepository implements UserRepository {
     this.transactions = deps.transactions;
   }
 
-  async findByExternalId(appId: AppIdType, externalId: string): Promise<User | null> {
+  async findByExternalId(appId: AppIdType, externalId: string, opts: { includeDeleted?: boolean } = {}): Promise<User | null> {
     const [row] = await this.transactions
       .executor()
       .select()
       .from(users)
       .where(and(eq(users.appId, appId), eq(users.externalId, externalId)));
-    return row ? toUser(row) : null;
+    return row && (opts.includeDeleted || row.deletedAt === null) ? toUser(row) : null;
   }
 
   async listByApp(appId: AppIdType, page: { limit: number; offset: number; search?: string | undefined }): Promise<UserPage> {
     const search = page.search?.trim();
     // `like` trên external_id: đủ cho màn tra cứu một người. Không dựng full-text cho MVP.
-    const where = search
-      ? and(eq(users.appId, appId), like(users.externalId, `%${search}%`))
-      : eq(users.appId, appId);
+    const active = and(eq(users.appId, appId), isNull(users.deletedAt));
+    const where = search ? and(active, like(users.externalId, `%${search}%`)) : active;
     const executor = this.transactions.executor();
     const [rows, [totals]] = await Promise.all([
       executor.select().from(users).where(where).orderBy(desc(users.createdAt)).limit(page.limit).offset(page.offset),
@@ -37,8 +36,21 @@ export class DrizzleUserRepository implements UserRepository {
   }
 
   async countByApp(appId: AppIdType): Promise<number> {
-    const [totals] = await this.transactions.executor().select({ value: count() }).from(users).where(eq(users.appId, appId));
+    const [totals] = await this.transactions
+      .executor()
+      .select({ value: count() })
+      .from(users)
+      .where(and(eq(users.appId, appId), isNull(users.deletedAt)));
     return totals?.value ?? 0;
+  }
+
+  async deletedIdsByApp(appId: AppIdType): Promise<UserIdType[]> {
+    const rows = await this.transactions
+      .executor()
+      .select({ id: users.userId })
+      .from(users)
+      .where(and(eq(users.appId, appId), isNotNull(users.deletedAt)));
+    return rows.map((row) => UserId.parse(row.id));
   }
 
   async findManyByIds(appId: AppIdType, ids: readonly UserIdType[]): Promise<User[]> {
@@ -70,6 +82,14 @@ export class DrizzleUserRepository implements UserRepository {
     }
   }
 
+  async update(user: User): Promise<void> {
+    await this.transactions
+      .executor()
+      .update(users)
+      .set({ deletedAt: user.deletedAt, updatedAt: user.updatedAt })
+      .where(eq(users.userId, user.id));
+  }
+
   lockForUpdate(id: UserIdType): Promise<boolean> {
     return lockParentRow(this.transactions.require('UserRepository.lockForUpdate'), users, users.userId, id);
   }
@@ -85,6 +105,7 @@ function toUser(row: typeof users.$inferSelect): User {
     personId: row.personId === null ? null : PersonId.parse(row.personId),
     source: row.source,
     lastSeen: row.lastSeen,
+    deletedAt: row.deletedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

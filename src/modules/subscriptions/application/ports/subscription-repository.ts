@@ -12,7 +12,8 @@ export interface SubscriptionRepository {
   /** Mọi điểm nhận của MỘT app trên một kênh, mọi trạng thái — phát tin vào topic (ADR-0028) lọc ở phía gọi. */
   listByApp(appId: AppId, channel: Channel): Promise<Subscription[]>;
   /** Số điểm nhận của MỘT app theo trạng thái (index `idx_subscriptions_app_status`). Trạng thái không có dòng nào -> 0. */
-  countByStatus(appId: AppId, channel: Channel): Promise<Record<SubscriptionStatus, number>>;
+  /** `excludeUserIds`: người đã xoá mềm ở directory — module gọi truyền vào, không join bảng `users`. */
+  countByStatus(appId: AppId, channel: Channel, excludeUserIds?: readonly UserId[]): Promise<Record<SubscriptionStatus, number>>;
   /** Ai đang giữ địa chỉ này trong app (`uq_subscriptions_app_channel_value`). */
   findByValue(appId: AppId, channel: Channel, value: string): Promise<Subscription | null>;
   /** Địa chỉ đã thuộc user khác -> ConflictError `EMAIL_TAKEN`. */

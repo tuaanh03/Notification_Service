@@ -37,7 +37,7 @@ export class FindUserEmail {
   }
 
   /** Số email của app theo trạng thái — cho màn Tổng quan (bao nhiêu người còn nhận được thư). */
-  countByStatus(input: { appId: AppId }): Promise<Record<SubscriptionStatus, number>> {
-    return this.subscriptions.countByStatus(input.appId, 'email');
+  countByStatus(input: { appId: AppId; excludeUserIds?: readonly UserId[] | undefined }): Promise<Record<SubscriptionStatus, number>> {
+    return this.subscriptions.countByStatus(input.appId, 'email', input.excludeUserIds ?? []);
   }
 }

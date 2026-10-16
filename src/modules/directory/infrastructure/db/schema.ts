@@ -47,6 +47,11 @@ export const users = mysqlTable(
     personId: uuid('person_id'),
     source: mysqlEnum('source', USER_SOURCES).notNull().default('api'),
     lastSeen: ts('last_seen'),
+    /**
+     * Xoá MỀM trên console: ẩn khỏi mọi chỗ tra cứu / danh sách / phát vào chủ đề, GIỮ lịch sử gửi (FK
+     * từ `notifications`). App khai lại cùng `external_id` qua `/v1` -> khôi phục (xoá cột này).
+     */
+    deletedAt: ts('deleted_at'),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

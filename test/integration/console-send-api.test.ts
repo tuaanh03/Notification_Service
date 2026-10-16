@@ -147,6 +147,36 @@ describe('Soạn thông báo — cả chủ đề', () => {
   });
 });
 
+describe('người nhận đã xoá mềm', () => {
+  it('gửi lẻ -> RECIPIENT_NOT_FOUND; phát vào chủ đề không gồm họ; Tổng quan không đếm email của họ; lịch sử cũ giữ mã', async () => {
+    await v1('PUT', '/users/nv_del', { email: 'nv_del@company.com' });
+    const before = await admin('POST', `/apps/${shop.appId}/notifications`, {
+      topic: 'order_updates', externalIds: ['nv_del'], subject: 'Trước khi xoá', html: '<p>x</p>', requestId: randomUUID(),
+    });
+    await deliver();
+    const overviewBefore = (await admin('GET', `/apps/${shop.appId}/overview`)).body['recipients'];
+
+    expect((await admin('DELETE', `/apps/${shop.appId}/users/nv_del`)).status).toBe(204);
+    const one = await admin('POST', `/apps/${shop.appId}/notifications`, {
+      topic: 'order_updates', externalIds: ['nv_del'], subject: 's', html: 'h', requestId: randomUUID(),
+    });
+    expect((one.body['results'] as Json[])[0]).toMatchObject({ externalId: 'nv_del', code: 'RECIPIENT_NOT_FOUND' });
+
+    mail.reset();
+    const pub = await admin('POST', `/apps/${shop.appId}/publications`, { topic: 'order_updates', subject: 'Chung', html: '<p>x</p>', requestId: randomUUID() });
+    expect(pub.body['recipientCount']).toBe(3);
+    await deliver();
+    expect(mail.delivered.map((m) => m.to)).not.toContain('nv_del@company.com');
+
+    const overviewAfter = (await admin('GET', `/apps/${shop.appId}/overview`)).body['recipients'];
+    expect([overviewAfter['total'], overviewAfter['emailActive']]).toEqual([overviewBefore['total'] - 1, overviewBefore['emailActive'] - 1]);
+
+    const id = (before.body['results'] as Json[])[0]!['notificationId'];
+    const rows = (await admin('GET', `/apps/${shop.appId}/notifications?limit=200`)).body['rows'] as Json[];
+    expect(rows.find((r) => r['id'] === id)).toMatchObject({ externalId: 'nv_del', status: 'sent' });
+  });
+});
+
 describe('Soạn thông báo — quyền và trạng thái app', () => {
   it('không đăng nhập -> 401; app tạm ngưng -> 422 APP_NOT_ACTIVE', async () => {
     const body = { topic: 'order_updates', externalIds: ['nv_1'], subject: 's', html: 'h', requestId: randomUUID() };

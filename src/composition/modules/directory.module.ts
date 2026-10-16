@@ -1,5 +1,12 @@
 import type { AppQueries } from '../../modules/apps/application/index.ts';
-import { CreateUser, FindUserByExternalId, ListUsers, UnsubscribeUserEmail, UpsertUser } from '../../modules/directory/application/index.ts';
+import {
+  CreateUser,
+  DeleteUser,
+  FindUserByExternalId,
+  ListUsers,
+  UnsubscribeUserEmail,
+  UpsertUser,
+} from '../../modules/directory/application/index.ts';
 import { AppsAppOrgLookup, DrizzleUserRepository, SubscriptionsUserEmail } from '../../modules/directory/infrastructure/adapters/index.ts';
 import { adminUsersRoutes, v1UsersRoutes } from '../../modules/directory/interface/index.ts';
 import type { FindUserEmail, SetUserEmail, UnsubscribeEmail } from '../../modules/subscriptions/application/index.ts';
@@ -26,6 +33,7 @@ export function directoryModule(
             listUsers: new ListUsers({ users, emails }),
             findUser,
             createUser: new CreateUser({ uow, outbox, clock, users, emails, apps: new AppsAppOrgLookup(dependencies) }),
+            deleteUser: new DeleteUser({ uow, outbox, clock, users }),
           }),
         ],
         v1: [

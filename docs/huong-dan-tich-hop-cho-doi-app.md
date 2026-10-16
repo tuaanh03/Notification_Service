@@ -102,6 +102,9 @@ Content-Type: application/json
 * **Bỏ trống `email`** → chỉ khai người, email hiện có giữ nguyên.
 * Email được chuẩn hoá (bỏ khoảng trắng, viết thường) nhưng **giữ nguyên `+tag`**.
 * Một địa chỉ chỉ thuộc **một** người trong app → trùng thì `409 EMAIL_TAKEN`.
+* Người bị **xoá trên console EWS** coi như không còn: `GET` → `404`, gửi → `422 RECIPIENT_NOT_FOUND`,
+  không nhận tin phát vào chủ đề. App `PUT` lại cùng mã → người đó **dùng lại được** (`201`), lịch sử gửi
+  và trạng thái email cũ giữ nguyên.
 
 Đọc lại: `GET /v1/users/NV-0123` (không có → `404`).
 

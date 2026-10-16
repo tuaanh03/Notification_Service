@@ -92,6 +92,7 @@ Content-Type: application/json
 * Tạo mới → `201`, đã có → `200`. Gọi lại bao nhiêu lần cũng được.
 * Gọi **lúc bắt đầu** (cho mọi người hiện có), **khi có người mới**, và **khi ai đổi email**.
 * Một email chỉ thuộc một người trong app — trùng thì `409 EMAIL_TAKEN`.
+* Người bị xoá trên console EWS: gửi → `422 RECIPIENT_NOT_FOUND`; `PUT` lại cùng mã thì dùng lại được (`201`).
 * **Không cấp lại mã của người đã nghỉ cho người mới** — người mới sẽ thừa kế email đã bị ngắt và
   không nhận được gì.
 

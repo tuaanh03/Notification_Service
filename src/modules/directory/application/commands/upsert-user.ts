@@ -20,6 +20,9 @@ export interface UpsertUserInput {
  *
  * Không resolve danh tính (`person_id` để NULL — MVP ngoài phạm vi, ADR-0016).
  *
+ * Người đã bị xoá mềm trên console -> khôi phục (cùng `user_id`, email giữ nguyên trạng thái cũ trừ khi
+ * request gửi email mới), trả `created: true`.
+ *
  * Hai request tạo cùng một user song song: bên thua đụng `uq_users_app_external`, được thử lại MỘT
  * lần — lần thử lại chạy trong transaction mới nên thấy user bên kia vừa tạo.
  */
@@ -48,8 +51,21 @@ export class UpsertUser {
   private attempt(input: UpsertUserInput, ctx: CommandContext): Promise<UserDto & { created: boolean }> {
     const { uow, outbox, clock, users, emails } = this.deps;
     return uow.run(async () => {
-      let user = await users.findByExternalId(input.appId, input.externalId);
-      const created = user === null;
+      let user = await users.findByExternalId(input.appId, input.externalId, { includeDeleted: true });
+      // Người đã bị xoá mềm trên console: app khai lại = dùng tiếp, cùng user_id. Với app đó là "tạo mới" (201).
+      const restored = user !== null && user.restore(clock.now());
+      if (user && restored) {
+        await users.update(user);
+        await outbox.append([
+          {
+            aggregateType: USER_AGGREGATE,
+            aggregateId: user.id,
+            eventType: USER_EVENTS.restored,
+            payload: audited(ctx, { after: { externalId: input.externalId } }),
+          },
+        ]);
+      }
+      const created = user === null || restored;
       if (!user) {
         user = new User({
           id: UserId.create(),

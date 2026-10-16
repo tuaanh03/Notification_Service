@@ -30,6 +30,11 @@ export class FindUserByExternalId {
     return new Map(users.flatMap((user) => (user.externalId === null ? [] : [[user.id, user.externalId] as const])));
   }
 
+  /** Id người đã xoá mềm của app — module khác loại họ ra (phát vào chủ đề, đếm email trên Tổng quan). */
+  deletedIdsOf(input: { appId: AppId }): Promise<UserId[]> {
+    return this.deps.users.deletedIdsByApp(input.appId);
+  }
+
   /** Tổng số người nhận của app — cho màn Tổng quan của module khác. */
   countOf(input: { appId: AppId }): Promise<number> {
     return this.deps.users.countByApp(input.appId);

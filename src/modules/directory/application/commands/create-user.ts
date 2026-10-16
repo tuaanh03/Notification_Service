@@ -12,7 +12,7 @@ import type { AppOrgLookup, UserEmailPort, UserRepository } from '../ports/index
  * Khác `UpsertUser` của `/v1` đúng một chỗ: mã đã có -> 409 `USER_ALREADY_EXISTS`, KHÔNG ghi đè —
  * thêm tay mà âm thầm đổi email của người đã có là nguy hiểm. Email đi qua cùng `emails.set` nên
  * cùng luật kiểm / chuẩn hoá; user + email trong MỘT transaction (email hỏng thì không có user nào).
- * `source = 'console'` để biết người này không do app đẩy vào.
+ * `source = 'console'` để biết người này không do app đẩy vào. Mã của người đã xoá mềm -> khôi phục.
  */
 export class CreateUser {
   private readonly deps: {
@@ -32,7 +32,27 @@ export class CreateUser {
     const { uow, outbox, clock, users, emails, apps } = this.deps;
     const orgId = await apps.orgOf(input.appId);
     return uow.run(async () => {
-      if (await users.findByExternalId(input.appId, input.externalId)) throw new UserAlreadyExistsError(input.externalId);
+      const existing = await users.findByExternalId(input.appId, input.externalId, { includeDeleted: true });
+      if (existing && !existing.isDeleted) throw new UserAlreadyExistsError(input.externalId);
+      if (existing) {
+        // Mã của người đã xoá mềm: thêm lại = khôi phục (cùng user_id, lịch sử gửi nối liền), như `/v1` khai lại.
+        existing.restore(clock.now());
+        await users.update(existing);
+        await outbox.append([
+          {
+            aggregateType: USER_AGGREGATE,
+            aggregateId: existing.id,
+            eventType: USER_EVENTS.restored,
+            payload: audited(ctx, { after: { externalId: input.externalId, source: 'console' } }),
+          },
+        ]);
+        await users.lockForUpdate(existing.id);
+        const email =
+          input.email === undefined
+            ? await emails.find({ appId: input.appId, userId: existing.id })
+            : await emails.set({ appId: input.appId, userId: existing.id, email: input.email }, ctx);
+        return toUserDto(existing, email);
+      }
       const user = new User({
         id: UserId.create(),
         appId: input.appId,

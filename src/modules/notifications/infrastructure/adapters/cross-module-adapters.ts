@@ -49,6 +49,10 @@ export class DirectoryRecipientLookup implements RecipientLookup {
   countUsers(appId: AppId): Promise<number> {
     return this.findUser.countOf({ appId });
   }
+
+  deletedUserIds(appId: AppId): Promise<UserIdType[]> {
+    return this.findUser.deletedIdsOf({ appId });
+  }
 }
 
 /**
@@ -72,8 +76,8 @@ export class SubscriptionsEmailLookup implements EmailLookup, EmailCounts {
     return new Map([...found].map(([userId, dto]) => [userId, toDelivery(dto)]));
   }
 
-  countByStatus(appId: AppId): Promise<Record<SubscriptionStatus, number>> {
-    return this.findUserEmail.countByStatus({ appId });
+  countByStatus(appId: AppId, excludeUserIds: readonly UserIdType[]): Promise<Record<SubscriptionStatus, number>> {
+    return this.findUserEmail.countByStatus({ appId, excludeUserIds });
   }
 }
 

@@ -19,6 +19,8 @@ export interface UserProps extends TimestampInput {
   personId?: PersonId | null | undefined;
   source?: UserSource | undefined;
   lastSeen?: Date | null | undefined;
+  /** Xoá mềm trên console. null = đang dùng. */
+  deletedAt?: Date | null | undefined;
 }
 
 /**
@@ -32,6 +34,7 @@ export class User extends BaseEntity<UserId> {
   personId: PersonId | null;
   source: UserSource;
   lastSeen: Date | null;
+  deletedAt: Date | null;
 
   constructor(props: UserProps) {
     super(props.id, props);
@@ -41,6 +44,27 @@ export class User extends BaseEntity<UserId> {
     this.personId = props.personId ?? null;
     this.source = props.source ?? 'api';
     this.lastSeen = props.lastSeen ?? null;
+    this.deletedAt = props.deletedAt ?? null;
+  }
+
+  get isDeleted(): boolean {
+    return this.deletedAt !== null;
+  }
+
+  /** Xoá mềm. Đã xoá rồi -> false (không đổi gì). */
+  remove(at: Date): boolean {
+    if (this.deletedAt !== null) return false;
+    this.deletedAt = at;
+    this.touch(at);
+    return true;
+  }
+
+  /** App khai lại người đã bị xoá -> dùng tiếp, cùng `user_id`, lịch sử gửi nối liền. */
+  restore(at: Date): boolean {
+    if (this.deletedAt === null) return false;
+    this.deletedAt = null;
+    this.touch(at);
+    return true;
   }
 
   /**

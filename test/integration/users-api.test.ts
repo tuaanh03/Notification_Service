@@ -300,3 +300,48 @@ describe('POST /admin/apps/:appId/users — thêm tay người nhận', () => {
     expect((await http('POST', `/admin/apps/${shop.appId}/users`, { body: { externalId: 'x' } })).status).toBe(401);
   });
 });
+
+describe('DELETE /admin/apps/:appId/users/:externalId — xoá mềm người nhận', () => {
+  const del = (externalId: string, appId = shop.appId) =>
+    http('DELETE', `/admin/apps/${appId}/users/${externalId}`, { token: ADMIN_TOKEN });
+  const listIds = async () =>
+    (((await http('GET', `/admin/apps/${shop.appId}/users?limit=200`, { token: ADMIN_TOKEN })).body as unknown as Json)['rows'] as Json[]).map(
+      (r) => r['externalId'],
+    );
+
+  it('xoá -> 204; ẩn khỏi danh sách, /v1 và /admin trả 404; xoá lại -> 404', async () => {
+    await v1('PUT', '/users/del_01', { email: 'del.01@company.com' });
+    expect((await del('del_01')).status).toBe(204);
+    expect(await listIds()).not.toContain('del_01');
+    expect((await v1('GET', '/users/del_01')).status).toBe(404);
+    expect((await http('GET', `/admin/apps/${shop.appId}/users/del_01`, { token: ADMIN_TOKEN })).status).toBe(404);
+    expect((await del('del_01')).status).toBe(404);
+    // Dòng vẫn còn trong DB (lịch sử gửi trỏ tới), chỉ đánh dấu.
+    const [row] = await t.db.select().from(users).where(and(eq(users.appId, shop.appId), eq(users.externalId, 'del_01')));
+    expect(row?.deletedAt).not.toBeNull();
+  });
+
+  it('app khai lại cùng mã -> 201, CÙNG user_id, email cũ giữ nguyên trạng thái; hiện lại trong danh sách', async () => {
+    const first = await v1('PUT', '/users/del_02', { email: 'del.02@company.com' });
+    await v1('DELETE', '/users/del_02/email'); // người nhận tự ngắt email trước khi bị xoá
+    await del('del_02');
+    const again = await v1('PUT', '/users/del_02');
+    expect(again.status).toBe(201);
+    expect(again.body['userId']).toBe(first.body['userId']);
+    expect(again.body['email']).toMatchObject({ address: 'del.02@company.com', status: 'unsubscribed' });
+    expect(await listIds()).toContain('del_02');
+  });
+
+  it('thêm tay trên console mã đã xoá -> khôi phục (201), không 409', async () => {
+    const first = await v1('PUT', '/users/del_03', { email: 'del.03@company.com' });
+    await del('del_03');
+    const res = await http('POST', `/admin/apps/${shop.appId}/users`, { token: ADMIN_TOKEN, body: { externalId: 'del_03' } });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ userId: first.body['userId'], email: { address: 'del.03@company.com' } });
+  });
+
+  it('không có -> 404; không đăng nhập -> 401', async () => {
+    expect((await del('khong_co_ai')).status).toBe(404);
+    expect((await http('DELETE', `/admin/apps/${shop.appId}/users/del_x`, {})).status).toBe(401);
+  });
+});

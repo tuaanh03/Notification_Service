@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, inArray, notInArray } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -55,12 +55,22 @@ export class DrizzleSubscriptionRepository implements SubscriptionRepository {
     return rows.map(toSubscription);
   }
 
-  async countByStatus(appId: AppIdType, channel: Channel): Promise<Record<SubscriptionStatus, number>> {
+  async countByStatus(
+    appId: AppIdType,
+    channel: Channel,
+    excludeUserIds: readonly UserIdType[] = [],
+  ): Promise<Record<SubscriptionStatus, number>> {
     const rows = await this.transactions
       .executor()
       .select({ status: subscriptions.status, value: count() })
       .from(subscriptions)
-      .where(and(eq(subscriptions.appId, appId), eq(subscriptions.channel, channel)))
+      .where(
+        and(
+          eq(subscriptions.appId, appId),
+          eq(subscriptions.channel, channel),
+          excludeUserIds.length > 0 ? notInArray(subscriptions.userId, [...excludeUserIds]) : undefined,
+        ),
+      )
       .groupBy(subscriptions.status);
     const counts = Object.fromEntries(SUBSCRIPTION_STATUSES.map((status) => [status, 0])) as Record<SubscriptionStatus, number>;
     for (const row of rows) counts[row.status] = row.value;

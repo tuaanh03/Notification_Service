@@ -148,6 +148,13 @@
       "when": 1792146902639,
       "tag": "0020_open_tracked",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1792149432900,
+      "tag": "0021_user_soft_delete",
+      "breakpoints": true
     }
   ]
 }

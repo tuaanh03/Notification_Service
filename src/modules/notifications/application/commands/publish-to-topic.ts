@@ -80,7 +80,9 @@ export class PublishToTopic {
     const topic = await requireActiveTopic(topics, input.appId, input.topic);
 
     // Người nhận: user có email trong app (người không có email chắc chắn rớt ở gate) + lựa chọn của họ cho topic.
-    const emailsByUser = await emails.listByApp(input.appId);
+    const [emailsByUser, deleted] = await Promise.all([emails.listByApp(input.appId), users.deletedUserIds(input.appId)]);
+    // Người đã xoá mềm trên console: email vẫn còn (để khôi phục nguyên vẹn) nhưng không nhận tin.
+    for (const userId of deleted) emailsByUser.delete(userId);
     const preferences = await topics.preferences(topic.topicId, [...emailsByUser.keys()]);
     const audience = selectTopicAudience(
       [...emailsByUser].map(([userId, subscription]) => ({ userId, subscription, preference: preferences.get(userId) ?? null })),
