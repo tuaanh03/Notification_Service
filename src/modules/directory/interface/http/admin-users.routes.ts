@@ -1,10 +1,13 @@
 import { z } from 'zod';
-import { access, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import type { CommandContext } from '../../../../shared/application/index.ts';
+import { access, adminCaller, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AppId } from '../../../../shared/kernel/index.ts';
-import { MAX_USER_PAGE, type FindUserByExternalId, type ListUsers } from '../../application/index.ts';
+import { MAX_USER_PAGE, type CreateUser, type FindUserByExternalId, type ListUsers } from '../../application/index.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
 const userParams = appParams.extend({ externalId: EXTERNAL_ID });
+/** Email tuỳ chọn — cùng giới hạn với `PUT /v1/users/:externalId`; kiểm định dạng ở subscriptions. */
+const createBody = z.object({ externalId: EXTERNAL_ID, email: z.string().max(320).optional() }).strict();
 const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_USER_PAGE).default(50),
   offset: z.coerce.number().int().min(0).default(0),
@@ -18,11 +21,19 @@ const listQuery = z.object({
  * `appId` nằm trên URL chứ không suy từ token: khi có đăng nhập + RBAC (plan §12.4), vai
  * `app_admin` chỉ cần thêm một lớp kiểm quyền trên chính tham số này.
  *
- * Chỉ đọc — admin KHÔNG sửa được người nhận ở đây. App service tự ghi qua `/v1` bằng khoá của
- * chính nó.
+ * Ghi duy nhất: người quản lý app THÊM TAY một người (`POST`, `app.manage`) — mã đã có -> 409, không ghi
+ * đè. Sửa / gỡ người nhận vẫn là việc của app service qua `/v1` bằng khoá của chính nó.
  */
-export function adminUsersRoutes(useCases: { listUsers: ListUsers; findUser: FindUserByExternalId }): HttpRoutes {
+export function adminUsersRoutes(useCases: { listUsers: ListUsers; findUser: FindUserByExternalId; createUser: CreateUser }): HttpRoutes {
   return (app) => {
+    app.post('/apps/:appId/users', { config: access('app.manage') }, async (request, reply) => {
+      const { appId } = parseInput(appParams, request.params);
+      const { externalId, email } = parseInput(createBody, request.body);
+      const ctx: CommandContext = { actor: { id: adminCaller(request).adminId, type: 'admin' }, source: 'admin_api' };
+      const created = await useCases.createUser.execute({ appId: AppId.parse(appId), externalId, email }, ctx);
+      return reply.status(201).send(created);
+    });
+
     app.get('/apps/:appId/users', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       const { limit, offset, q } = parseInput(listQuery, request.query);

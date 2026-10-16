@@ -89,7 +89,8 @@ export type OrgRole = (typeof ORG_ROLES)[number];
 export const APP_ROLES = ['app_admin', 'app_viewer'] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
-export const USER_SOURCES = ['directory', 'import', 'self', 'api'] as const;
+/** `console` = người quản lý app thêm tay trên console; `api` = app đẩy vào qua `/v1`. */
+export const USER_SOURCES = ['directory', 'import', 'self', 'api', 'console'] as const;
 export type UserSource = (typeof USER_SOURCES)[number];
 
 export const TEMPLATE_STATUSES = ['active', 'archived'] as const;

@@ -256,3 +256,47 @@ describe('/admin/apps/:appId/users — màn Người nhận', () => {
     expect((await http('GET', `/admin/apps/${shop.appId}/users/list_a`, {})).status).toBe(401);
   });
 });
+
+describe('POST /admin/apps/:appId/users — thêm tay người nhận', () => {
+  const create = (body: unknown, appId = shop.appId) => http('POST', `/admin/apps/${appId}/users`, { token: ADMIN_TOKEN, body });
+
+  it('tạo mới -> 201, nguồn console, email chuẩn hoá như /v1; app đọc lại được qua /v1', async () => {
+    const res = await create({ externalId: 'manual_01', email: '  Manual.One@Company.COM ' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ externalId: 'manual_01', email: { address: 'manual.one@company.com', status: 'active' } });
+    const [row] = await t.db.select().from(users).where(and(eq(users.appId, shop.appId), eq(users.externalId, 'manual_01')));
+    expect(row?.source).toBe('console');
+    expect((await v1('GET', '/users/manual_01')).body).toMatchObject({ externalId: 'manual_01', email: { address: 'manual.one@company.com' } });
+  });
+
+  it('không có email -> vẫn tạo người, email null', async () => {
+    const res = await create({ externalId: 'manual_02' });
+    expect(res.status).toBe(201);
+    expect(res.body['email']).toBeNull();
+  });
+
+  it('mã đã có -> 409 USER_ALREADY_EXISTS, KHÔNG ghi đè email', async () => {
+    await v1('PUT', '/users/manual_03', { email: 'giu.nguyen@company.com' });
+    const res = await create({ externalId: 'manual_03', email: 'khac@company.com' });
+    expect(res.status).toBe(409);
+    expect(res.body['code']).toBe('USER_ALREADY_EXISTS');
+    expect((await v1('GET', '/users/manual_03')).body['email']).toMatchObject({ address: 'giu.nguyen@company.com' });
+  });
+
+  it('email sai / trùng người khác -> lỗi, không tạo người nào', async () => {
+    const bad = await create({ externalId: 'manual_04', email: 'khong-phai-email' });
+    expect(bad.status).toBe(422);
+    await v1('PUT', '/users/manual_owner', { email: 'da.co@company.com' });
+    const taken = await create({ externalId: 'manual_05', email: 'DA.CO@company.com' });
+    expect([taken.status, taken.body['code']]).toEqual([409, 'EMAIL_TAKEN']);
+    expect((await v1('GET', '/users/manual_04')).status).toBe(404);
+    expect((await v1('GET', '/users/manual_05')).status).toBe(404);
+  });
+
+  it('body sai -> 422; app không có -> 404; không đăng nhập -> 401', async () => {
+    expect((await create({ externalId: '' })).status).toBe(422);
+    expect((await create({ externalId: 'x', phone: '+84' })).status).toBe(422);
+    expect((await create({ externalId: 'x' }, '00000000-0000-4000-8000-000000000000')).status).toBe(404);
+    expect((await http('POST', `/admin/apps/${shop.appId}/users`, { body: { externalId: 'x' } })).status).toBe(401);
+  });
+});

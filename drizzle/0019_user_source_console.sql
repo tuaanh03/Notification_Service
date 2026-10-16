@@ -1,0 +1,1 @@
+ALTER TABLE `users` MODIFY COLUMN `source` enum('directory','import','self','api','console') NOT NULL DEFAULT 'api';
