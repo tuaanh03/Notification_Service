@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { TransactionContext } from '../../../../shared/db/index.ts';
 import {
   NotificationId,
@@ -12,6 +12,7 @@ import { NotificationRecipient } from '../../domain/entities/notification-recipi
 import { notificationRecipients } from '../db/schema.ts';
 
 type Row = typeof notificationRecipients.$inferSelect;
+type UpdateResult = [{ affectedRows: number }, unknown];
 
 export class DrizzleRecipientRepository implements RecipientRepository {
   private readonly transactions: TransactionContext;
@@ -56,6 +57,7 @@ export class DrizzleRecipientRepository implements RecipientRepository {
       providerMessageId: r.providerMessageId,
       error: r.error,
       sentAt: r.sentAt,
+      openTracked: r.openTracked,
     });
   }
 
@@ -73,22 +75,25 @@ export class DrizzleRecipientRepository implements RecipientRepository {
       );
   }
 
-  async recordOpen(notificationId: NotificationIdType, at: Date): Promise<boolean> {
-    const [result] = (await this.transactions
-      .executor()
+  async recordOpen(notificationId: NotificationIdType, at: Date): Promise<'first' | 'again' | null> {
+    const db = this.transactions.require('RecipientRepository.recordOpen');
+    const target = and(
+      eq(notificationRecipients.notificationId, notificationId),
+      eq(notificationRecipients.channel, 'email'),
+      eq(notificationRecipients.status, 'sent'),
+    );
+    // Lần đầu = UPDATE có điều kiện `first_opened_at IS NULL`: hai lượt mở cùng lúc thì dòng bị khoá, chỉ
+    // một lượt khớp điều kiện — chỉ một "lần đầu", chỉ một sự kiện webhook.
+    const [first] = (await db
       .update(notificationRecipients)
-      .set({
-        openCount: sql`${notificationRecipients.openCount} + 1`,
-        firstOpenedAt: sql`COALESCE(${notificationRecipients.firstOpenedAt}, ${at})`,
-      })
-      .where(
-        and(
-          eq(notificationRecipients.notificationId, notificationId),
-          eq(notificationRecipients.channel, 'email'),
-          eq(notificationRecipients.status, 'sent'),
-        ),
-      )) as unknown as [{ affectedRows: number }, unknown];
-    return result.affectedRows > 0;
+      .set({ openCount: sql`${notificationRecipients.openCount} + 1`, firstOpenedAt: at })
+      .where(and(target, isNull(notificationRecipients.firstOpenedAt)))) as unknown as UpdateResult;
+    if (first.affectedRows > 0) return 'first';
+    const [again] = (await db
+      .update(notificationRecipients)
+      .set({ openCount: sql`${notificationRecipients.openCount} + 1` })
+      .where(target)) as unknown as UpdateResult;
+    return again.affectedRows > 0 ? 'again' : null;
   }
 }
 
@@ -107,6 +112,7 @@ function toRecipient(row: Row): NotificationRecipient {
     providerMessageId: row.providerMessageId,
     error: row.error,
     sentAt: row.sentAt,
+    openTracked: row.openTracked,
     firstOpenedAt: row.firstOpenedAt,
     openCount: row.openCount,
   });

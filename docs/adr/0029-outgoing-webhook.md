@@ -76,3 +76,11 @@ ADR-0028) nhiều lần. Kết quả gửi đã có sẵn dạng event trong out
 - Cách chốt không đổi: mỗi URL giữ một chỗ `slot`, nay là 1…N; unique `(app_id, slot)` quyết khi chạy song
   song. Đếm theo SỐ URL đang có — trần vừa bị hạ thì URL cũ giữ nguyên, chỉ không cho thêm. Không migration.
 - Console bỏ dòng đếm "x/2 URL"; vượt trần -> 422 `WEBHOOK_LIMIT_REACHED` như cũ.
+
+## Bổ sung — 2026-10-16: `notification.opened` (ADR-0031)
+
+Sự kiện thứ tư, đăng ký được như ba sự kiện kia: lần mở ĐẦU TIÊN của một thư có chèn ảnh theo dõi.
+`RecordEmailOpen` phát `NotificationOpened` cùng transaction với `UPDATE … WHERE first_opened_at IS NULL`
+(hai lượt mở cùng lúc -> đúng một sự kiện); event đi `webhook.events` như ba event kết quả gửi. `data` như
+cũ cộng `openedAt` — chỉ sự kiện này có, ba sự kiện cũ giữ nguyên hình dạng. URL đăng ký trước đó không tự
+nhận sự kiện mới (đăng ký theo từng sự kiện).

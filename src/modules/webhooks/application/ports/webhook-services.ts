@@ -28,6 +28,8 @@ export interface NotificationOutcome {
   status: string;
   exclusionReason: string | null;
   error: string | null;
+  /** Lần mở đầu (ADR-0031) — chỉ `notification.opened` gửi trường này cho app. */
+  openedAt: string | null;
 }
 
 export interface NotificationOutcomes {

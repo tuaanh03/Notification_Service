@@ -32,6 +32,7 @@ export const EVENT_ROUTES: Readonly<Record<string, readonly StreamName[]>> = {
   NotificationSent: [STREAMS.WEBHOOK_EVENTS],
   NotificationFailed: [STREAMS.WEBHOOK_EVENTS],
   NotificationNoRecipient: [STREAMS.WEBHOOK_EVENTS],
+  NotificationOpened: [STREAMS.WEBHOOK_EVENTS],
 };
 
 /**

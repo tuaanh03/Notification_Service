@@ -28,6 +28,8 @@ export class NotificationRecipient {
   providerMessageId: string | null;
   error: string | null;
   sentAt: Date | null;
+  /** Worker chèn ảnh theo dõi vào thư này (ADR-0031) — chốt lúc nhận việc, không đổi sau đó. */
+  readonly openTracked: boolean;
   /** Đếm "đã mở" (ADR-0031) — chỉ đường ảnh theo dõi ghi, worker không đụng tới. */
   readonly firstOpenedAt: Date | null;
   readonly openCount: number;
@@ -46,6 +48,7 @@ export class NotificationRecipient {
     providerMessageId?: string | null | undefined;
     error?: string | null | undefined;
     sentAt?: Date | null | undefined;
+    openTracked?: boolean | undefined;
     firstOpenedAt?: Date | null | undefined;
     openCount?: number | undefined;
   }) {
@@ -62,6 +65,7 @@ export class NotificationRecipient {
     this.providerMessageId = props.providerMessageId ?? null;
     this.error = props.error ?? null;
     this.sentAt = props.sentAt ?? null;
+    this.openTracked = props.openTracked ?? false;
     this.firstOpenedAt = props.firstOpenedAt ?? null;
     this.openCount = props.openCount ?? 0;
   }

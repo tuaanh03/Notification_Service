@@ -19,7 +19,7 @@ const HOURLY_COLUMN: Partial<Record<NotificationStatus, 'sent' | 'failed' | 'blo
  * Màn Tổng quan của MỘT app (plan §5 — bề mặt đọc cho vận hành): gửi bao nhiêu, bao nhiêu lỗi / bị
  * chặn và vì sao, hàng chờ dài bao nhiêu, còn bao nhiêu người nhận được thư.
  *
- * Tốn cố định 8 truy vấn đếm, chạy song song, không phụ thuộc số lần gửi. Không trả nội dung thư,
+ * Tốn cố định 9 truy vấn đếm, chạy song song, không phụ thuộc số lần gửi. Không trả nội dung thư,
  * địa chỉ hay mã người nhận — chỉ con số.
  *
  * Thư trả về (bounce) CHƯA có: NDR còn nằm ở hộp thư gửi, EWS chưa đọc (ADR-0018).
@@ -44,11 +44,12 @@ export class GetAppOverview {
     const previous = { from: new Date(window.from.getTime() - DAY_MS), to: window.from };
     const firstHour = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS - (HOURS - 1) * HOUR_MS;
 
-    const [byStatus, previousByStatus, hourlyRows, blocked, backlog, userTotal, emailCounts, appTopics] = await Promise.all([
+    const [byStatus, previousByStatus, hourlyRows, blocked, opens, backlog, userTotal, emailCounts, appTopics] = await Promise.all([
       stats.countByStatus(input.appId, window),
       stats.countByStatus(input.appId, previous),
       stats.countByHour(input.appId, { from: new Date(firstHour), to: now }),
       stats.countExclusions(input.appId, window),
+      stats.countOpens(input.appId, window),
       stats.backlog(input.appId),
       users.countUsers(input.appId),
       emails.countByStatus(input.appId),
@@ -74,6 +75,7 @@ export class GetAppOverview {
       sends: { total: sum(byStatus), previousTotal: sum(previousByStatus) },
       byStatus,
       blocked,
+      opens,
       hourly,
       queue: { waiting: backlog.waiting, oldestCreatedAt: backlog.oldestCreatedAt?.toISOString() ?? null },
       recipients: {

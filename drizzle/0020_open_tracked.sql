@@ -1,0 +1,1 @@
+ALTER TABLE `notification_recipients` ADD `open_tracked` boolean DEFAULT false NOT NULL;

@@ -186,6 +186,11 @@ export interface AppOverviewDto {
   /** Vì sao thư bị chặn (`exclusion_reason`), trong cửa sổ. Đủ mọi lý do, không có thì 0. */
   blocked: Record<string, number>;
   /**
+   * Đếm "đã mở" (ADR-0031), trong cửa sổ: `tracked` = thư đã gửi có chèn ảnh theo dõi, `opened` = trong số
+   * đó đã mở. Tỉ lệ mở = opened / tracked; `tracked = 0` = app chưa bật đếm (hoặc chưa gửi gì từ lúc bật).
+   */
+  opens: { tracked: number; opened: number };
+  /**
    * 24 cột theo giờ tạo, cũ trước, đủ 24 dòng kể cả giờ trống. Cột cuối là giờ hiện tại (chưa trọn),
    * cột đầu bắt đầu ở đầu giờ của 23 giờ trước.
    *   sent = `sent` · failed = `failed` · blocked = `no_recipient` · pending = `queued` + `sending`

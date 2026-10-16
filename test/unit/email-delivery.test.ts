@@ -162,7 +162,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         findByNotifications: async () => new Map(),
         insert: async () => undefined,
         update: async () => undefined,
-        recordOpen: async () => false,
+        recordOpen: async () => null,
       },
       emails: { find: async () => options.email ?? null, listByApp: async () => new Map() },
       topics: {

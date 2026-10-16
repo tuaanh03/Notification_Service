@@ -11,6 +11,8 @@ export const NOTIFICATION_EVENTS = {
   noRecipient: 'NotificationNoRecipient',
   sent: 'NotificationSent',
   failed: 'NotificationFailed',
+  /** Lần mở ĐẦU TIÊN (ảnh theo dõi — ADR-0031). Đi thêm `webhook.events` -> `notification.opened`. */
+  opened: 'NotificationOpened',
 } as const;
 
 export const PUBLICATION_AGGREGATE = 'Publication';
@@ -22,6 +24,9 @@ export const PUBLICATION_EVENTS = {
 
 /** Actor của mọi chuyển trạng thái do worker / job làm. */
 export const EMAIL_SENDER_ACTOR: Actor = { id: 'email-sender', type: 'system' };
+
+/** Actor của sự kiện "đã mở" — ghi từ đường ảnh theo dõi công khai, không có người gọi xác thực. */
+export const OPEN_TRACKING_ACTOR: Actor = { id: 'open-tracking', type: 'system' };
 
 /** Lý do `failed` khi không biết provider đã nhận thư chưa (at-most-once — ADR-0016 D3). */
 export const OUTCOME_UNKNOWN = 'outcome_unknown';

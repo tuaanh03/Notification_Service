@@ -53,10 +53,13 @@ describe('HmacOpenTrackingSigner', () => {
 });
 
 describe('RecordEmailOpen — chỉ ghi khi chữ ký đúng', () => {
-  function harness(signingKey: string | undefined) {
+  function harness(signingKey: string | undefined, results: Array<'first' | 'again'> = ['first']) {
     const recorded: NotificationIdType[] = [];
+    const events: string[] = [];
     const signer = new HmacOpenTrackingSigner({ signingKey });
     const useCase = new RecordEmailOpen({
+      uow: { run: async (work) => work() },
+      outbox: { append: async (list) => void events.push(...list.map((e) => e.eventType)) },
       clock: { now: () => new Date('2026-10-16T00:00:00.000Z') },
       signer,
       recipients: {
@@ -66,19 +69,21 @@ describe('RecordEmailOpen — chỉ ghi khi chữ ký đúng', () => {
         update: async () => undefined,
         recordOpen: async (notificationId) => {
           recorded.push(notificationId);
-          return true;
+          return results[recorded.length - 1] ?? 'again';
         },
       },
     });
-    return { useCase, recorded, signer };
+    return { useCase, recorded, events, signer };
   }
 
-  it('chữ ký đúng -> ghi một lượt', async () => {
-    const { useCase, recorded } = harness(KEY);
+  it('chữ ký đúng -> ghi lượt mở; CHỈ lần đầu phát NotificationOpened', async () => {
+    const { useCase, recorded, events } = harness(KEY, ['first', 'again']);
     const id = NotificationId.create();
     const signature = new HmacOpenTrackingSigner({ signingKey: KEY }).sign(id);
     expect(await useCase.execute({ notificationId: id, signature })).toBe(true);
-    expect(recorded).toEqual([id]);
+    expect(await useCase.execute({ notificationId: id, signature })).toBe(true);
+    expect(recorded).toEqual([id, id]);
+    expect(events).toEqual(['NotificationOpened']);
   });
 
   it.each([

@@ -54,8 +54,9 @@ export interface RecipientRepository {
   insert(recipient: NotificationRecipient): Promise<void>;
   update(recipient: NotificationRecipient): Promise<void>;
   /**
-   * Một lượt tải ảnh theo dõi (ADR-0031): `open_count + 1`, `first_opened_at` giữ lần đầu — MỘT UPDATE,
-   * không đọc trước nên hai lượt cùng lúc không mất lượt nào. Chỉ thư đã `sent`. false = không dòng nào khớp.
+   * Một lượt tải ảnh theo dõi (ADR-0031): `open_count + 1`; lượt đầu tiên ghi thêm `first_opened_at`.
+   * Chỉ thư đã `sent`. `first` = lần mở đầu (đúng một lượt dù nhiều lượt cùng lúc) · `again` · null = không khớp.
+   * Gọi trong `uow.run` (lần đầu kèm sự kiện outbox).
    */
-  recordOpen(notificationId: NotificationId, at: Date): Promise<boolean>;
+  recordOpen(notificationId: NotificationId, at: Date): Promise<'first' | 'again' | null>;
 }

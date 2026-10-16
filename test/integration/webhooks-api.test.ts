@@ -251,6 +251,32 @@ describe('gọi webhook khi thư có kết quả', () => {
     ]);
   });
 
+  it('notification.opened: chỉ lần mở ĐẦU TIÊN, kèm openedAt; ba sự kiện cũ không có openedAt (ADR-0031)', async () => {
+    const app = await freshApp('wh-opened');
+    await app.addHook({ events: ['notification.sent', 'notification.opened'] });
+    await admin('PUT', `/apps/${app.appId}/open-tracking`, { enabled: true });
+    await admin('PUT', '/system-settings', { values: { 'api.public_base_url': 'https://ews-api.example.com' } });
+    try {
+      await app.send();
+      await settle();
+      const sent = JSON.parse(transport.calls[0]!.body) as { type: string; data: Json };
+      expect(sent.type).toBe('notification.sent');
+      expect(sent.data).not.toHaveProperty('openedAt');
+
+      const path = mail.delivered[0]!.html.match(/https:\/\/ews-api\.example\.com(\/t\/o\/[^"]+)"/)![1]!;
+      transport.reset();
+      await fetch(`${api.url}${path}`);
+      await fetch(`${api.url}${path}`);
+      await settle();
+      const opened = transport.calls.map((call) => JSON.parse(call.body) as { type: string; data: Json });
+      expect(opened.map((b) => b.type)).toEqual(['notification.opened']);
+      expect(opened[0]!.data).toMatchObject({ externalId: 'nv01', topic: 'alerts', status: 'sent' });
+      expect(Date.parse(opened[0]!.data['openedAt'] as string)).toBeGreaterThan(0);
+    } finally {
+      await admin('PUT', '/system-settings', { values: { 'api.public_base_url': null } });
+    }
+  });
+
   it('app lỗi -> gọi lại theo lịch; hết 6 lần -> failed; cùng một eventId mọi lần', async () => {
     const app = await freshApp('wh-retry');
     const endpointId = ((await app.addHook()).body['endpoint'] as Json)['id'] as string;

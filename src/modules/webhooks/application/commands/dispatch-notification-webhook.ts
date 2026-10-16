@@ -58,6 +58,8 @@ export class DispatchNotificationWebhook {
         status: outcome.status,
         exclusionReason: outcome.exclusionReason,
         error: outcome.error,
+        // Chỉ sự kiện "đã mở" mang mốc mở — ba sự kiện kết quả gửi giữ nguyên hình dạng cũ.
+        ...(type === 'notification.opened' ? { openedAt: outcome.openedAt } : {}),
       },
     });
     await uow.run(async () => {

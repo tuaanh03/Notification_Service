@@ -61,6 +61,16 @@ export class DrizzleNotificationStats implements NotificationStats {
     return counts;
   }
 
+  async countOpens(appId: AppId, range: TimeRange): Promise<{ tracked: number; opened: number }> {
+    const [row] = await this.transactions
+      .executor()
+      .select({ tracked: count(), opened: count(notificationRecipients.firstOpenedAt) })
+      .from(notificationRecipients)
+      .innerJoin(notifications, eq(notifications.notificationId, notificationRecipients.notificationId))
+      .where(and(inRange(appId, range), eq(notificationRecipients.openTracked, true), eq(notificationRecipients.status, 'sent')));
+    return { tracked: row?.tracked ?? 0, opened: row?.opened ?? 0 };
+  }
+
   async backlog(appId: AppId): Promise<{ waiting: number; oldestCreatedAt: Date | null }> {
     // Điều kiện `status IN (...)` cho MySQL dùng index `idx_notifications_status_sending` (status đứng
     // đầu) thay vì quét cả lịch sử của app — hàng chờ luôn nhỏ so với lịch sử.

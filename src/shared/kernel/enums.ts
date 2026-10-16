@@ -128,7 +128,7 @@ export type BounceKind = (typeof BOUNCE_KINDS)[number];
  * Sự kiện app đăng ký nhận qua outgoing webhook (ADR-0029). `ping` chỉ dùng cho nút "Gửi thử" — không
  * đăng ký được.
  */
-export const WEBHOOK_EVENT_TYPES = ['notification.sent', 'notification.failed', 'notification.no_recipient'] as const;
+export const WEBHOOK_EVENT_TYPES = ['notification.sent', 'notification.failed', 'notification.no_recipient', 'notification.opened'] as const;
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
 
 export const WEBHOOK_ENDPOINT_STATUSES = ['active', 'disabled'] as const;

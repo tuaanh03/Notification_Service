@@ -25,6 +25,11 @@ export interface NotificationStats {
   countByHour(appId: AppId, range: TimeRange): Promise<HourlyStatusCount[]>;
   /** Vì sao thư bị chặn, đếm trên người nhận của các lần gửi tạo trong khoảng. */
   countExclusions(appId: AppId, range: TimeRange): Promise<Record<ExclusionReason, number>>;
+  /**
+   * Đếm "đã mở" (ADR-0031) trên thư tạo trong khoảng: `tracked` = thư đã gửi CÓ chèn ảnh (mẫu số),
+   * `opened` = trong số đó, thư đã được mở ít nhất một lần.
+   */
+  countOpens(appId: AppId, range: TimeRange): Promise<{ tracked: number; opened: number }>;
   /** Hàng chờ NGAY LÚC NÀY (`queued` + `sending`), không giới hạn thời gian tạo. */
   backlog(appId: AppId): Promise<{ waiting: number; oldestCreatedAt: Date | null }>;
 }

@@ -15,6 +15,8 @@ export interface NotificationOutcomeDto {
   status: string;
   exclusionReason: string | null;
   error: string | null;
+  /** Lần mở đầu (ảnh theo dõi — ADR-0031). null = chưa mở / không theo dõi. */
+  openedAt: string | null;
 }
 
 /** Query công khai cho module khác (webhooks). null = không có notification này. */
@@ -47,6 +49,7 @@ export class GetNotificationOutcome {
       status: n.status,
       exclusionReason: recipient?.exclusionReason ?? null,
       error: recipient?.error ?? null,
+      openedAt: recipient?.firstOpenedAt?.toISOString() ?? null,
     };
   }
 }

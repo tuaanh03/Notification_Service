@@ -1,7 +1,7 @@
 import type { HttpRoutes } from '../../../../shared/http/index.ts';
 import type { RecordEmailOpen } from '../../application/index.ts';
 
-/** GIF 1×1 trong suốt (43 byte). */
+/** GIF 1×1 trong suốt (42 byte). */
 const PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 
 /**

@@ -407,7 +407,12 @@ X-EWS-Signature: t=1791625213,v1=9f2c…
 | `notification.sent` | Máy chủ thư đã nhận | — |
 | `notification.failed` | Gửi không được | `error` (bắt đầu `outcome_unknown` = không rõ đã đi chưa) |
 | `notification.no_recipient` | Không gửi vì người nhận bị chặn | `exclusionReason` (bảng phía trên) |
+| `notification.opened` | Người nhận mở thư **lần đầu** — chỉ khi app bật "Theo dõi mở thư" trên console | `openedAt` (chỉ sự kiện này có) |
 | `ping` | Bấm "Gửi thử" trên console | `data` rỗng |
+
+`notification.opened` là số **ước tính**: EWS biết "đã mở" khi ứng dụng mail tải ảnh nhỏ trong thư. Ứng
+dụng chặn ảnh thì đã mở vẫn không có sự kiện; mở lại nhiều lần chỉ có **một** sự kiện. Mỗi thư vì vậy có
+một sự kiện kết quả gửi và tối đa một sự kiện `notification.opened`, đến sau.
 
 Body **không có** địa chỉ email và nội dung thư. Thư của một lần phát (mục 6) có `publicationId`.
 
@@ -431,7 +436,8 @@ Body **không có** địa chỉ email và nội dung thư. Thư của một l�
    redirect đều tính là lỗi → EWS gọi lại sau **1 phút · 5 phút · 30 phút · 2 giờ · 6 giờ** rồi dừng
    (tổng 6 lần). Nhật ký từng lần gọi xem trên console.
 3. **Bỏ bản trùng theo `id`.** Có thể nhận cùng một sự kiện hai lần (ví dụ app xử lý xong nhưng trả lời
-   chậm). Thứ tự giữa các thư khác nhau **không đảm bảo**; mỗi thư chỉ có **một** sự kiện kết quả.
+   chậm). Thứ tự giữa các thư khác nhau **không đảm bảo**; mỗi thư chỉ có **một** sự kiện kết quả
+   (cộng tối đa một `notification.opened`).
 
 *Nguồn: `webhooks-api.test.ts`, `test/unit/webhooks.test.ts` — "chữ ký kiểm được bằng đúng đoạn code mẫu".*
 

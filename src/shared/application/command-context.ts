@@ -7,7 +7,7 @@ export interface Actor {
 }
 
 /** Cửa nào đưa lệnh vào hệ thống — cột `source` của `audit_log`. */
-export type CommandSource = 'admin_api' | 'v1_api' | 'incoming_webhook' | 'worker' | 'scheduler' | 'system';
+export type CommandSource = 'admin_api' | 'v1_api' | 'incoming_webhook' | 'worker' | 'scheduler' | 'system' | 'open_tracking';
 
 /**
  * Tham số thứ hai của MỌI command: không phải dữ liệu nghiệp vụ mà là "ai, qua cửa nào".

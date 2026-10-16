@@ -159,7 +159,7 @@ export class DeliverEmailNotification {
 
     // --- 2: chờ lượt gửi, rồi tx1 nhận việc ---
     await sender.awaitCapacity();
-    const recipient = new NotificationRecipient(recipientProps);
+    const recipient = new NotificationRecipient({ ...recipientProps, openTracked: trace.openTracking });
     const claimed = await this.transition(notification, 'first_batch_left', null, async () => {
       notification.counters = addCounters(notification.counters, { resolved: 1 });
       await recipients.insert(recipient);

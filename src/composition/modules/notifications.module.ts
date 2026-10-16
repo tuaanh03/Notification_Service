@@ -102,7 +102,7 @@ export function notificationsModule(
     definition: {
       name: 'notifications',
       http: {
-        public: [publicTrackingRoutes({ recordOpen: new RecordEmailOpen({ clock, signer, recipients }) })],
+        public: [publicTrackingRoutes({ recordOpen: new RecordEmailOpen({ uow, outbox, clock, signer, recipients }) })],
         admin: [
           adminNotificationsRoutes({
             list: new ListNotifications({ notifications, recipients, users, topics, templates }),

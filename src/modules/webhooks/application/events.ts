@@ -13,4 +13,6 @@ export const NOTIFICATION_EVENT_TO_WEBHOOK = {
   NotificationSent: 'notification.sent',
   NotificationFailed: 'notification.failed',
   NotificationNoRecipient: 'notification.no_recipient',
+  /** Lần mở đầu tiên (ảnh theo dõi — ADR-0031); `data.openedAt` có giá trị. */
+  NotificationOpened: 'notification.opened',
 } as const;

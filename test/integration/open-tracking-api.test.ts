@@ -126,6 +126,8 @@ describe('Đếm "đã mở" (ADR-0031)', () => {
     await pixel(path!);
     expect(await recipientOf(id)).toMatchObject({ openCount: 2, firstOpenedAt: opened.firstOpenedAt });
     expect((await admin('GET', `/apps/${shop.appId}/open-tracking`)).body).toEqual({ enabled: true, ready: true });
+    // Tổng quan: mẫu số chỉ là thư CÓ chèn ảnh — thư emp_off gửi lúc còn tắt không tính.
+    expect((await admin('GET', `/apps/${shop.appId}/overview`)).body['opens']).toEqual({ tracked: 1, opened: 1 });
     // Màn Lịch sử gửi thấy lượt mở; `/v1` thì không (ngoài hợp đồng với đội app).
     const rows = (await admin('GET', `/apps/${shop.appId}/notifications?externalId=emp_on`)).body['rows'];
     expect(rows[0].recipient).toMatchObject({ openCount: 2, firstOpenedAt: opened.firstOpenedAt!.toISOString() });
