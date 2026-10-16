@@ -101,7 +101,9 @@ export class AcceptEmailNotification {
         id: NotificationId.create(),
         appId: input.appId,
         topicId: topic.topicId,
-        origin: 'api',
+        origin: input.origin ?? 'api',
+        // Gửi ngay, kể cả từ console — `dashboard` mặc định là `draft` (luồng duyệt chưa làm), ở đây không dùng.
+        status: 'queued',
         idempotencyKey: input.idempotencyKey ?? null,
         targetUserId: userId,
         content,

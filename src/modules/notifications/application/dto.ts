@@ -123,6 +123,8 @@ function publicationBucket(status: string): keyof PublicationDto['counts'] {
  * Không có nội dung thư — cùng lý do với `NotificationDto`.
  */
 export interface NotificationSummaryDto extends Omit<NotificationDto, 'recipient' | 'template'> {
+  /** `api` = app gọi `/v1` · `dashboard` = gửi từ màn Soạn thông báo của console. */
+  origin: string;
   /** null = user đã không còn trong sổ người nhận. */
   externalId: string | null;
   /** Như `NotificationDto.template`, kèm tên template cho người đọc. */
@@ -146,6 +148,7 @@ export function toNotificationSummaryDto(
   const { recipient, template: _template, ...rest } = toNotificationDto(n, extra);
   return {
     ...rest,
+    origin: n.origin,
     externalId: extra.externalId,
     template: extra.template ? { id: extra.template.templateId, name: extra.template.name, version: extra.template.version } : null,
     recipient:

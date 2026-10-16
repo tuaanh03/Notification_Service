@@ -51,6 +51,7 @@ export function templatesModule(
     logger,
   });
 
+  const renderTemplate = new RenderTemplate({ templates });
   const definition: ModuleDefinition = {
     name: 'templates',
     http: {
@@ -63,12 +64,13 @@ export function templatesModule(
           publishVersion: new PublishVersion(deps),
           archiveTemplate: new ArchiveTemplate(deps),
           composeTemplateDraft,
+          renderTemplate,
           queries,
         }),
       ],
     },
   };
-  return { definition, renderTemplate: new RenderTemplate({ templates }), templateQueries: queries };
+  return { definition, renderTemplate, templateQueries: queries };
 }
 
 /** Giới hạn gọi AI của MỘT admin — cố định trong code, không qua env (chống tốn tiền, không phải tinh chỉnh). */

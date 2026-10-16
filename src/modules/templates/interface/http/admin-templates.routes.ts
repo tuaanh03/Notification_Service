@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { access, adminCaller, LARGE_BODY_LIMIT_BYTES, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, adminCaller, EXTERNAL_ID, LARGE_BODY_LIMIT_BYTES, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AppId, TemplateId, VARIABLE_SOURCES } from '../../../../shared/kernel/index.ts';
 import type {
   ArchiveTemplate,
@@ -9,6 +9,7 @@ import type {
   DraftFromVersion,
   PublishVersion,
   RenameTemplate,
+  RenderTemplate,
   SaveDraft,
   TemplateQueries,
 } from '../../application/index.ts';
@@ -50,6 +51,8 @@ const createBody = z
   })
   .strict();
 const renameBody = z.object({ name: NAME }).strict();
+/** Xem trước trên màn Soạn thông báo: payload như lúc gửi; `externalId` = người nhận đầu tiên (nếu đã chọn). */
+const renderBody = z.object({ payload: z.record(z.string(), z.unknown()).default({}), externalId: EXTERNAL_ID.optional() }).strict();
 
 /** "Nhờ AI soạn": trạng thái ĐANG SOẠN trên màn (có thể chưa lưu). Không có giá trị mẫu — không gửi ra ngoài. */
 const aiComposeBody = z
@@ -87,6 +90,7 @@ export function adminTemplatesRoutes(useCases: {
   publishVersion: PublishVersion;
   archiveTemplate: ArchiveTemplate;
   composeTemplateDraft: ComposeTemplateDraft;
+  renderTemplate: RenderTemplate;
   queries: TemplateQueries;
 }): HttpRoutes {
   return (app) => {
@@ -112,6 +116,14 @@ export function adminTemplatesRoutes(useCases: {
     app.get('/apps/:appId/templates', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
       return useCases.queries.list(AppId.parse(appId));
+    });
+
+    // Đổ biến vào bản ĐANG XUẤT BẢN — đúng hàm lúc gửi dùng, nên xem trước thế nào thì thư đi thế ấy.
+    // Không ghi gì. Lỗi template (MISSING_VARIABLE, TEMPLATE_NOT_PUBLISHED…) là 422 như lúc gửi.
+    app.post('/apps/:appId/templates/:templateId/render', { config: access('app.read') }, async (request) => {
+      const params = ids(parseInput(templateParams, request.params));
+      const { payload, externalId } = parseInput(renderBody, request.body ?? {});
+      return useCases.renderTemplate.execute({ ...params, payload, externalId: externalId ?? 'preview' });
     });
 
     app.get('/apps/:appId/templates/:templateId', { config: access('app.read') }, async (request) => {

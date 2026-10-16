@@ -1,5 +1,6 @@
 import type {
   AppId,
+  Channel,
   SubscriptionId,
   SubscriptionStatus,
   SuppressedReason,
@@ -13,6 +14,14 @@ import type {
  * Cổng sang module khác — adapter gọi query / use case công khai của module đó (không đọc bảng của nó).
  * Kiểu dữ liệu khai bằng kiểu của kernel, KHÔNG import domain của module kia.
  */
+
+/**
+ * -> apps: app gửi được không + kênh được cấp. `/v1` có sẵn trong `AppCaller` (xác thực khoá đã kiểm);
+ * đường gửi từ console (admin) phải tự tra.
+ */
+export interface AppSendingLookup {
+  sendingOf(appId: AppId): Promise<{ active: boolean; grantedChannels: readonly Channel[] }>;
+}
 
 /** -> directory: người nhận theo external_id trong app. */
 export interface RecipientLookup {

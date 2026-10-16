@@ -1,10 +1,12 @@
-import { ValidationError, type AppId, type Channel, type TemplateId } from '../../../../shared/kernel/index.ts';
+import { ValidationError, type AppId, type Channel, type NotificationOrigin, type TemplateId } from '../../../../shared/kernel/index.ts';
 import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
 import type { TopicConsentLookup, TopicForDelivery } from '../ports/index.ts';
 
 /** Phần nội dung chung của gửi lẻ (`POST /v1/notifications`) và phát vào topic (`POST /v1/publications`). */
 export interface SendContentInput {
   grantedChannels: readonly Channel[];
+  /** `api` (mặc định) = app gọi `/v1`; `dashboard` = người quản lý app gửi từ màn Soạn thông báo. */
+  origin?: NotificationOrigin | undefined;
   /** Cách 1 — nội dung viết thẳng. */
   subject?: string | undefined;
   html?: string | undefined;

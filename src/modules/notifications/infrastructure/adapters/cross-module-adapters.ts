@@ -5,16 +5,19 @@ import type { FindUserByExternalId } from '../../../directory/application/index.
 import type { EmailSubscriptionDto, FindUserEmail } from '../../../subscriptions/application/index.ts';
 import type { ConsentQueries } from '../../../topics/application/index.ts';
 import {
+  CHANNELS,
   SUBSCRIPTION_STATUSES,
   SUPPRESSED_REASONS,
   SubscriptionId,
   UserId,
   type AppId,
+  type Channel,
   type SubscriptionStatus,
   type TopicId,
   type UserId as UserIdType,
 } from '../../../../shared/kernel/index.ts';
 import type {
+  AppSendingLookup,
   EmailCounts,
   EmailDeliveryOutcome,
   EmailLookup,
@@ -135,6 +138,21 @@ export class AppsOpenTrackingConfig implements OpenTrackingConfig {
   async forApp(appId: AppId): Promise<{ enabled: boolean; publicBaseUrl: string | null }> {
     const [app, settings] = await Promise.all([this.appQueries.get(appId), this.systemSettings.current()]);
     return { enabled: app.trackOpens, publicBaseUrl: settings['api.public_base_url'] };
+  }
+}
+
+/** notifications -> apps: trạng thái + kênh cấp của app cho đường gửi từ console. */
+export class AppsSendingLookup implements AppSendingLookup {
+  private readonly appQueries: AppQueries;
+
+  constructor(deps: { appQueries: AppQueries }) {
+    this.appQueries = deps.appQueries;
+  }
+
+  async sendingOf(appId: AppId): Promise<{ active: boolean; grantedChannels: readonly Channel[] }> {
+    const app = await this.appQueries.get(appId);
+    const known = new Set<string>(CHANNELS);
+    return { active: app.status === 'active', grantedChannels: app.grantedChannels.filter((c): c is Channel => known.has(c)) };
   }
 }
 
