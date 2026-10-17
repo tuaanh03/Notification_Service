@@ -50,6 +50,12 @@ export const apps = mysqlTable(
     sendWindow: json('send_window').$type<{ days: number[]; start: string; end: string }>(),
     /** Tin của topic bắt buộc bỏ qua khung giờ (ADR-0032). Mặc định bật — cảnh báo không chờ tới sáng. */
     mandatoryBypassWindow: boolean('mandatory_bypass_window').notNull().default(true),
+    /** Dàn đều (ADR-0032 GĐ 2): tối đa N thư / phút của app — Admin App đặt. NULL = không dàn. */
+    sendPerMinute: int('send_per_minute'),
+    /** Tin bắt buộc không bị dàn đều theo `send_per_minute`. Mặc định bật. Trần dưới vẫn áp. */
+    mandatoryBypassPacing: boolean('mandatory_bypass_pacing').notNull().default(true),
+    /** Trần tốc độ của app do Super Admin đặt — áp cho MỌI thư của app. NULL = không trần riêng. */
+    maxSendPerMinute: int('max_send_per_minute'),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

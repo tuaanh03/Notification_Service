@@ -1,6 +1,6 @@
 import type { CommandContext } from '../../../../shared/application/index.ts';
 import { ValidationError, type AppId, type TemplateId } from '../../../../shared/kernel/index.ts';
-import type { PublicationDto } from '../dto.ts';
+import { scheduledRange, type PublicationDto } from '../dto.ts';
 import type { AppSendingLookup } from '../ports/index.ts';
 import type { AcceptEmailNotification } from './accept-email-notification.ts';
 import type { PublishToTopic } from './publish-to-topic.ts';
@@ -20,8 +20,9 @@ export interface ConsoleSendResult {
   queued: number;
   /** Mỗi người một dòng, đúng thứ tự gửi lên. `code` = vì sao không xếp hàng được (RECIPIENT_NOT_FOUND). */
   results: { externalId: string; notificationId: string | null; code: string | null }[];
-  /** Ngoài khung giờ gửi (ADR-0032): lúc thư sẽ đi. null = đã vào hàng gửi ngay. */
+  /** Thư phải chờ giới hạn gửi của app (ADR-0032): thư sớm / muộn nhất sẽ đi lúc nào. null = đã vào hàng gửi ngay. */
   scheduledAt: string | null;
+  lastScheduledAt: string | null;
 }
 
 /**
@@ -51,7 +52,7 @@ export class SendFromConsole {
     const { appId, topic, requestId, externalIds: _ids, ...content } = input;
     const grantedChannels = await this.sendable(appId);
     const results: ConsoleSendResult['results'] = [];
-    let scheduledAt: string | null = null;
+    const waiting: { status: string; scheduledAt: Date | null }[] = [];
     for (const externalId of externalIds) {
       try {
         const { notification } = await this.deps.accept.execute(
@@ -59,7 +60,7 @@ export class SendFromConsole {
           ctx,
         );
         results.push({ externalId, notificationId: notification.id, code: null });
-        scheduledAt ??= notification.scheduledAt;
+        if (notification.scheduledAt) waiting.push({ status: notification.status, scheduledAt: new Date(notification.scheduledAt) });
       } catch (err) {
         // Chỉ lỗi RIÊNG của người này mới ghi vào dòng; lỗi chủ đề / nội dung giống nhau cho mọi người -> ném ra.
         const code = err instanceof ValidationError && err.issues.length === 1 ? err.issues[0]?.code : undefined;
@@ -67,7 +68,7 @@ export class SendFromConsole {
         results.push({ externalId, notificationId: null, code });
       }
     }
-    return { queued: results.filter((r) => r.notificationId !== null).length, results, scheduledAt };
+    return { queued: results.filter((r) => r.notificationId !== null).length, results, ...scheduledRange(waiting) };
   }
 
   async toTopic(

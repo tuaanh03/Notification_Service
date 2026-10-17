@@ -37,7 +37,17 @@ export interface AppProps extends TimestampInput {
   sendWindow?: SendWindow | null | undefined;
   /** Tin bắt buộc bỏ qua khung giờ. Mặc định true. */
   mandatoryBypassWindow?: boolean | undefined;
+  /** Dàn đều: tối đa N thư / phút (ADR-0032 GĐ 2). null = không dàn. */
+  sendPerMinute?: number | null | undefined;
+  /** Tin bắt buộc không bị dàn theo `sendPerMinute`. Mặc định true. */
+  mandatoryBypassPacing?: boolean | undefined;
+  /** Trần tốc độ do Super Admin đặt, áp cho mọi thư. null = không trần riêng. */
+  maxSendPerMinute?: number | null | undefined;
 }
+
+/** Khoảng hợp lệ của mọi con số thư / phút (dàn đều và trần). */
+export const PACING_MIN_PER_MINUTE = 1;
+export const PACING_MAX_PER_MINUTE = 1000;
 
 /**
  * Kênh cấp sẵn cho app tự phục vụ (ADR-0023). MVP chỉ gửi email — kênh là thứ DUY NHẤT trong
@@ -72,6 +82,9 @@ export class App extends BaseEntity<AppId> {
   trackOpens: boolean;
   sendWindow: SendWindow | null;
   mandatoryBypassWindow: boolean;
+  sendPerMinute: number | null;
+  mandatoryBypassPacing: boolean;
+  maxSendPerMinute: number | null;
 
   constructor(props: AppProps) {
     super(props.id, props);
@@ -99,6 +112,9 @@ export class App extends BaseEntity<AppId> {
     this.trackOpens = props.trackOpens ?? false;
     this.sendWindow = props.sendWindow ?? null;
     this.mandatoryBypassWindow = props.mandatoryBypassWindow ?? true;
+    this.sendPerMinute = props.sendPerMinute ?? null;
+    this.mandatoryBypassPacing = props.mandatoryBypassPacing ?? true;
+    this.maxSendPerMinute = props.maxSendPerMinute ?? null;
   }
 
   /**
@@ -163,6 +179,40 @@ export class App extends BaseEntity<AppId> {
     return true;
   }
 
+  /**
+   * Dàn đều (ADR-0032 GĐ 2) — người quản lý app đặt, KHÔNG vượt trần Super Admin đã đặt
+   * (`PACING_ABOVE_CEILING`). Trả false nếu không đổi gì.
+   */
+  setPacing(perMinute: number | null, mandatoryBypass: boolean, at: Date): boolean {
+    if (perMinute !== null) {
+      assertPerMinute(perMinute, 'perMinute');
+      if (this.maxSendPerMinute !== null && perMinute > this.maxSendPerMinute) {
+        throw ValidationError.of(
+          'PACING_ABOVE_CEILING',
+          `app ${this.slug} may send at most ${this.maxSendPerMinute} emails per minute`,
+          'perMinute',
+        );
+      }
+    }
+    if (this.sendPerMinute === perMinute && this.mandatoryBypassPacing === mandatoryBypass) return false;
+    this.sendPerMinute = perMinute;
+    this.mandatoryBypassPacing = mandatoryBypass;
+    this.touch(at);
+    return true;
+  }
+
+  /**
+   * Trần tốc độ của app — chỉ Super Admin. Hạ trần xuống dưới mức dàn đều app đang đặt KHÔNG báo lỗi:
+   * lúc gửi lấy số nhỏ hơn, Admin App thấy trần mới trên màn và tự chỉnh.
+   */
+  setPacingCeiling(maxPerMinute: number | null, at: Date): boolean {
+    if (maxPerMinute !== null) assertPerMinute(maxPerMinute, 'maxPerMinute');
+    if (this.maxSendPerMinute === maxPerMinute) return false;
+    this.maxSendPerMinute = maxPerMinute;
+    this.touch(at);
+    return true;
+  }
+
   /** App đã thu hồi là trạng thái kết thúc: không cấp thêm credential nào nữa. */
   assertAcceptsNewSecret(): void {
     if (this.status === 'revoked') {
@@ -198,4 +248,14 @@ export class App extends BaseEntity<AppId> {
 function sameWindow(a: SendWindow | null, b: SendWindow | null): boolean {
   if (a === null || b === null) return a === b;
   return a.start === b.start && a.end === b.end && a.days.join() === b.days.join();
+}
+
+function assertPerMinute(value: number, path: string): void {
+  if (!Number.isInteger(value) || value < PACING_MIN_PER_MINUTE || value > PACING_MAX_PER_MINUTE) {
+    throw ValidationError.of(
+      'PACING_INVALID',
+      `${path} must be an integer from ${PACING_MIN_PER_MINUTE} to ${PACING_MAX_PER_MINUTE}`,
+      path,
+    );
+  }
 }

@@ -22,6 +22,12 @@ export interface AppDto {
   sendWindow: { days: number[]; start: string; end: string } | null;
   /** Tin bắt buộc bỏ qua khung giờ. */
   mandatoryBypassWindow: boolean;
+  /** Dàn đều: tối đa N thư / phút (ADR-0032 GĐ 2). null = không dàn. */
+  sendPerMinute: number | null;
+  /** Tin bắt buộc không bị dàn đều. */
+  mandatoryBypassPacing: boolean;
+  /** Trần tốc độ do Super Admin đặt. null = không trần riêng. */
+  maxSendPerMinute: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,6 +81,9 @@ export const toAppDto = (a: App): AppDto => ({
   trackOpens: a.trackOpens,
   sendWindow: a.sendWindow === null ? null : { ...a.sendWindow, days: [...a.sendWindow.days] },
   mandatoryBypassWindow: a.mandatoryBypassWindow,
+  sendPerMinute: a.sendPerMinute,
+  mandatoryBypassPacing: a.mandatoryBypassPacing,
+  maxSendPerMinute: a.maxSendPerMinute,
   createdAt: a.createdAt.toISOString(),
   updatedAt: a.updatedAt.toISOString(),
 });

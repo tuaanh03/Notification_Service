@@ -215,9 +215,11 @@ Content-Type: application/json
 
 * **`202` = EWS đã nhận, CHƯA gửi.** Thư đi sau, trong hàng đợi. Header `Location` trỏ tới chỗ
   theo dõi.
-* App có đặt **khung giờ gửi** (console: Cài đặt App › Giới hạn gửi) mà thư tới ngoài khung -> `status`
-  là `scheduled`, `scheduledAt` là lúc khung mở; tới giờ thư tự đi, app không gọi lại. Tin của chủ đề bắt
-  buộc mặc định bỏ qua khung giờ.
+* App có đặt **giới hạn gửi** (console: Cài đặt App › Giới hạn gửi) -> thư có thể ở `status` `scheduled`,
+  `scheduledAt` là lúc thư sẽ đi; tới giờ thư tự đi, app không gọi lại. Hai lý do:
+  * **khung giờ gửi**: thư tới ngoài khung chờ tới lúc khung mở;
+  * **dàn đều** (tối đa N thư / phút): thư vượt mức của phút hiện tại xếp sang lượt kế tiếp.
+  Tin của chủ đề bắt buộc mặc định bỏ qua cả hai (vẫn theo trần tốc độ do quản trị hệ thống đặt).
 * `subject`: bắt buộc, tối đa 998 ký tự, **không xuống dòng**. `html`: bắt buộc. `text`: tuỳ chọn,
   nên có. Mỗi phần thân tối đa 256 KB.
 * Không cần tự chèn link huỷ đăng ký — MVP chưa có (xem mục 9).
@@ -348,7 +350,7 @@ GET $EWS/v1/notifications/<id>
 
 | `status` | Nghĩa | App làm gì |
 | --- | --- | --- |
-| `scheduled` | chờ khung giờ gửi của app mở — lúc mở ở `scheduledAt` | chờ, không gửi lại |
+| `scheduled` | chờ theo giới hạn gửi của app (khung giờ / dàn đều) — sẽ đi lúc `scheduledAt` | chờ, không gửi lại |
 | `queued` | đang chờ trong hàng | chờ |
 | `sending` | đang gửi | chờ |
 | `sent` | **máy chủ thư đã nhận** — chưa chắc đã vào hộp thư | xong |
@@ -498,13 +500,14 @@ Kết quả `202` (và `GET $EWS/v1/publications/<id>` về sau):
   "status": "in_progress", "recipientCount": 37,
   "counts": { "pending": 37, "sent": 0, "failed": 0, "skipped": 0 },
   "recipients": [{ "externalId": "NV-0123", "notificationId": "…", "status": "queued" }],
-  "scheduledAt": null,
+  "scheduledAt": null, "lastScheduledAt": null,
   "createdAt": "…"
 }
 ```
 
 * `status`: `in_progress` khi còn thư chờ gửi, `completed` khi mọi thư đã có kết quả.
-* `scheduledAt`: thư con đang chờ khung giờ gửi thì là lúc chúng sẽ đi; không thì `null`.
+* `scheduledAt` / `lastScheduledAt`: còn thư con chờ giới hạn gửi của app thì là lúc thư **sớm nhất** / **muộn
+  nhất** trong số đó sẽ đi (dàn đều thì thư rải trong khoảng này); không còn thư nào chờ thì cả hai `null`.
 * `counts`: `pending` = `scheduled` + `queued` + `sending` · `sent` · `failed` · `skipped` = `no_recipient`.
 * Mỗi người nhận là **một lá thư riêng** — tra chi tiết (lý do chặn, lỗi) bằng
   `GET /v1/notifications/<notificationId>` như mục 5.

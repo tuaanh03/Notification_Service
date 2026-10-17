@@ -188,7 +188,7 @@ GET $EWS/v1/notifications/<id>
 | `status` | Nghĩa |
 | --- | --- |
 | `queued` · `sending` | Đang chờ / đang gửi |
-| `scheduled` | Chờ khung giờ gửi của app mở (`scheduledAt`). Tin bắt buộc chỉ gặp khi app tắt ngoại lệ "tin bắt buộc bỏ qua khung giờ" |
+| `scheduled` | Chờ theo giới hạn gửi của app, sẽ đi lúc `scheduledAt`. Tin bắt buộc chỉ gặp khi app tắt ngoại lệ cho tin bắt buộc, hoặc vượt trần tốc độ do quản trị hệ thống đặt |
 | `sent` | Máy chủ thư **đã nhận** — thường vào hộp thư sau vài giây; không thấy thì xem mục rác |
 | `no_recipient` | **Không gửi**, lý do ở `recipient.exclusionReason` (dưới) |
 | `failed` | Gửi không được, lý do ở `recipient.error` |

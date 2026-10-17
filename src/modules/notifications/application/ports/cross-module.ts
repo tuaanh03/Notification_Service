@@ -24,9 +24,29 @@ export interface AppSendingLookup {
   sendingOf(appId: AppId): Promise<{ active: boolean; grantedChannels: readonly Channel[] }>;
 }
 
-/** -> apps: khung giờ gửi của app (ADR-0032). `window` null = gửi mọi lúc. */
-export interface SendWindowLookup {
-  forApp(appId: AppId): Promise<{ window: SendWindow | null; mandatoryBypass: boolean }>;
+/** Giới hạn gửi của một app (ADR-0032): khung giờ + dàn đều. */
+export interface SendPolicy {
+  /** null = gửi mọi lúc. */
+  window: SendWindow | null;
+  mandatoryBypassWindow: boolean;
+  /** Dàn đều: tối đa N thư / phút. null = không dàn. */
+  perMinute: number | null;
+  mandatoryBypassPacing: boolean;
+  /** Trần do Super Admin đặt, áp cho mọi thư. null = không trần riêng. */
+  maxPerMinute: number | null;
+}
+
+/** -> apps: giới hạn gửi của app. */
+export interface SendPolicyLookup {
+  forApp(appId: AppId): Promise<SendPolicy>;
+}
+
+/**
+ * Giữ trước lượt gửi theo phút cho một app (dàn đều, ADR-0032 GĐ 2) — đếm chung mọi process.
+ * Trả đúng `count` lượt, tăng dần, lượt đầu không sớm hơn phút chứa `from`.
+ */
+export interface SendSlotReserver {
+  reserve(appId: AppId, limitPerMinute: number, from: Date, count: number): Promise<{ minute: number; index: number }[]>;
 }
 
 /** -> directory: người nhận theo external_id trong app. */

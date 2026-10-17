@@ -186,6 +186,19 @@ describe('Member + App Admin', () => {
     expect((await as(SUPER)('POST', `/apps/${app.A1}/network-rules`, { kind: 'origin', value: 'https://a.test' })).status).toBe(422);
   });
 
+  it('dàn đều: App Admin chỉnh trong trần; trần chỉ Super Admin (ADR-0032 GĐ 2)', async () => {
+    expect((await as(token.appAdmin)('PUT', `/apps/${app.A1}/pacing-ceiling`, { maxPerMinute: 500 })).status).toBe(403);
+    expect((await as(token.owner)('PUT', `/apps/${app.A1}/pacing-ceiling`, { maxPerMinute: 500 })).status).toBe(403);
+    expect((await as(SUPER)('PUT', `/apps/${app.A1}/pacing-ceiling`, { maxPerMinute: 20 })).status).toBe(200);
+    const above = await as(token.appAdmin)('PUT', `/apps/${app.A1}/pacing`, { perMinute: 21, mandatoryBypass: true });
+    expect(above.status).toBe(422);
+    expect(JSON.stringify(above.body)).toContain('PACING_ABOVE_CEILING');
+    expect((await as(token.appAdmin)('PUT', `/apps/${app.A1}/pacing`, { perMinute: 20, mandatoryBypass: true })).status).toBe(200);
+    // Trả lại như cũ cho các test sau.
+    await must(as(token.appAdmin)('PUT', `/apps/${app.A1}/pacing`, { perMinute: null, mandatoryBypass: true }), 200);
+    await must(as(SUPER)('PUT', `/apps/${app.A1}/pacing-ceiling`, { maxPerMinute: null }), 200);
+  });
+
   it('cấp khoá API cho app của mình — được, không chờ ai duyệt (ADR-0023)', async () => {
     expect((await as(token.appAdmin)('POST', `/apps/${app.A1}/secrets`)).status).toBe(201);
   });

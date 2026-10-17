@@ -20,6 +20,8 @@ import type {
   RemoveNetworkRule,
   RevokeAppSecret,
   SetOpenTracking,
+  SetPacing,
+  SetPacingCeiling,
   SetSendWindow,
   SimpleAppTransition,
   TransitionApp,
@@ -78,6 +80,9 @@ const sendWindowBody = z
     mandatoryBypass: z.boolean(),
   })
   .strict();
+// Khoảng 1–1000 kiểm ở entity (PACING_INVALID) — ở đây chỉ chặn kiểu.
+const pacingBody = z.object({ perMinute: z.number().int().nullable(), mandatoryBypass: z.boolean() }).strict();
+const pacingCeilingBody = z.object({ maxPerMinute: z.number().int().nullable() }).strict();
 const ruleBody = z.object({ kind: z.enum(NETWORK_RULE_KINDS), value: z.string().trim().min(1).max(255) }).strict();
 
 export interface AdminAppsUseCases {
@@ -90,6 +95,8 @@ export interface AdminAppsUseCases {
   removeNetworkRule: RemoveNetworkRule;
   setOpenTracking: SetOpenTracking;
   setSendWindow: SetSendWindow;
+  setPacing: SetPacing;
+  setPacingCeiling: SetPacingCeiling;
   queries: AppQueries;
 }
 
@@ -171,6 +178,19 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
       const { appId } = parseInput(appParams, request.params);
       const body = parseInput(sendWindowBody, request.body);
       return useCases.setSendWindow.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
+    });
+
+    // Dàn đều (ADR-0032 GĐ 2): Admin App chỉnh trong trần; trần chỉ Super Admin.
+    app.put('/apps/:appId/pacing', { config: access('app.manage') }, async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      const body = parseInput(pacingBody, request.body);
+      return useCases.setPacing.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
+    });
+
+    app.put('/apps/:appId/pacing-ceiling', { config: access('platform.manage') }, async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      const body = parseInput(pacingCeilingBody, request.body);
+      return useCases.setPacingCeiling.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
     });
 
     app.get('/apps/:appId/network-rules', { config: access('platform.manage') }, async (request) => {

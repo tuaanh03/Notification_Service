@@ -13,7 +13,6 @@ import {
   UserId,
   type AppId,
   type Channel,
-  type SendWindow,
   type SubscriptionStatus,
   type TopicId,
   type UserId as UserIdType,
@@ -26,7 +25,8 @@ import type {
   EmailSender,
   OpenTrackingConfig,
   RecipientLookup,
-  SendWindowLookup,
+  SendPolicy,
+  SendPolicyLookup,
   TopicConsentLookup,
   TopicForDelivery,
   UserEmailForDelivery,
@@ -163,19 +163,22 @@ export class AppsSendingLookup implements AppSendingLookup {
   }
 }
 
-/** notifications -> apps: khung giờ gửi (ADR-0032). */
-export class AppsSendWindowLookup implements SendWindowLookup {
+/** notifications -> apps: khung giờ gửi + dàn đều (ADR-0032). */
+export class AppsSendPolicyLookup implements SendPolicyLookup {
   private readonly appQueries: AppQueries;
 
   constructor(deps: { appQueries: AppQueries }) {
     this.appQueries = deps.appQueries;
   }
 
-  async forApp(appId: AppId): Promise<{ window: SendWindow | null; mandatoryBypass: boolean }> {
+  async forApp(appId: AppId): Promise<SendPolicy> {
     const app = await this.appQueries.get(appId);
     return {
       window: app.sendWindow === null ? null : parseSendWindow(app.sendWindow),
-      mandatoryBypass: app.mandatoryBypassWindow,
+      mandatoryBypassWindow: app.mandatoryBypassWindow,
+      perMinute: app.sendPerMinute,
+      mandatoryBypassPacing: app.mandatoryBypassPacing,
+      maxPerMinute: app.maxSendPerMinute,
     };
   }
 }

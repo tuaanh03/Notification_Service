@@ -19,7 +19,7 @@ import {
 import {
   AppsOpenTrackingConfig,
   AppsSendingLookup,
-  AppsSendWindowLookup,
+  AppsSendPolicyLookup,
   DeliveryEmailSender,
   DirectoryRecipientLookup,
   DrizzleNotificationRepository,
@@ -27,6 +27,7 @@ import {
   DrizzlePublicationRepository,
   DrizzleRecipientRepository,
   HmacOpenTrackingSigner,
+  RedisSendSlotReserver,
   SubscriptionsEmailLookup,
   TemplatesLabels,
   TemplatesRenderer,
@@ -46,6 +47,7 @@ import type { FindUserEmail } from '../../modules/subscriptions/application/inde
 import type { RenderTemplate, TemplateQueries } from '../../modules/templates/application/index.ts';
 import type { ConsentQueries } from '../../modules/topics/application/index.ts';
 import { STREAMS } from '../../shared/streams/index.ts';
+import { MinuteSlotAllocator } from '../../shared/rate-limit/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
 
@@ -83,7 +85,9 @@ export function notificationsModule(
   const templates = new TemplatesLabels(dependencies);
   const renderer = new TemplatesRenderer(dependencies);
   const publications = new DrizzlePublicationRepository({ transactions });
-  const sendWindows = new AppsSendWindowLookup(dependencies);
+  const policies = new AppsSendPolicyLookup(dependencies);
+  // Dàn đều (ADR-0032 GĐ 2): lượt gửi mỗi phút của từng app, đếm chung mọi process trên Redis.
+  const slots = new RedisSendSlotReserver({ allocator: new MinuteSlotAllocator({ redis: container.infra.redis.client }), clock });
   const accept = new AcceptEmailNotification({
     uow,
     outbox,
@@ -94,7 +98,8 @@ export function notificationsModule(
     topics,
     renderer,
     templates,
-    sendWindows,
+    policies,
+    slots,
   });
   const signer = new HmacOpenTrackingSigner({ signingKey: container.env.WEBHOOK_SIGNING_KEY });
   const tracking = new AppsOpenTrackingConfig(dependencies);
@@ -109,7 +114,8 @@ export function notificationsModule(
     topics,
     renderer,
     templates,
-    sendWindows,
+    policies,
+    slots,
   });
 
   return {

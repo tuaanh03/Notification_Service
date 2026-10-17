@@ -5,3 +5,4 @@ export * from './drizzle-notification-stats.ts';
 export * from './template-adapters.ts';
 export * from './drizzle-publication-repository.ts';
 export * from './hmac-open-tracking-signer.ts';
+export * from './redis-send-slot-reserver.ts';

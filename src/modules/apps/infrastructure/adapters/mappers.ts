@@ -42,6 +42,9 @@ export function toApp(row: AppRow): App {
     // Dòng cũ / sửa tay sai dạng -> parse ném lỗi ngay ở đây, không âm thầm gửi sai giờ.
     sendWindow: row.sendWindow === null ? null : parseSendWindow(row.sendWindow),
     mandatoryBypassWindow: row.mandatoryBypassWindow,
+    sendPerMinute: row.sendPerMinute,
+    mandatoryBypassPacing: row.mandatoryBypassPacing,
+    maxSendPerMinute: row.maxSendPerMinute,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -65,6 +68,9 @@ export function fromApp(app: App): typeof apps.$inferInsert {
     trackOpens: app.trackOpens,
     sendWindow: app.sendWindow === null ? null : { ...app.sendWindow, days: [...app.sendWindow.days] },
     mandatoryBypassWindow: app.mandatoryBypassWindow,
+    sendPerMinute: app.sendPerMinute,
+    mandatoryBypassPacing: app.mandatoryBypassPacing,
+    maxSendPerMinute: app.maxSendPerMinute,
     createdAt: app.createdAt,
     updatedAt: app.updatedAt,
   };

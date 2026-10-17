@@ -1,7 +1,7 @@
 # ADR-0032 — Giới hạn gửi theo app: khung giờ, dàn đều, giới hạn mỗi người
 
-**Trạng thái:** chấp nhận — 2026-10-17. GĐ 1 (khung giờ gửi + ngoại lệ tin bắt buộc) xong · GĐ 2 (dàn đều) ·
-GĐ 3 (giới hạn mỗi người / trần mỗi app) chưa làm.
+**Trạng thái:** chấp nhận — 2026-10-17. GĐ 1 (khung giờ gửi + ngoại lệ tin bắt buộc) xong · GĐ 2 (dàn đều +
+trần tốc độ của Super Admin) xong · GĐ 3 (giới hạn mỗi người / trần mỗi app mỗi giờ) chưa làm.
 
 ## Bối cảnh
 
@@ -42,13 +42,38 @@ Ngoại lệ cho tin bắt buộc là CÔNG TẮC theo app, mặc định bật 
    vào topic: thư con `scheduled` tính vào `pending`. Tổng quan: `scheduled` vào cột "đang chờ" của biểu đồ;
    `queue.waiting` vẫn chỉ `queued` + `sending` (thư chờ khung giờ không phải hàng chờ bị kẹt).
 
-Lúc khung mở, mọi thư chờ được thả cùng lúc; giới hạn chung `EMAIL_MAX_PER_MINUTE` vẫn chặn tốc độ. Dàn
-đều theo app là GĐ 2.
+Không bật dàn đều thì lúc khung mở mọi thư chờ được thả cùng lúc; giới hạn chung `EMAIL_MAX_PER_MINUTE`
+vẫn chặn tốc độ.
+
+## GĐ 2 — dàn đều
+
+1. **Cấu hình**: `apps.send_per_minute` (Admin App, `PUT /admin/apps/:appId/pacing` `{ perMinute | null,
+   mandatoryBypass }`, `app.manage`, audit `AppPacingChanged`) · `apps.mandatory_bypass_pacing` (mặc định
+   true) · `apps.max_send_per_minute` — trần của Super Admin (`PUT …/pacing-ceiling` `{ maxPerMinute | null }`,
+   `platform.manage`, audit `AppPacingCeilingChanged`). Mọi con số 1–1000 (`PACING_INVALID`); Admin App đặt quá
+   trần -> 422 `PACING_ABOVE_CEILING`. Super Admin hạ trần dưới mức app đang đặt KHÔNG lỗi: lúc nhận lấy số nhỏ hơn.
+2. **Mức áp cho một thư** (`paceLimitPerMinute`): thư thường = min(mức app, trần); tin bắt buộc + bỏ qua =
+   chỉ trần. **Trần áp cả tin bắt buộc** — nếu không, Admin App đánh dấu mọi chủ đề là bắt buộc là né được.
+3. **Giữ lượt lúc NHẬN, như khung giờ — không chờ ở worker.** `planSendTimes` (dùng chung cho
+   `AcceptEmailNotification` / `PublishToTopic`): mốc bắt đầu = lúc khung mở (ngoài khung) hoặc bây giờ; giữ
+   `count` lượt trên Redis (`MinuteSlotAllocator`, một script Lua: từ phút bắt đầu, phút nào còn chỗ thì lấy,
+   `INCRBY` trong cùng script nên nhiều bản api không trùng lượt; key `pace:<appId>:<phút>` tự hết hạn). Lượt thứ
+   i của phút m gửi lúc `m + i × 60s / mức` — rải đều trong phút. Lượt rơi vào lúc đã qua -> `queued` ngay; còn
+   lại -> `scheduled` tới lượt, job `promote-scheduled` thả như GĐ 1. Không sửa worker, không thêm trạng thái.
+   Vì sao không chờ ở worker: hàng `notif.queued` là chung — một app hết lượt mà worker đứng chờ là chặn app khác.
+4. **"Tin bắt buộc gửi trước"**: thư thường lẫn tin bắt buộc cùng đếm một chỗ (`pace:<appId>:…`), thư thường
+   chỉ được lấy tới mức app, tin bắt buộc lấy tới trần. Phần chênh mỗi phút là chỗ tin bắt buộc chen lên trước
+   các thư thường đã xếp. Mức app = trần thì không còn chênh — tin bắt buộc xếp hàng như thư thường (chấp nhận).
+5. **Khung giờ + dàn đều**: thư chờ qua đêm giữ lượt từ lúc khung mở -> sáng ra không dồn một cục.
+6. Audit `NotificationScheduled` có `reason`: `send_window` (đúng lúc khung mở) hoặc `pacing`. `/v1`
+   `PublicationDto` thêm `lastScheduledAt` (thư con muộn nhất); `scheduledAt` thành thư con SỚM nhất.
+7. Giữ lượt TRƯỚC transaction: transaction hỏng / thua race idempotency -> lượt bỏ phí, thư sau đi muộn hơn
+   chút, không bao giờ vượt mức. App có dàn đều (hoặc có trần) thì nhận thư cần Redis — Redis chết là 5xx; app
+   không đặt gì thì không chạm Redis như trước.
 
 ## Chưa làm (GĐ sau)
 
-- GĐ 2 — dàn đều theo app (thư/phút ≤ mức Super Admin cho); app hết lượt thì thư dời sang phút sau thay vì
-  worker đứng chờ (không để một app chặn app khác). Ngoại lệ "tin bắt buộc gửi trước".
+- Đổi mức dàn đều không xếp lại thư đã giữ lượt (giống đổi khung giờ).
 - GĐ 3 — giới hạn mỗi người / ngày (thư vượt -> bỏ qua có lý do), trần thư mỗi app / giờ (vượt -> 429),
   ngoại lệ "tin bắt buộc vượt trần" do Super Admin bật.
 - Huỷ thư đang chờ khung giờ.

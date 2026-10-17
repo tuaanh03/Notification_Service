@@ -29,7 +29,7 @@ export interface NotificationDto {
   publicationId: string | null;
   recipient: NotificationRecipientDto | null;
   createdAt: string;
-  /** `scheduled`: lúc khung giờ gửi của app mở (ADR-0032) — thư chờ tới đó mới vào hàng gửi. */
+  /** `scheduled`: lúc thư được gửi theo giới hạn gửi của app (khung giờ / dàn đều — ADR-0032); tới đó mới vào hàng gửi. */
   scheduledAt: string | null;
   queuedAt: string | null;
   sendingAt: string | null;
@@ -77,8 +77,12 @@ export interface PublicationDto {
   /** pending = scheduled + queued + sending · skipped = no_recipient (bị chặn lúc gửi, ví dụ người nhận vừa tắt topic). */
   counts: { pending: number; sent: number; failed: number; skipped: number };
   recipients: { externalId: string | null; notificationId: string; status: string }[];
-  /** Ngoài khung giờ gửi của app (ADR-0032): lúc các thư con sẽ đi. null = gửi ngay. */
+  /**
+   * Thư con còn chờ giới hạn gửi của app (ADR-0032): thư SỚM nhất / MUỘN nhất sẽ đi lúc nào. Ngoài khung giờ
+   * thì hai mốc bằng nhau; dàn đều thì thư con đi rải trong khoảng này. null = không còn thư nào chờ.
+   */
   scheduledAt: string | null;
+  lastScheduledAt: string | null;
   createdAt: string;
 }
 
@@ -106,8 +110,7 @@ export function toPublicationDto(
       notificationId: child.id,
       status: child.status,
     })),
-    // Mọi thư con hẹn cùng một giờ (chốt lúc phát); thả rồi thì không còn thư nào chờ.
-    scheduledAt: extra.children.find((child) => child.status === 'scheduled')?.scheduledAt?.toISOString() ?? null,
+    ...scheduledRange(extra.children),
     createdAt: p.createdAt.toISOString(),
   };
 }
@@ -208,4 +211,18 @@ export interface AppOverviewDto {
   /** Người nhận của app và tình trạng email của họ. */
   recipients: { total: number; emailActive: number; emailUnsubscribed: number; emailInvalid: number };
   topics: { total: number; active: number };
+}
+
+/** Mốc sớm / muộn nhất của các thư còn `scheduled` — giờ chốt lúc nhận; thả rồi thì không còn tính. */
+export function scheduledRange(
+  notifications: readonly { status: string; scheduledAt: Date | null }[],
+): { scheduledAt: string | null; lastScheduledAt: string | null } {
+  const times = notifications
+    .filter((n) => n.status === 'scheduled' && n.scheduledAt !== null)
+    .map((n) => (n.scheduledAt as Date).getTime());
+  if (times.length === 0) return { scheduledAt: null, lastScheduledAt: null };
+  return {
+    scheduledAt: new Date(Math.min(...times)).toISOString(),
+    lastScheduledAt: new Date(Math.max(...times)).toISOString(),
+  };
 }

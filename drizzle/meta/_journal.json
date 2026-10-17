@@ -162,6 +162,13 @@
       "when": 1792217413896,
       "tag": "0022_send_window",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1792231353682,
+      "tag": "0023_send_pacing",
+      "breakpoints": true
     }
   ]
 }

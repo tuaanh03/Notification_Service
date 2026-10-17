@@ -6,3 +6,4 @@ export * from './publish-to-topic.ts';
 export * from './promote-scheduled.ts';
 export * from './record-email-open.ts';
 export * from './send-from-console.ts';
+export * from './send-timing.ts';

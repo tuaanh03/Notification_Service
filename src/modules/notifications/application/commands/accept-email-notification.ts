@@ -6,7 +6,6 @@ import {
   type Clock,
 } from '../../../../shared/kernel/index.ts';
 import { Notification } from '../../domain/entities/notification.ts';
-import { sendHoldUntil } from '../../domain/rules/send-window-hold.ts';
 import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
 import { toNotificationDto, type NotificationDto } from '../dto.ts';
 import { IdempotencyKeyTakenError } from '../errors.ts';
@@ -16,13 +15,15 @@ import type {
   NotificationRepository,
   RecipientLookup,
   RecipientRepository,
-  SendWindowLookup,
+  SendPolicyLookup,
+  SendSlotReserver,
   TemplateLabel,
   TemplateLabels,
   TemplateRenderer,
   TopicConsentLookup,
 } from '../ports/index.ts';
 import { parseSendSource, requireActiveTopic, type SendContentInput } from './send-input.ts';
+import { planSendTimes, scheduleNote } from './send-timing.ts';
 
 export interface AcceptEmailNotificationInput extends SendContentInput {
   appId: AppId;
@@ -55,7 +56,8 @@ export class AcceptEmailNotification {
     topics: TopicConsentLookup;
     renderer: TemplateRenderer;
     templates: TemplateLabels;
-    sendWindows: SendWindowLookup;
+    policies: SendPolicyLookup;
+    slots: SendSlotReserver;
   };
 
   constructor(deps: AcceptEmailNotification['deps']) {
@@ -100,8 +102,9 @@ export class AcceptEmailNotification {
     }
 
     const now = clock.now();
-    // Ngoài khung giờ gửi (ADR-0032) -> `scheduled` tới lúc khung mở; job `promote-scheduled` thả ra.
-    const holdUntil = sendHoldUntil(await this.deps.sendWindows.forApp(input.appId), topic, now);
+    // Ngoài khung giờ gửi / hết lượt dàn đều (ADR-0032) -> `scheduled`; job `promote-scheduled` thả ra khi tới giờ.
+    const [timing = null] = await planSendTimes(this.deps, input.appId, topic, now, 1);
+    const holdUntil = timing?.at ?? null;
 
     return uow.run(async () => {
       const notification = new Notification({
@@ -136,7 +139,7 @@ export class AcceptEmailNotification {
           payload: audited(ctx, {
             after: {
               status: notification.status,
-              ...(holdUntil ? { scheduledAt: holdUntil.toISOString(), reason: 'send_window' } : {}),
+              ...scheduleNote(timing),
               topic: topic.key,
               channel: 'email',
               ...(template ? { template: { id: template.templateId, version: template.version } } : {}),

@@ -10,7 +10,6 @@ import {
 import { Notification } from '../../domain/entities/notification.ts';
 import { assertPublicationSize, Publication } from '../../domain/entities/publication.ts';
 import { selectTopicAudience } from '../../domain/rules/topic-audience.ts';
-import { sendHoldUntil } from '../../domain/rules/send-window-hold.ts';
 import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
 import type { PublicationDto } from '../dto.ts';
 import { PublicationKeyTakenError } from '../errors.ts';
@@ -21,13 +20,15 @@ import type {
   PublicationRepository,
   RecipientLookup,
   RenderedEmailTemplate,
-  SendWindowLookup,
+  SendPolicyLookup,
+  SendSlotReserver,
   TemplateLabels,
   TemplateRenderer,
   TopicConsentLookup,
 } from '../ports/index.ts';
 import { describePublication } from '../queries/get-publication.ts';
 import { parseSendSource, requireActiveTopic, type SendContentInput } from './send-input.ts';
+import { planSendTimes, scheduleNote } from './send-timing.ts';
 
 export interface PublishToTopicInput extends SendContentInput {
   appId: AppId;
@@ -62,7 +63,8 @@ export class PublishToTopic {
     topics: TopicConsentLookup;
     renderer: TemplateRenderer;
     templates: TemplateLabels;
-    sendWindows: SendWindowLookup;
+    policies: SendPolicyLookup;
+    slots: SendSlotReserver;
   };
 
   constructor(deps: PublishToTopic['deps']) {
@@ -115,8 +117,8 @@ export class PublishToTopic {
     }
 
     const now = clock.now();
-    // Ngoài khung giờ gửi (ADR-0032): mọi thư con cùng chờ tới lúc khung mở.
-    const holdUntil = sendHoldUntil(await this.deps.sendWindows.forApp(input.appId), topic, now);
+    // Khung giờ + dàn đều (ADR-0032): mỗi thư con một giờ gửi riêng — dàn đều thì mỗi phút chỉ N thư.
+    const timings = await planSendTimes(this.deps, input.appId, topic, now, audience.length);
     const publication = new Publication({
       id: PublicationId.create(),
       appId: input.appId,
@@ -128,14 +130,14 @@ export class PublishToTopic {
       createdAt: now,
     });
     const children = audience.map(
-      (userId) =>
+      (userId, i) =>
         new Notification({
           id: NotificationId.create(),
           appId: input.appId,
           topicId: topic.topicId,
           origin: input.origin ?? 'api',
-          status: holdUntil ? 'scheduled' : 'queued',
-          scheduledAt: holdUntil,
+          status: timings[i] ? 'scheduled' : 'queued',
+          scheduledAt: timings[i]?.at ?? null,
           targetUserId: userId,
           publicationId: publication.id,
           content: source.kind === 'direct' ? source.content : (contents.get(userId) ?? null),
@@ -170,14 +172,14 @@ export class PublishToTopic {
             },
           }),
         },
-        ...children.map((child) => ({
+        ...children.map((child, i) => ({
           aggregateType: NOTIFICATION_AGGREGATE,
           aggregateId: child.id,
-          eventType: holdUntil ? NOTIFICATION_EVENTS.scheduled : NOTIFICATION_EVENTS.queued,
+          eventType: child.scheduledAt ? NOTIFICATION_EVENTS.scheduled : NOTIFICATION_EVENTS.queued,
           payload: audited(ctx, {
             after: {
               status: child.status,
-              ...(holdUntil ? { scheduledAt: holdUntil.toISOString(), reason: 'send_window' } : {}),
+              ...scheduleNote(timings[i] ?? null),
               topic: topic.key,
               channel: 'email',
               publicationId: publication.id,
