@@ -34,6 +34,8 @@ export interface NotificationRepository {
   listByApp(appId: AppId, filter: NotificationFilter, page: { limit: number; offset: number }): Promise<NotificationPage>;
   /** Notification ở `sending` từ trước `before` — ứng viên cho job fail-stuck-sending. */
   listStuckSending(before: Date, limit: number): Promise<Notification[]>;
+  /** `scheduled` đã tới giờ (`scheduled_at <= now`), sớm nhất trước — ứng viên cho job promote-scheduled. */
+  listDueScheduled(now: Date, limit: number): Promise<Notification[]>;
   /** Mọi thư con của MỘT lần phát (ADR-0028) — tối đa `MAX_PUBLICATION_RECIPIENTS` dòng. */
   listByPublication(publicationId: PublicationId): Promise<Notification[]>;
 }

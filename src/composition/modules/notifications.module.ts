@@ -11,6 +11,7 @@ import {
   GetPublication,
   ListNotifications,
   GetOpenTracking,
+  PromoteScheduled,
   PublishToTopic,
   RecordEmailOpen,
   SendFromConsole,
@@ -18,6 +19,7 @@ import {
 import {
   AppsOpenTrackingConfig,
   AppsSendingLookup,
+  AppsSendWindowLookup,
   DeliveryEmailSender,
   DirectoryRecipientLookup,
   DrizzleNotificationRepository,
@@ -34,6 +36,7 @@ import {
   adminNotificationsRoutes,
   emailSenderHandler,
   failStuckSendingJob,
+  promoteScheduledJob,
   publicTrackingRoutes,
   v1NotificationsRoutes,
   v1PublicationsRoutes,
@@ -53,7 +56,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
  *             · POST/GET /v1/notifications · POST/GET /v1/publications (phát vào topic, ADR-0028) · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
  *             · GET /admin/apps/:appId/overview (màn Tổng quan, chỉ đọc) · GET /admin/apps/:appId/open-tracking
  *   worker    consumer `email-sender` (notif.queued, idempotency: 'handler')
- *   scheduler job `fail-stuck-sending`
+ *   scheduler job `promote-scheduled` (thư chờ khung giờ gửi tới giờ -> queued, ADR-0032) · `fail-stuck-sending`
  */
 export function notificationsModule(
   container: Container,
@@ -80,7 +83,19 @@ export function notificationsModule(
   const templates = new TemplatesLabels(dependencies);
   const renderer = new TemplatesRenderer(dependencies);
   const publications = new DrizzlePublicationRepository({ transactions });
-  const accept = new AcceptEmailNotification({ uow, outbox, clock, notifications, recipients, users, topics, renderer, templates });
+  const sendWindows = new AppsSendWindowLookup(dependencies);
+  const accept = new AcceptEmailNotification({
+    uow,
+    outbox,
+    clock,
+    notifications,
+    recipients,
+    users,
+    topics,
+    renderer,
+    templates,
+    sendWindows,
+  });
   const signer = new HmacOpenTrackingSigner({ signingKey: container.env.WEBHOOK_SIGNING_KEY });
   const tracking = new AppsOpenTrackingConfig(dependencies);
   const publishToTopic = new PublishToTopic({
@@ -94,6 +109,7 @@ export function notificationsModule(
     topics,
     renderer,
     templates,
+    sendWindows,
   });
 
   return {
@@ -145,6 +161,7 @@ export function notificationsModule(
         },
       ],
       jobs: [
+        promoteScheduledJob({ promoteScheduled: new PromoteScheduled({ uow, outbox, clock, logger, notifications }) }),
         failStuckSendingJob({
           failStuckSending: new FailStuckSending({
             uow,

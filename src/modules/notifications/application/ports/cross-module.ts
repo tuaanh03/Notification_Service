@@ -1,6 +1,7 @@
 import type {
   AppId,
   Channel,
+  SendWindow,
   SubscriptionId,
   SubscriptionStatus,
   SuppressedReason,
@@ -21,6 +22,11 @@ import type {
  */
 export interface AppSendingLookup {
   sendingOf(appId: AppId): Promise<{ active: boolean; grantedChannels: readonly Channel[] }>;
+}
+
+/** -> apps: khung giờ gửi của app (ADR-0032). `window` null = gửi mọi lúc. */
+export interface SendWindowLookup {
+  forApp(appId: AppId): Promise<{ window: SendWindow | null; mandatoryBypass: boolean }>;
 }
 
 /** -> directory: người nhận theo external_id trong app. */

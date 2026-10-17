@@ -6,6 +6,7 @@ import {
   type Clock,
 } from '../../../../shared/kernel/index.ts';
 import { Notification } from '../../domain/entities/notification.ts';
+import { sendHoldUntil } from '../../domain/rules/send-window-hold.ts';
 import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
 import { toNotificationDto, type NotificationDto } from '../dto.ts';
 import { IdempotencyKeyTakenError } from '../errors.ts';
@@ -15,6 +16,7 @@ import type {
   NotificationRepository,
   RecipientLookup,
   RecipientRepository,
+  SendWindowLookup,
   TemplateLabel,
   TemplateLabels,
   TemplateRenderer,
@@ -53,6 +55,7 @@ export class AcceptEmailNotification {
     topics: TopicConsentLookup;
     renderer: TemplateRenderer;
     templates: TemplateLabels;
+    sendWindows: SendWindowLookup;
   };
 
   constructor(deps: AcceptEmailNotification['deps']) {
@@ -96,6 +99,10 @@ export class AcceptEmailNotification {
       content = source.content;
     }
 
+    const now = clock.now();
+    // Ngoài khung giờ gửi (ADR-0032) -> `scheduled` tới lúc khung mở; job `promote-scheduled` thả ra.
+    const holdUntil = sendHoldUntil(await this.deps.sendWindows.forApp(input.appId), topic, now);
+
     return uow.run(async () => {
       const notification = new Notification({
         id: NotificationId.create(),
@@ -103,14 +110,15 @@ export class AcceptEmailNotification {
         topicId: topic.topicId,
         origin: input.origin ?? 'api',
         // Gửi ngay, kể cả từ console — `dashboard` mặc định là `draft` (luồng duyệt chưa làm), ở đây không dùng.
-        status: 'queued',
+        status: holdUntil ? 'scheduled' : 'queued',
+        scheduledAt: holdUntil,
         idempotencyKey: input.idempotencyKey ?? null,
         targetUserId: userId,
         content,
         templateVersionId: template?.templateVersionId ?? null,
         payload: input.payload ?? {},
         createdBy: ctx.actor.id,
-        createdAt: clock.now(),
+        createdAt: now,
       });
       try {
         await notifications.insert(notification);
@@ -124,10 +132,11 @@ export class AcceptEmailNotification {
         {
           aggregateType: NOTIFICATION_AGGREGATE,
           aggregateId: notification.id,
-          eventType: NOTIFICATION_EVENTS.queued,
+          eventType: holdUntil ? NOTIFICATION_EVENTS.scheduled : NOTIFICATION_EVENTS.queued,
           payload: audited(ctx, {
             after: {
-              status: 'queued',
+              status: notification.status,
+              ...(holdUntil ? { scheduledAt: holdUntil.toISOString(), reason: 'send_window' } : {}),
               topic: topic.key,
               channel: 'email',
               ...(template ? { template: { id: template.templateId, version: template.version } } : {}),

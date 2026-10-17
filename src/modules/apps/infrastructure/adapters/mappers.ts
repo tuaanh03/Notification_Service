@@ -4,6 +4,7 @@ import {
   AppSecretId,
   CHANNELS,
   OrgId,
+  parseSendWindow,
   type Channel,
 } from '../../../../shared/kernel/index.ts';
 import { App } from '../../domain/entities/app.ts';
@@ -38,6 +39,9 @@ export function toApp(row: AppRow): App {
     includedInOrgBroadcast: row.includedInOrgBroadcast,
     isSystem: row.isSystem,
     trackOpens: row.trackOpens,
+    // Dòng cũ / sửa tay sai dạng -> parse ném lỗi ngay ở đây, không âm thầm gửi sai giờ.
+    sendWindow: row.sendWindow === null ? null : parseSendWindow(row.sendWindow),
+    mandatoryBypassWindow: row.mandatoryBypassWindow,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -59,6 +63,8 @@ export function fromApp(app: App): typeof apps.$inferInsert {
     includedInOrgBroadcast: app.includedInOrgBroadcast,
     isSystem: app.isSystem,
     trackOpens: app.trackOpens,
+    sendWindow: app.sendWindow === null ? null : { ...app.sendWindow, days: [...app.sendWindow.days] },
+    mandatoryBypassWindow: app.mandatoryBypassWindow,
     createdAt: app.createdAt,
     updatedAt: app.updatedAt,
   };

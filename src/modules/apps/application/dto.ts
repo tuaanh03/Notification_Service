@@ -18,6 +18,10 @@ export interface AppDto {
   isSystem: boolean;
   /** Đếm "đã mở" bằng ảnh theo dõi (ADR-0031). */
   trackOpens: boolean;
+  /** Khung giờ gửi, giờ Việt Nam (ADR-0032). null = gửi mọi lúc. */
+  sendWindow: { days: number[]; start: string; end: string } | null;
+  /** Tin bắt buộc bỏ qua khung giờ. */
+  mandatoryBypassWindow: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,6 +73,8 @@ export const toAppDto = (a: App): AppDto => ({
   includedInOrgBroadcast: a.includedInOrgBroadcast,
   isSystem: a.isSystem,
   trackOpens: a.trackOpens,
+  sendWindow: a.sendWindow === null ? null : { ...a.sendWindow, days: [...a.sendWindow.days] },
+  mandatoryBypassWindow: a.mandatoryBypassWindow,
   createdAt: a.createdAt.toISOString(),
   updatedAt: a.updatedAt.toISOString(),
 });

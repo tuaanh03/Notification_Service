@@ -188,6 +188,7 @@ GET $EWS/v1/notifications/<id>
 | `status` | Nghĩa |
 | --- | --- |
 | `queued` · `sending` | Đang chờ / đang gửi |
+| `scheduled` | Chờ khung giờ gửi của app mở (`scheduledAt`). Tin bắt buộc chỉ gặp khi app tắt ngoại lệ "tin bắt buộc bỏ qua khung giờ" |
 | `sent` | Máy chủ thư **đã nhận** — thường vào hộp thư sau vài giây; không thấy thì xem mục rác |
 | `no_recipient` | **Không gửi**, lý do ở `recipient.exclusionReason` (dưới) |
 | `failed` | Gửi không được, lý do ở `recipient.error` |
@@ -290,7 +291,7 @@ Sau `DELETE .../email`: `"status": "unsubscribed"`, `"suppressedReason": "user_u
 {
   "id": "…", "status": "queued", "topic": "⟨mã chủ đề⟩", "template": null,
   "idempotencyKey": "canh-bao-dang-nhap-EV12345-NV-01", "recipient": null,
-  "createdAt": "2026-09-24T03:00:00.000Z", "queuedAt": "2026-09-24T03:00:00.000Z",
+  "createdAt": "2026-09-24T03:00:00.000Z", "scheduledAt": null, "queuedAt": "2026-09-24T03:00:00.000Z",
   "sendingAt": null, "finishedAt": null
 }
 ```
@@ -303,7 +304,7 @@ Sau `DELETE .../email`: `"status": "unsubscribed"`, `"suppressedReason": "user_u
   "idempotencyKey": "canh-bao-dang-nhap-EV12345-NV-01",
   "recipient": { "address": "an.nguyen@company.com", "status": "sent",
                  "exclusionReason": null, "error": null, "sentAt": "2026-09-24T03:00:04.000Z" },
-  "createdAt": "2026-09-24T03:00:00.000Z", "queuedAt": "2026-09-24T03:00:00.000Z",
+  "createdAt": "2026-09-24T03:00:00.000Z", "scheduledAt": null, "queuedAt": "2026-09-24T03:00:00.000Z",
   "sendingAt": "2026-09-24T03:00:03.000Z", "finishedAt": "2026-09-24T03:00:04.000Z"
 }
 ```

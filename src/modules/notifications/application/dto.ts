@@ -19,7 +19,7 @@ export interface NotificationRecipientDto {
  */
 export interface NotificationDto {
   id: string;
-  /** queued | sending | sent | no_recipient | failed */
+  /** scheduled | queued | sending | sent | no_recipient | failed */
   status: string;
   topic: string;
   /** Gửi bằng template: id + số version đã dùng (ADR-0020). null = nội dung viết thẳng. */
@@ -29,6 +29,8 @@ export interface NotificationDto {
   publicationId: string | null;
   recipient: NotificationRecipientDto | null;
   createdAt: string;
+  /** `scheduled`: lúc khung giờ gửi của app mở (ADR-0032) — thư chờ tới đó mới vào hàng gửi. */
+  scheduledAt: string | null;
   queuedAt: string | null;
   sendingAt: string | null;
   finishedAt: string | null;
@@ -52,6 +54,7 @@ export function toNotificationDto(
       ? { address: r.address, status: r.status, exclusionReason: r.exclusionReason, error: r.error, sentAt: iso(r.sentAt) }
       : null,
     createdAt: n.createdAt.toISOString(),
+    scheduledAt: iso(n.scheduledAt),
     queuedAt: iso(n.queuedAt),
     sendingAt: iso(n.sendingAt),
     finishedAt: iso(n.finishedAt),
@@ -71,9 +74,11 @@ export interface PublicationDto {
   /** in_progress = còn thư con chờ gửi · completed = mọi thư con đã có kết quả. */
   status: 'in_progress' | 'completed';
   recipientCount: number;
-  /** pending = queued + sending · skipped = no_recipient (bị chặn lúc gửi, ví dụ người nhận vừa tắt topic). */
+  /** pending = scheduled + queued + sending · skipped = no_recipient (bị chặn lúc gửi, ví dụ người nhận vừa tắt topic). */
   counts: { pending: number; sent: number; failed: number; skipped: number };
   recipients: { externalId: string | null; notificationId: string; status: string }[];
+  /** Ngoài khung giờ gửi của app (ADR-0032): lúc các thư con sẽ đi. null = gửi ngay. */
+  scheduledAt: string | null;
   createdAt: string;
 }
 
@@ -101,6 +106,8 @@ export function toPublicationDto(
       notificationId: child.id,
       status: child.status,
     })),
+    // Mọi thư con hẹn cùng một giờ (chốt lúc phát); thả rồi thì không còn thư nào chờ.
+    scheduledAt: extra.children.find((child) => child.status === 'scheduled')?.scheduledAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
   };
 }

@@ -8,6 +8,8 @@ export const NOTIFICATION_AGGREGATE = 'Notification';
  */
 export const NOTIFICATION_EVENTS = {
   queued: 'NotificationQueued',
+  /** Nhận ngoài khung giờ gửi (ADR-0032) — chỉ audit; tới giờ job `promote-scheduled` phát `NotificationQueued`. */
+  scheduled: 'NotificationScheduled',
   noRecipient: 'NotificationNoRecipient',
   sent: 'NotificationSent',
   failed: 'NotificationFailed',
@@ -24,6 +26,9 @@ export const PUBLICATION_EVENTS = {
 
 /** Actor của mọi chuyển trạng thái do worker / job làm. */
 export const EMAIL_SENDER_ACTOR: Actor = { id: 'email-sender', type: 'system' };
+
+/** Actor của job thả thư hẹn giờ khi khung giờ gửi mở (ADR-0032). */
+export const SEND_WINDOW_ACTOR: Actor = { id: 'send-window', type: 'system' };
 
 /** Actor của sự kiện "đã mở" — ghi từ đường ảnh theo dõi công khai, không có người gọi xác thực. */
 export const OPEN_TRACKING_ACTOR: Actor = { id: 'open-tracking', type: 'system' };

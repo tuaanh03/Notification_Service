@@ -9,9 +9,11 @@ import {
   SUBSCRIPTION_STATUSES,
   SUPPRESSED_REASONS,
   SubscriptionId,
+  parseSendWindow,
   UserId,
   type AppId,
   type Channel,
+  type SendWindow,
   type SubscriptionStatus,
   type TopicId,
   type UserId as UserIdType,
@@ -24,6 +26,7 @@ import type {
   EmailSender,
   OpenTrackingConfig,
   RecipientLookup,
+  SendWindowLookup,
   TopicConsentLookup,
   TopicForDelivery,
   UserEmailForDelivery,
@@ -157,6 +160,23 @@ export class AppsSendingLookup implements AppSendingLookup {
     const app = await this.appQueries.get(appId);
     const known = new Set<string>(CHANNELS);
     return { active: app.status === 'active', grantedChannels: app.grantedChannels.filter((c): c is Channel => known.has(c)) };
+  }
+}
+
+/** notifications -> apps: khung giờ gửi (ADR-0032). */
+export class AppsSendWindowLookup implements SendWindowLookup {
+  private readonly appQueries: AppQueries;
+
+  constructor(deps: { appQueries: AppQueries }) {
+    this.appQueries = deps.appQueries;
+  }
+
+  async forApp(appId: AppId): Promise<{ window: SendWindow | null; mandatoryBypass: boolean }> {
+    const app = await this.appQueries.get(appId);
+    return {
+      window: app.sendWindow === null ? null : parseSendWindow(app.sendWindow),
+      mandatoryBypass: app.mandatoryBypassWindow,
+    };
   }
 }
 

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, lt, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, lt, lte, type SQL } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -147,6 +147,18 @@ export class DrizzleNotificationRepository implements NotificationRepository {
       .from(notifications)
       .where(and(eq(notifications.status, 'sending'), lt(notifications.sendingAt, before)))
       .orderBy(asc(notifications.sendingAt))
+      .limit(limit);
+    return rows.map(toNotification);
+  }
+
+  async listDueScheduled(now: Date, limit: number): Promise<Notification[]> {
+    // Index `idx_notifications_scheduled (status, scheduled_at)`: chỉ quét thư đang chờ, không quét lịch sử.
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(notifications)
+      .where(and(eq(notifications.status, 'scheduled'), lte(notifications.scheduledAt, now)))
+      .orderBy(asc(notifications.scheduledAt), asc(notifications.notificationId))
       .limit(limit);
     return rows.map(toNotification);
   }

@@ -11,6 +11,7 @@ const HOURLY_COLUMN: Partial<Record<NotificationStatus, 'sent' | 'failed' | 'blo
   sent: 'sent',
   failed: 'failed',
   no_recipient: 'blocked',
+  scheduled: 'pending',
   queued: 'pending',
   sending: 'pending',
 };

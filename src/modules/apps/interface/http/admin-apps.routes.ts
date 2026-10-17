@@ -20,6 +20,7 @@ import type {
   RemoveNetworkRule,
   RevokeAppSecret,
   SetOpenTracking,
+  SetSendWindow,
   SimpleAppTransition,
   TransitionApp,
 } from '../../application/index.ts';
@@ -68,6 +69,15 @@ const orgFrom =
 /** Tên khoá tuỳ chọn (gọi cũ không gửi body vẫn chạy); console luôn gửi. */
 const issueSecretBody = z.object({ name: z.string().trim().max(100).optional() }).strict();
 const openTrackingBody = z.object({ enabled: z.boolean() }).strict();
+const sendWindowBody = z
+  .object({
+    window: z
+      .object({ days: z.array(z.number().int()).max(7), start: z.string().max(5), end: z.string().max(5) })
+      .strict()
+      .nullable(),
+    mandatoryBypass: z.boolean(),
+  })
+  .strict();
 const ruleBody = z.object({ kind: z.enum(NETWORK_RULE_KINDS), value: z.string().trim().min(1).max(255) }).strict();
 
 export interface AdminAppsUseCases {
@@ -79,6 +89,7 @@ export interface AdminAppsUseCases {
   addNetworkRule: AddNetworkRule;
   removeNetworkRule: RemoveNetworkRule;
   setOpenTracking: SetOpenTracking;
+  setSendWindow: SetSendWindow;
   queries: AppQueries;
 }
 
@@ -153,6 +164,13 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
       const { appId } = parseInput(appParams, request.params);
       const { enabled } = parseInput(openTrackingBody, request.body);
       return useCases.setOpenTracking.execute({ appId: AppId.parse(appId), enabled }, ctx(request));
+    });
+
+    // Khung giờ gửi (ADR-0032) — việc của người quản lý app, như đếm "đã mở".
+    app.put('/apps/:appId/send-window', { config: access('app.manage') }, async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      const body = parseInput(sendWindowBody, request.body);
+      return useCases.setSendWindow.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
     });
 
     app.get('/apps/:appId/network-rules', { config: access('platform.manage') }, async (request) => {

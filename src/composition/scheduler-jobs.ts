@@ -16,8 +16,8 @@ export interface SchedulerTuning {
 }
 
 /**
- * MỌI job định kỳ của process `scheduler`. Job nghiệp vụ (ví dụ `promote-scheduled`: `scheduled ->
- * queued` khi tới giờ) thêm vào đây khi module notifications có command tương ứng.
+ * Job hạ tầng của process `scheduler`. Job nghiệp vụ (`promote-scheduled`, `fail-stuck-sending`…) do module
+ * khai trong `ModuleDefinition.jobs`.
  */
 export function schedulerJobs(container: Container, tuning: SchedulerTuning = {}): Job[] {
   const { clock, logger } = container.ports;

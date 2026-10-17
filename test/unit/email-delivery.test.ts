@@ -155,6 +155,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         saveTransition: async () => undefined,
         listByApp: async () => ({ rows: [], total: 0 }),
         listStuckSending: async () => [],
+        listDueScheduled: async () => [],
         listByPublication: async () => [],
       },
       recipients: {

@@ -10,6 +10,7 @@ import {
 import { Notification } from '../../domain/entities/notification.ts';
 import { assertPublicationSize, Publication } from '../../domain/entities/publication.ts';
 import { selectTopicAudience } from '../../domain/rules/topic-audience.ts';
+import { sendHoldUntil } from '../../domain/rules/send-window-hold.ts';
 import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
 import type { PublicationDto } from '../dto.ts';
 import { PublicationKeyTakenError } from '../errors.ts';
@@ -20,6 +21,7 @@ import type {
   PublicationRepository,
   RecipientLookup,
   RenderedEmailTemplate,
+  SendWindowLookup,
   TemplateLabels,
   TemplateRenderer,
   TopicConsentLookup,
@@ -38,7 +40,7 @@ export interface PublishToTopicInput extends SendContentInput {
  * `POST /v1/publications` — phát MỘT tin cho mọi người đang theo dõi topic trong app (ADR-0028).
  *
  * Người nhận chốt NGAY LÚC PHÁT bằng `selectTopicAudience` (cùng `emailGate` worker dùng), rồi mỗi người
- * thành một notification con `queued` đi đúng đường gửi lẻ: cùng worker, cùng at-most-once, worker kiểm
+ * thành một notification con `queued` (ngoài khung giờ gửi: `scheduled` — ADR-0032) đi đúng đường gửi lẻ: cùng worker, cùng at-most-once, worker kiểm
  * consent lại lần nữa ngay trước khi gửi. Lần phát và mọi thư con ghi trong MỘT transaction — hoặc đủ cả,
  * hoặc không có gì.
  *
@@ -60,6 +62,7 @@ export class PublishToTopic {
     topics: TopicConsentLookup;
     renderer: TemplateRenderer;
     templates: TemplateLabels;
+    sendWindows: SendWindowLookup;
   };
 
   constructor(deps: PublishToTopic['deps']) {
@@ -112,6 +115,8 @@ export class PublishToTopic {
     }
 
     const now = clock.now();
+    // Ngoài khung giờ gửi (ADR-0032): mọi thư con cùng chờ tới lúc khung mở.
+    const holdUntil = sendHoldUntil(await this.deps.sendWindows.forApp(input.appId), topic, now);
     const publication = new Publication({
       id: PublicationId.create(),
       appId: input.appId,
@@ -129,7 +134,8 @@ export class PublishToTopic {
           appId: input.appId,
           topicId: topic.topicId,
           origin: input.origin ?? 'api',
-          status: 'queued',
+          status: holdUntil ? 'scheduled' : 'queued',
+          scheduledAt: holdUntil,
           targetUserId: userId,
           publicationId: publication.id,
           content: source.kind === 'direct' ? source.content : (contents.get(userId) ?? null),
@@ -167,9 +173,16 @@ export class PublishToTopic {
         ...children.map((child) => ({
           aggregateType: NOTIFICATION_AGGREGATE,
           aggregateId: child.id,
-          eventType: NOTIFICATION_EVENTS.queued,
+          eventType: holdUntil ? NOTIFICATION_EVENTS.scheduled : NOTIFICATION_EVENTS.queued,
           payload: audited(ctx, {
-            after: { status: 'queued', topic: topic.key, channel: 'email', publicationId: publication.id, ...templateLabel },
+            after: {
+              status: child.status,
+              ...(holdUntil ? { scheduledAt: holdUntil.toISOString(), reason: 'send_window' } : {}),
+              topic: topic.key,
+              channel: 'email',
+              publicationId: publication.id,
+              ...templateLabel,
+            },
           }),
         })),
       ]);

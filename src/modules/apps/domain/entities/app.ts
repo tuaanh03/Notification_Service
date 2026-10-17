@@ -9,6 +9,7 @@ import {
   type AppStatus,
   type Channel,
   type OrgId,
+  type SendWindow,
   type TimestampInput,
 } from '../../../../shared/kernel/index.ts';
 import { nextAppStatus, type AppTransitionEvent } from '../rules/app-transitions.ts';
@@ -32,6 +33,10 @@ export interface AppProps extends TimestampInput {
   isSystem?: boolean | undefined;
   /** Chèn ảnh theo dõi vào thư để đếm "đã mở" (ADR-0031). Mặc định tắt. */
   trackOpens?: boolean | undefined;
+  /** Khung giờ gửi (ADR-0032). null = gửi mọi lúc. */
+  sendWindow?: SendWindow | null | undefined;
+  /** Tin bắt buộc bỏ qua khung giờ. Mặc định true. */
+  mandatoryBypassWindow?: boolean | undefined;
 }
 
 /**
@@ -65,6 +70,8 @@ export class App extends BaseEntity<AppId> {
   maxRecipientsPerEvent: number;
   includedInOrgBroadcast: boolean;
   trackOpens: boolean;
+  sendWindow: SendWindow | null;
+  mandatoryBypassWindow: boolean;
 
   constructor(props: AppProps) {
     super(props.id, props);
@@ -90,6 +97,8 @@ export class App extends BaseEntity<AppId> {
     this.includedInOrgBroadcast = props.includedInOrgBroadcast ?? true;
     this.isSystem = props.isSystem ?? false;
     this.trackOpens = props.trackOpens ?? false;
+    this.sendWindow = props.sendWindow ?? null;
+    this.mandatoryBypassWindow = props.mandatoryBypassWindow ?? true;
   }
 
   /**
@@ -142,6 +151,18 @@ export class App extends BaseEntity<AppId> {
     return true;
   }
 
+  /**
+   * Đặt khung giờ gửi (ADR-0032) — `window` đã qua `parseSendWindow`. Trả false nếu không đổi gì.
+   * Chỉ áp cho thư nhận SAU lúc đổi: thư đang chờ giữ nguyên giờ đã hẹn.
+   */
+  setSendWindow(window: SendWindow | null, mandatoryBypass: boolean, at: Date): boolean {
+    if (sameWindow(this.sendWindow, window) && this.mandatoryBypassWindow === mandatoryBypass) return false;
+    this.sendWindow = window;
+    this.mandatoryBypassWindow = mandatoryBypass;
+    this.touch(at);
+    return true;
+  }
+
   /** App đã thu hồi là trạng thái kết thúc: không cấp thêm credential nào nữa. */
   assertAcceptsNewSecret(): void {
     if (this.status === 'revoked') {
@@ -172,4 +193,9 @@ export class App extends BaseEntity<AppId> {
       );
     }
   }
+}
+
+function sameWindow(a: SendWindow | null, b: SendWindow | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.start === b.start && a.end === b.end && a.days.join() === b.days.join();
 }

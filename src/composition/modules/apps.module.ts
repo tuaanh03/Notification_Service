@@ -15,6 +15,7 @@ import {
   RemoveNetworkRule,
   RevokeAppSecret,
   SetOpenTracking,
+  SetSendWindow,
   TransitionApp,
 } from '../../modules/apps/application/index.ts';
 import {
@@ -99,6 +100,7 @@ export function appsModule(
             addNetworkRule: new AddNetworkRule({ uow, outbox, apps, networkRules }),
             removeNetworkRule: new RemoveNetworkRule({ uow, outbox, apps, networkRules }),
             setOpenTracking: new SetOpenTracking({ uow, outbox, clock, apps }),
+            setSendWindow: new SetSendWindow({ uow, outbox, clock, apps }),
             queries,
           }),
           adminMeRoutes({ getAdminProfile: new GetAdminProfile({ organizations, memberships }) }),

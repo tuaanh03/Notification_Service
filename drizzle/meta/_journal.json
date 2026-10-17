@@ -155,6 +155,13 @@
       "when": 1792149432900,
       "tag": "0021_user_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1792217413896,
+      "tag": "0022_send_window",
+      "breakpoints": true
     }
   ]
 }

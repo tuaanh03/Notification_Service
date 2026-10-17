@@ -15,6 +15,7 @@ export const APP_EVENTS = {
   networkRuleAdded: 'AppNetworkRuleAdded',
   networkRuleRemoved: 'AppNetworkRuleRemoved',
   openTrackingChanged: 'AppOpenTrackingChanged',
+  sendWindowChanged: 'AppSendWindowChanged',
   roleGranted: 'AdminAppRoleGranted',
   roleRevoked: 'AdminAppRoleRevoked',
 } as const;

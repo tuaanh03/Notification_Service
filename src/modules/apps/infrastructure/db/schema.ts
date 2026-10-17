@@ -46,6 +46,10 @@ export const apps = mysqlTable(
     isSystem: boolean('is_system').notNull().default(false),
     /** Đếm "đã mở" bằng ảnh theo dõi trong thư (ADR-0031). Mặc định tắt. */
     trackOpens: boolean('track_opens').notNull().default(false),
+    /** Khung giờ gửi (ADR-0032), giờ Việt Nam. NULL = gửi mọi lúc. */
+    sendWindow: json('send_window').$type<{ days: number[]; start: string; end: string }>(),
+    /** Tin của topic bắt buộc bỏ qua khung giờ (ADR-0032). Mặc định bật — cảnh báo không chờ tới sáng. */
+    mandatoryBypassWindow: boolean('mandatory_bypass_window').notNull().default(true),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },
