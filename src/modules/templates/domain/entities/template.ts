@@ -4,6 +4,7 @@ import {
   ValidationError,
   type AppId,
   type Channel,
+  type TemplateCategory,
   type TemplateId,
   type TemplateStatus,
   type TimestampInput,
@@ -16,6 +17,8 @@ export interface TemplateProps extends TimestampInput {
   appId: AppId;
   name: string;
   channel: Channel;
+  /** Nhóm để gom và lọc (ADR-0033). Bỏ trống = `other`. */
+  category?: TemplateCategory | undefined;
   status?: TemplateStatus | undefined;
 }
 
@@ -27,6 +30,7 @@ export class Template extends BaseEntity<TemplateId> {
   readonly appId: AppId;
   readonly channel: Channel;
   name: string;
+  category: TemplateCategory;
   status: TemplateStatus;
 
   constructor(props: TemplateProps) {
@@ -34,12 +38,21 @@ export class Template extends BaseEntity<TemplateId> {
     this.appId = props.appId;
     this.name = normalizeName(props.name);
     this.channel = props.channel;
+    this.category = props.category ?? 'other';
     this.status = props.status ?? 'active';
   }
 
   rename(name: string, at: Date): void {
     this.assertActive();
     this.name = normalizeName(name);
+    this.touch(at);
+  }
+
+  /** Đổi nhóm — chỉ để admin gom và lọc, không ảnh hưởng việc gửi. */
+  changeCategory(category: TemplateCategory, at: Date): void {
+    this.assertActive();
+    if (this.category === category) return;
+    this.category = category;
     this.touch(at);
   }
 

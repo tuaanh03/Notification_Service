@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { boolean, int, json, mediumtext, mysqlEnum, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
-import { CHANNELS, TEMPLATE_STATUSES, TEMPLATE_VERSION_STATUSES } from '../../../../shared/kernel/enums.ts';
+import { CHANNELS, TEMPLATE_CATEGORIES, TEMPLATE_STATUSES, TEMPLATE_VERSION_STATUSES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 import { apps } from '../../../apps/infrastructure/db/schema.ts';
 import type { VariableSpec } from '../../domain/types/template-variable.ts';
@@ -15,6 +15,8 @@ export const templates = mysqlTable(
     /** App gửi bằng `template_id` (ADR-0020) — không có key. Tên chỉ cho người đọc, không trùng trong app. */
     name: varchar('name', { length: 200 }).notNull(),
     channel: mysqlEnum('channel', CHANNELS).notNull(),
+    /** Nhóm để admin gom và lọc (ADR-0033) — bộ cố định, không ảnh hưởng việc gửi. */
+    category: mysqlEnum('category', TEMPLATE_CATEGORIES).notNull().default('other'),
     status: mysqlEnum('status', TEMPLATE_STATUSES).notNull().default('active'),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),

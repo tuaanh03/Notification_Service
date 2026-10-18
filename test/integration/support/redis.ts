@@ -4,7 +4,7 @@ import { inject } from 'vitest';
 import { createRedis, type RedisHandle } from '../../../src/shared/streams/index.ts';
 
 /**
- * MỖI FILE TEST MỘT DATABASE LOGIC CỦA REDIS (1..15). Tên stream là toàn cục (`notif.queued`,
+ * MỖI FILE TEST MỘT DATABASE LOGIC CỦA REDIS (1..N-1, N = `redisDatabases` của global-setup). Tên stream là toàn cục (`notif.queued`,
  * `audit.events`): dùng chung một db thì worker của file này (kể cả process worker thật mà
  * processes.test spawn) LẤY MẤT message của file khác. Số db cấp nguyên tử bằng INCR trên db 0 nên
  * các file chạy song song không trùng. Vitest nạp lại module cho từng file -> cache dưới đây là theo file.
@@ -21,7 +21,8 @@ async function allocateDatabase(): Promise<string> {
   const admin = new Redis(base, { protocol: 2 });
   try {
     const n = await admin.incr('test:redis-db-counter');
-    if (n > 15) throw new Error('out of Redis logical databases (1..15) for integration test files');
+    const max = inject('redisDatabases') - 1;
+    if (n > max) throw new Error(`out of Redis logical databases (1..${max}) for integration test files`);
     const url = new URL(base);
     url.pathname = `/${n}`;
     return url.toString();

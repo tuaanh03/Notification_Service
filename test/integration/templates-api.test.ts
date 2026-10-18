@@ -212,6 +212,108 @@ describe('ranh giới app và lưu trữ', () => {
   });
 });
 
+// ADR-0033: nhóm cố định, tìm theo tên, nhân bản trong cùng app.
+describe('nhóm, tìm theo tên, nhân bản', () => {
+  const list = async (query = '') => (await admin('GET', `${base()}${query}`)).body as unknown as Json[];
+
+  it('tạo có nhóm; bỏ trống = other; nhóm lạ -> 422', async () => {
+    const res = await admin('POST', base(), { name: 'Nhóm cảnh báo', category: 'alert' });
+    expect(res.status).toBe(201);
+    expect(res.body['category']).toBe('alert');
+    expect((await admin('POST', base(), { name: 'Không nhóm' })).body['category']).toBe('other');
+    expect((await admin('POST', base(), { name: 'Nhóm lạ', category: 'marketing' })).status).toBe(422);
+  });
+
+  it('PATCH đổi nhóm, đổi tên, hoặc cả hai; body rỗng -> 422; đã lưu trữ -> TEMPLATE_ARCHIVED', async () => {
+    const id = await createTemplate('Đổi nhóm');
+    expect((await admin('PATCH', `${base()}/${id}`, { category: 'reminder' })).body).toMatchObject({
+      name: 'Đổi nhóm',
+      category: 'reminder',
+    });
+    expect((await admin('PATCH', `${base()}/${id}`, { name: 'Đổi nhóm 2', category: 'report' })).body).toMatchObject({
+      name: 'Đổi nhóm 2',
+      category: 'report',
+    });
+    expect((await admin('PATCH', `${base()}/${id}`, {})).status).toBe(422);
+    expect((await admin('PATCH', `${base()}/${id}`, { category: 'x' })).status).toBe(422);
+    await admin('POST', `${base()}/${id}/archive`);
+    expect((await admin('PATCH', `${base()}/${id}`, { category: 'alert' })).body['code']).toBe('TEMPLATE_ARCHIVED');
+  });
+
+  it('lọc theo nhóm và tìm theo tên — không phân biệt hoa thường và dấu; % và _ là chữ thường', async () => {
+    const a = await createTemplate('Lọc Sự cố máy chủ', { category: 'approval' });
+    const b = await createTemplate('Lọc sự cố mạng', { category: 'system' });
+    const pct = await createTemplate('Lọc 100% xong');
+
+    expect((await list('?category=approval')).map((x) => x['id'])).toContain(a);
+    expect((await list('?category=approval')).every((x) => x['category'] === 'approval')).toBe(true);
+    expect((await list(`?q=${encodeURIComponent('loc su co')}`)).map((x) => x['id']).sort()).toEqual([a, b].sort());
+    expect((await list(`?q=${encodeURIComponent('LỌC SỰ CỐ')}&category=system`)).map((x) => x['id'])).toEqual([b]);
+    expect((await list(`?q=${encodeURIComponent('100%')}`)).map((x) => x['id'])).toEqual([pct]);
+    expect(await list(`?q=${encodeURIComponent('Lọc_')}`)).toEqual([]);
+    expect((await admin('GET', `${base()}?category=marketing`)).status).toBe(422);
+    // App khác không lộ qua ô tìm.
+    expect((await admin('GET', `/apps/${other.appId}/templates?q=${encodeURIComponent('Lọc')}`)).body).toEqual([]);
+  });
+
+  it('nhân bản: template mới chỉ có nháp v1 chép từ NHÁP nếu có; giữ nhóm; thiếu tên -> 422', async () => {
+    const id = await createTemplate('Gốc có nháp', { ...validDraft, category: 'alert' });
+    await admin('POST', `${base()}/${id}/publish`);
+    await admin('POST', `${base()}/${id}/draft/from/1`);
+    await admin('PUT', `${base()}/${id}/draft`, { ...validDraft, subject: 'Nháp mới {{ payload.vm_name }}' });
+
+    // Backend không tự đặt tên (hậu tố theo ngôn ngữ do console ghép): thiếu / rỗng -> 422.
+    expect((await admin('POST', `${base()}/${id}/duplicate`, {})).status).toBe(422);
+    expect((await admin('POST', `${base()}/${id}/duplicate`, { name: '   ' })).status).toBe(422);
+
+    const res = await admin('POST', `${base()}/${id}/duplicate`, { name: 'Gốc có nháp (copy)' });
+    expect(res.status).toBe(201);
+    expect(res.body['id']).not.toBe(id);
+    expect(res.body).toMatchObject({
+      name: 'Gốc có nháp (copy)',
+      category: 'alert',
+      status: 'active',
+      publishedVersion: null,
+      draftVersion: 1,
+    });
+    expect(res.body['versions']).toEqual([
+      expect.objectContaining({
+        version: 1,
+        status: 'draft',
+        subject: 'Nháp mới {{ payload.vm_name }}',
+        variables: validDraft.variables,
+        createdBy: ADMIN_ID,
+      }),
+    ]);
+    // Bản gốc không đổi gì.
+    expect((await admin('GET', `${base()}/${id}`)).body).toMatchObject({ publishedVersion: 1, draftVersion: 2 });
+  });
+
+  it('nhân bản: không có nháp thì chép bản đang xuất bản; tên tự đặt; trùng tên -> 409', async () => {
+    const id = await createTemplate('Gốc đã xuất bản', validDraft);
+    await admin('POST', `${base()}/${id}/publish`);
+    const res = await admin('POST', `${base()}/${id}/duplicate`, { name: 'Bản sao tự đặt' });
+    expect(res.status).toBe(201);
+    expect(res.body['name']).toBe('Bản sao tự đặt');
+    expect((res.body['versions'] as Json[])[0]).toMatchObject({ subject: validDraft.subject, html: validDraft.html });
+
+    expect((await admin('POST', `${base()}/${id}/duplicate`, { name: 'bản sao tự đặt' })).body['code']).toBe(
+      'TEMPLATE_NAME_TAKEN',
+    );
+  });
+
+  it('nhân bản bản gốc đã lưu trữ được — bản gốc vẫn archived; template app khác -> 404', async () => {
+    const id = await createTemplate('Gốc lưu trữ', validDraft);
+    await admin('POST', `${base()}/${id}/archive`);
+    const res = await admin('POST', `${base()}/${id}/duplicate`, { name: 'Gốc lưu trữ (bản sao)' });
+    expect(res.status).toBe(201);
+    expect(res.body['status']).toBe('active');
+    expect((await admin('GET', `${base()}/${id}`)).body['status']).toBe('archived');
+
+    expect((await admin('POST', `/apps/${other.appId}/templates/${id}/duplicate`, { name: 'Chiếm' })).status).toBe(404);
+  });
+});
+
 // ADR-0009: "tối đa 1 nháp" không ép được ở DB — khoá dòng templates rồi mới đọc.
 describe('đồng thời', () => {
   it('5 admin cùng xuất bản một nháp -> đúng 1 thành công, còn lại 409 NO_DRAFT; DB có đúng 1 bản published', async () => {
@@ -255,21 +357,26 @@ describe('audit end-to-end qua worker thật', () => {
       const id = await createTemplate('Được audit');
       await admin('PUT', `${base()}/${id}/draft`, validDraft);
       await admin('POST', `${base()}/${id}/publish`);
+      await admin('PATCH', `${base()}/${id}`, { category: 'alert' });
       await admin('POST', `${base()}/${id}/archive`);
       while ((await c.infra.outboxRelay.relayOnce()) > 0);
 
       let entries: Json[] = [];
       await eventually(async () => {
         entries = (await admin('GET', `/audit?targetType=Template&targetId=${id}`)).body as unknown as Json[];
-        return entries.length >= 4;
+        return entries.length >= 5;
       });
       expect(entries.map((e) => e['action']).sort()).toEqual(
-        ['TemplateArchived', 'TemplateCreated', 'TemplateDraftSaved', 'TemplateVersionPublished'].sort(),
+        ['TemplateArchived', 'TemplateCategoryChanged', 'TemplateCreated', 'TemplateDraftSaved', 'TemplateVersionPublished'].sort(),
       );
       expect(entries.every((e) => e['actor'] === ADMIN_ID && e['source'] === 'admin_api')).toBe(true);
       expect(entries.find((e) => e['action'] === 'TemplateVersionPublished')).toMatchObject({
         before: { publishedVersion: null },
         after: { publishedVersion: 1 },
+      });
+      expect(entries.find((e) => e['action'] === 'TemplateCategoryChanged')).toMatchObject({
+        before: { category: 'other' },
+        after: { category: 'alert' },
       });
     } finally {
       await worker.stop();

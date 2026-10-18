@@ -8,6 +8,8 @@ export interface TemplateSummaryDto {
   id: string;
   name: string;
   channel: string;
+  /** Nhóm (ADR-0033) — một trong `TEMPLATE_CATEGORIES`. */
+  category: string;
   status: string;
   /** Số version đang được dùng để gửi; null = chưa từng xuất bản. */
   publishedVersion: number | null;
@@ -67,6 +69,7 @@ export function toTemplateSummaryDto(t: Template, versions: readonly TemplateVer
     id: t.id,
     name: t.name,
     channel: t.channel,
+    category: t.category,
     status: t.status,
     publishedVersion: published?.version ?? null,
     publishedAt: published?.publishedAt?.toISOString() ?? null,

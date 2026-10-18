@@ -1,6 +1,6 @@
 import { NotFoundError, type AppId, type TemplateId, type TemplateVersionId } from '../../../../shared/kernel/index.ts';
 import { toTemplateDetailDto, toTemplateSummaryDto, type TemplateDetailDto, type TemplateSummaryDto } from '../dto.ts';
-import type { TemplateRepository, TemplateVersionLabel } from '../ports/index.ts';
+import type { TemplateListFilter, TemplateRepository, TemplateVersionLabel } from '../ports/index.ts';
 
 export class TemplateQueries {
   private readonly templates: TemplateRepository;
@@ -10,8 +10,8 @@ export class TemplateQueries {
   }
 
   /** Màn danh sách: 2 truy vấn cho cả trang (template + draft/published của chúng), không N+1. */
-  async list(appId: AppId): Promise<TemplateSummaryDto[]> {
-    const templates = await this.templates.listByApp(appId);
+  async list(appId: AppId, filter: TemplateListFilter = {}): Promise<TemplateSummaryDto[]> {
+    const templates = await this.templates.listByApp(appId, filter);
     const versions = await this.templates.currentVersionsOf(templates.map((t) => t.id));
     return templates.map((t) =>
       toTemplateSummaryDto(

@@ -1,4 +1,4 @@
-import type { AppId, TemplateId, TemplateVersionId, TemplateVersionStatus } from '../../../../shared/kernel/index.ts';
+import type { AppId, TemplateCategory, TemplateId, TemplateVersionId, TemplateVersionStatus } from '../../../../shared/kernel/index.ts';
 import type { TemplateVersion } from '../../domain/entities/template-version.ts';
 import type { Template } from '../../domain/entities/template.ts';
 
@@ -11,7 +11,8 @@ export interface TemplateRepository {
   lockForUpdate(appId: AppId, id: TemplateId): Promise<boolean>;
   /** Template của app khác coi như không có — không lộ id của app khác. */
   findById(appId: AppId, id: TemplateId): Promise<Template | null>;
-  listByApp(appId: AppId): Promise<Template[]>;
+  /** Xếp theo tên. `search` khớp một phần tên, không phân biệt hoa thường và dấu (theo collation). */
+  listByApp(appId: AppId, filter?: TemplateListFilter): Promise<Template[]>;
   /** Trùng tên trong app -> ConflictError `TEMPLATE_NAME_TAKEN`. */
   insert(template: Template): Promise<void>;
   /** Ghi tên + trạng thái; trùng tên -> ConflictError `TEMPLATE_NAME_TAKEN`. */
@@ -28,6 +29,11 @@ export interface TemplateRepository {
   insertVersion(version: TemplateVersion): Promise<void>;
   /** Ghi có điều kiện theo trạng thái lúc đọc -> ConcurrentTransitionError (409) nếu bên kia đổi trước. */
   updateVersion(version: TemplateVersion, expectedStatus: TemplateVersionStatus): Promise<void>;
+}
+
+export interface TemplateListFilter {
+  category?: TemplateCategory | undefined;
+  search?: string | undefined;
 }
 
 export interface TemplateVersionLabel {

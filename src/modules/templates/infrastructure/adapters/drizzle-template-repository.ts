@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, like, type SQL } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -11,7 +11,7 @@ import {
   type TemplateVersionId as TemplateVersionIdType,
   type TemplateVersionStatus,
 } from '../../../../shared/kernel/index.ts';
-import type { TemplateRepository, TemplateVersionLabel } from '../../application/ports/index.ts';
+import type { TemplateListFilter, TemplateRepository, TemplateVersionLabel } from '../../application/ports/index.ts';
 import { TemplateVersion } from '../../domain/entities/template-version.ts';
 import { Template } from '../../domain/entities/template.ts';
 import { templates, templateVersions } from '../db/schema.ts';
@@ -47,12 +47,17 @@ export class DrizzleTemplateRepository implements TemplateRepository {
     return row ? toTemplate(row) : null;
   }
 
-  async listByApp(appId: AppIdType): Promise<Template[]> {
+  async listByApp(appId: AppIdType, filter: TemplateListFilter = {}): Promise<Template[]> {
+    const conditions: SQL[] = [eq(templates.appId, appId)];
+    if (filter.category) conditions.push(eq(templates.category, filter.category));
+    // Collation utf8mb4_0900_ai_ci: "canh bao" tìm ra "Cảnh báo" — cùng luật so tên trùng (ADR-0020).
+    const search = filter.search?.trim();
+    if (search) conditions.push(like(templates.name, `%${escapeLike(search)}%`));
     const rows = await this.transactions
       .executor()
       .select()
       .from(templates)
-      .where(eq(templates.appId, appId))
+      .where(and(...conditions))
       .orderBy(asc(templates.name));
     return rows.map(toTemplate);
   }
@@ -64,6 +69,7 @@ export class DrizzleTemplateRepository implements TemplateRepository {
         appId: template.appId,
         name: template.name,
         channel: template.channel,
+        category: template.category,
         status: template.status,
         createdAt: template.createdAt,
         updatedAt: template.updatedAt,
@@ -76,7 +82,7 @@ export class DrizzleTemplateRepository implements TemplateRepository {
       this.transactions
         .executor()
         .update(templates)
-        .set({ name: template.name, status: template.status, updatedAt: template.updatedAt })
+        .set({ name: template.name, category: template.category, status: template.status, updatedAt: template.updatedAt })
         .where(eq(templates.templateId, template.id)),
     );
   }
@@ -185,6 +191,9 @@ export class DrizzleTemplateRepository implements TemplateRepository {
   }
 }
 
+/** `%` và `_` người dùng gõ là chữ thường, không phải ký tự đại diện của LIKE (MySQL thoát bằng dấu `\`). */
+const escapeLike = (value: string) => value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+
 const contentColumns = (v: TemplateVersion) => ({
   subject: v.subject,
   html: v.html,
@@ -198,6 +207,7 @@ function toTemplate(row: TemplateRow): Template {
     appId: AppId.parse(row.appId),
     name: row.name,
     channel: row.channel,
+    category: row.category,
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

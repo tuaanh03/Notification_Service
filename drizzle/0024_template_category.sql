@@ -1,0 +1,1 @@
+ALTER TABLE `templates` ADD `category` enum('alert','system','onboarding','reminder','approval','report','other') DEFAULT 'other' NOT NULL;

@@ -96,6 +96,10 @@ export type UserSource = (typeof USER_SOURCES)[number];
 export const TEMPLATE_STATUSES = ['active', 'archived'] as const;
 export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
 
+/** Nhóm của template — bộ cố định (ADR-0033), chỉ để admin gom và lọc; không ảnh hưởng việc gửi. */
+export const TEMPLATE_CATEGORIES = ['alert', 'system', 'onboarding', 'reminder', 'approval', 'report', 'other'] as const;
+export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
+
 export const TEMPLATE_VERSION_STATUSES = ['draft', 'published', 'superseded'] as const;
 export type TemplateVersionStatus = (typeof TEMPLATE_VERSION_STATUSES)[number];
 

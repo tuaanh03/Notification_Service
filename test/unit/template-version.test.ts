@@ -118,4 +118,21 @@ describe('Template', () => {
     expect(t.updatedAt).toEqual(at);
     expect(() => t.rename('Khác', at)).toThrow(expect.objectContaining({ code: 'TEMPLATE_ARCHIVED' }));
   });
+
+  it('nhóm mặc định là other; đổi nhóm ghi updatedAt, đổi về đúng nhóm cũ thì không', () => {
+    const t = template();
+    expect(t.category).toBe('other');
+    const later = new Date('2026-10-01T00:00:00Z');
+    t.changeCategory('other', later);
+    expect(t.updatedAt).toEqual(at);
+    t.changeCategory('alert', later);
+    expect(t.category).toBe('alert');
+    expect(t.updatedAt).toEqual(later);
+  });
+
+  it('đã lưu trữ thì không đổi nhóm được', () => {
+    const t = template();
+    t.archive(at);
+    expect(() => t.changeCategory('alert', at)).toThrow(expect.objectContaining({ code: 'TEMPLATE_ARCHIVED' }));
+  });
 });

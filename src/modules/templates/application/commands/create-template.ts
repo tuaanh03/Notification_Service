@@ -1,5 +1,5 @@
 import { audited, type CommandContext, type EventOutbox, type UnitOfWork } from '../../../../shared/application/index.ts';
-import { NotFoundError, TemplateId, TemplateVersionId, type AppId, type Clock } from '../../../../shared/kernel/index.ts';
+import { NotFoundError, TemplateId, TemplateVersionId, type AppId, type Clock, type TemplateCategory } from '../../../../shared/kernel/index.ts';
 import { TemplateVersion, type TemplateContent } from '../../domain/entities/template-version.ts';
 import { Template } from '../../domain/entities/template.ts';
 import { toTemplateDetailDto, type TemplateDetailDto } from '../dto.ts';
@@ -9,6 +9,8 @@ import type { AppLookup, TemplateRepository } from '../ports/index.ts';
 export interface CreateTemplateInput {
   appId: AppId;
   name: string;
+  /** Bỏ trống = `other`. */
+  category?: TemplateCategory | undefined;
   /** Nội dung ban đầu của nháp v1; bỏ trống = nháp rỗng, soạn sau bằng `SaveDraft`. */
   content?: { [K in keyof TemplateContent]?: TemplateContent[K] | undefined } | undefined;
 }
@@ -36,6 +38,7 @@ export class CreateTemplate {
         id: TemplateId.create(),
         appId: input.appId,
         name: input.name,
+        category: input.category,
         channel: 'email', // MVP chỉ email (ADR-0016 D1)
         createdAt: now,
       });
@@ -57,7 +60,7 @@ export class CreateTemplate {
           aggregateType: TEMPLATE_AGGREGATE,
           aggregateId: template.id,
           eventType: TEMPLATE_EVENTS.created,
-          payload: audited(ctx, { after: { appId: template.appId, name: template.name, draftVersion: draft.version } }),
+          payload: audited(ctx, { after: { appId: template.appId, name: template.name, category: template.category, draftVersion: draft.version } }),
         },
       ]);
       return toTemplateDetailDto(template, [draft]);

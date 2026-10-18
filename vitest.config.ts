@@ -25,6 +25,9 @@ export default defineConfig({
           // Kéo image + khởi động MySQL lần đầu có thể mất cả phút.
           hookTimeout: 120_000,
           testTimeout: 30_000,
+          // Mỗi file dựng một database + app riêng trên CÙNG một MySQL container. Để mặc định (theo số lõi)
+          // thì máy dev WSL nghẽn: hàng chục file chạy migration cùng lúc, beforeAll quá 120 giây.
+          maxWorkers: 3,
         },
       },
     ],

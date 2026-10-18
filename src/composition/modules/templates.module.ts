@@ -4,11 +4,12 @@ import {
   ComposeTemplateDraft,
   CreateTemplate,
   DraftFromVersion,
+  DuplicateTemplate,
   PublishVersion,
-  RenameTemplate,
   RenderTemplate,
   SaveDraft,
   TemplateQueries,
+  UpdateTemplate,
   type TemplateAiWriter,
 } from '../../modules/templates/application/index.ts';
 import {
@@ -58,7 +59,8 @@ export function templatesModule(
       admin: [
         adminTemplatesRoutes({
           createTemplate: new CreateTemplate({ ...deps, apps: new AppsAppLookup(dependencies) }),
-          renameTemplate: new RenameTemplate(deps),
+          updateTemplate: new UpdateTemplate(deps),
+          duplicateTemplate: new DuplicateTemplate(deps),
           saveDraft: new SaveDraft(deps),
           draftFromVersion: new DraftFromVersion(deps),
           publishVersion: new PublishVersion(deps),

@@ -1,17 +1,18 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
 import { access, adminCaller, EXTERNAL_ID, LARGE_BODY_LIMIT_BYTES, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
-import { AppId, TemplateId, VARIABLE_SOURCES } from '../../../../shared/kernel/index.ts';
+import { AppId, TEMPLATE_CATEGORIES, TemplateId, VARIABLE_SOURCES } from '../../../../shared/kernel/index.ts';
 import type {
   ArchiveTemplate,
   ComposeTemplateDraft,
   CreateTemplate,
   DraftFromVersion,
+  DuplicateTemplate,
   PublishVersion,
-  RenameTemplate,
   RenderTemplate,
   SaveDraft,
   TemplateQueries,
+  UpdateTemplate,
 } from '../../application/index.ts';
 import { TEMPLATE_NAME_MAX_LENGTH } from '../../domain/entities/template.ts';
 import type { TemplateContent } from '../../domain/entities/template-version.ts';
@@ -21,6 +22,10 @@ const templateParams = appParams.extend({ templateId: z.string().uuid() });
 const versionParams = templateParams.extend({ version: z.coerce.number().int().min(1) });
 
 const NAME = z.string().trim().min(1).max(TEMPLATE_NAME_MAX_LENGTH);
+const CATEGORY = z.enum(TEMPLATE_CATEGORIES);
+
+/** `?category=alert&q=canh bao` — cả hai tuỳ chọn; `q` rỗng = không lọc theo tên. */
+const listQuery = z.object({ category: CATEGORY.optional(), q: z.string().trim().max(TEMPLATE_NAME_MAX_LENGTH).optional() });
 
 /** Hình dạng một biến. Luật nội dung (nguồn, tên hợp lệ, dùng đúng chỗ) kiểm ở domain lúc xuất bản. */
 const variable = z
@@ -44,13 +49,21 @@ const draftBody = z.object(content).strict();
 const createBody = z
   .object({
     name: NAME,
+    category: CATEGORY.optional(),
     subject: content.subject.optional(),
     html: content.html.optional(),
     text: content.text.optional(),
     variables: z.array(variable).max(100).optional(),
   })
   .strict();
-const renameBody = z.object({ name: NAME }).strict();
+const updateBody = z
+  .object({ name: NAME.optional(), category: CATEGORY.optional() })
+  .strict()
+  .refine((body) => body.name !== undefined || body.category !== undefined, {
+    message: 'name or category is required',
+  });
+/** Tên bắt buộc — console gửi tên đúng ngôn ngữ người soạn (vd "… (bản sao)" / "… (copy)"). */
+const duplicateBody = z.object({ name: NAME }).strict();
 /** Xem trước trên màn Soạn thông báo: payload như lúc gửi; `externalId` = người nhận đầu tiên (nếu đã chọn). */
 const renderBody = z.object({ payload: z.record(z.string(), z.unknown()).default({}), externalId: EXTERNAL_ID.optional() }).strict();
 
@@ -84,7 +97,8 @@ const toContent = (body: z.infer<typeof draftBody>): TemplateContent => ({
  */
 export function adminTemplatesRoutes(useCases: {
   createTemplate: CreateTemplate;
-  renameTemplate: RenameTemplate;
+  updateTemplate: UpdateTemplate;
+  duplicateTemplate: DuplicateTemplate;
   saveDraft: SaveDraft;
   draftFromVersion: DraftFromVersion;
   publishVersion: PublishVersion;
@@ -105,9 +119,9 @@ export function adminTemplatesRoutes(useCases: {
 
     app.post('/apps/:appId/templates', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
-      const { name, variables, ...rest } = parseInput(createBody, request.body);
+      const { name, category, variables, ...rest } = parseInput(createBody, request.body);
       const created = await useCases.createTemplate.execute(
-        { appId: AppId.parse(appId), name, content: { ...rest, schema: variables } },
+        { appId: AppId.parse(appId), name, category, content: { ...rest, schema: variables } },
         ctx(request),
       );
       return reply.status(201).send(created);
@@ -115,7 +129,8 @@ export function adminTemplatesRoutes(useCases: {
 
     app.get('/apps/:appId/templates', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);
-      return useCases.queries.list(AppId.parse(appId));
+      const { category, q } = parseInput(listQuery, request.query);
+      return useCases.queries.list(AppId.parse(appId), { category, search: q });
     });
 
     // Đổ biến vào bản ĐANG XUẤT BẢN — đúng hàm lúc gửi dùng, nên xem trước thế nào thì thư đi thế ấy.
@@ -133,8 +148,16 @@ export function adminTemplatesRoutes(useCases: {
 
     app.patch('/apps/:appId/templates/:templateId', { config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
-      const { name } = parseInput(renameBody, request.body);
-      return useCases.renameTemplate.execute({ ...params, name }, ctx(request));
+      const { name, category } = parseInput(updateBody, request.body);
+      return useCases.updateTemplate.execute({ ...params, name, category }, ctx(request));
+    });
+
+    // Bản sao là template MỚI (id mới) của cùng app — quyền như lệnh tạo.
+    app.post('/apps/:appId/templates/:templateId/duplicate', { config: access('app.manage') }, async (request, reply) => {
+      const params = ids(parseInput(templateParams, request.params));
+      const { name } = parseInput(duplicateBody, request.body);
+      const created = await useCases.duplicateTemplate.execute({ ...params, name }, ctx(request));
+      return reply.status(201).send(created);
     });
 
     app.put('/apps/:appId/templates/:templateId/draft', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
