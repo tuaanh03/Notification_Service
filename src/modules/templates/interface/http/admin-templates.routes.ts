@@ -5,9 +5,11 @@ import { AppId, TEMPLATE_CATEGORIES, TemplateId, VARIABLE_SOURCES } from '../../
 import type {
   ArchiveTemplate,
   ComposeTemplateDraft,
+  ConvertDraftToHtml,
   CreateTemplate,
   DraftFromVersion,
   DuplicateTemplate,
+  PreviewDesign,
   PublishVersion,
   RenderTemplate,
   SaveDraft,
@@ -15,7 +17,8 @@ import type {
   UpdateTemplate,
 } from '../../application/index.ts';
 import { TEMPLATE_NAME_MAX_LENGTH } from '../../domain/entities/template.ts';
-import type { TemplateContent } from '../../domain/entities/template-version.ts';
+import type { DraftInput } from '../../domain/rules/email-design.ts';
+import { emailDesignSchema } from './email-design.schema.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
 const templateParams = appParams.extend({ templateId: z.string().uuid() });
@@ -45,17 +48,25 @@ const content = {
   text: z.string().default(''),
   variables: z.array(variable).max(100).default([]),
 };
-const draftBody = z.object(content).strict();
-const createBody = z
-  .object({
-    name: NAME,
-    category: CATEGORY.optional(),
-    subject: content.subject.optional(),
-    html: content.html.optional(),
-    text: content.text.optional(),
-    variables: z.array(variable).max(100).optional(),
-  })
-  .strict();
+/**
+ * Nháp kiểu `html` (bỏ trống `editor` = như client cũ) hoặc `blocks` — kiểu `blocks` KHÔNG nhận `html` /
+ * `text`: backend sinh từ `design` (ADR-0034).
+ */
+const draftBody = z.union([
+  z.object({ editor: z.literal('html').optional(), ...content }).strict(),
+  z.object({ editor: z.literal('blocks'), subject: content.subject, design: emailDesignSchema, variables: content.variables }).strict(),
+]);
+const createShared = {
+  name: NAME,
+  category: CATEGORY.optional(),
+  subject: content.subject.optional(),
+  variables: z.array(variable).max(100).optional(),
+};
+const createBody = z.union([
+  z.object({ ...createShared, editor: z.literal('html').optional(), html: content.html.optional(), text: content.text.optional() }).strict(),
+  z.object({ ...createShared, editor: z.literal('blocks'), design: emailDesignSchema.optional() }).strict(),
+]);
+const designPreviewBody = z.object({ design: emailDesignSchema }).strict();
 const updateBody = z
   .object({ name: NAME.optional(), category: CATEGORY.optional() })
   .strict()
@@ -84,12 +95,10 @@ const aiComposeBody = z
     path: ['current'],
   });
 
-const toContent = (body: z.infer<typeof draftBody>): TemplateContent => ({
-  subject: body.subject,
-  html: body.html,
-  text: body.text,
-  schema: body.variables,
-});
+const toDraft = (body: z.infer<typeof draftBody>): DraftInput =>
+  body.editor === 'blocks'
+    ? { editor: 'blocks', subject: body.subject, design: body.design, schema: body.variables }
+    : { editor: 'html', subject: body.subject, html: body.html, text: body.text, schema: body.variables };
 
 /**
  * `/admin/apps/:appId/templates` — admin soạn và xuất bản template. App service KHÔNG có đường ghi
@@ -101,6 +110,8 @@ export function adminTemplatesRoutes(useCases: {
   duplicateTemplate: DuplicateTemplate;
   saveDraft: SaveDraft;
   draftFromVersion: DraftFromVersion;
+  convertDraftToHtml: ConvertDraftToHtml;
+  previewDesign: PreviewDesign;
   publishVersion: PublishVersion;
   archiveTemplate: ArchiveTemplate;
   composeTemplateDraft: ComposeTemplateDraft;
@@ -119,9 +130,17 @@ export function adminTemplatesRoutes(useCases: {
 
     app.post('/apps/:appId/templates', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
-      const { name, category, variables, ...rest } = parseInput(createBody, request.body);
+      const body = parseInput(createBody, request.body);
       const created = await useCases.createTemplate.execute(
-        { appId: AppId.parse(appId), name, category, content: { ...rest, schema: variables } },
+        {
+          appId: AppId.parse(appId),
+          name: body.name,
+          category: body.category,
+          editor: body.editor,
+          ...(body.editor === 'blocks'
+            ? { design: body.design, content: { subject: body.subject, schema: body.variables } }
+            : { content: { subject: body.subject, html: body.html, text: body.text, schema: body.variables } }),
+        },
         ctx(request),
       );
       return reply.status(201).send(created);
@@ -139,6 +158,13 @@ export function adminTemplatesRoutes(useCases: {
       const params = ids(parseInput(templateParams, request.params));
       const { payload, externalId } = parseInput(renderBody, request.body ?? {});
       return useCases.renderTemplate.execute({ ...params, payload, externalId: externalId ?? 'preview' });
+    });
+
+    // Xem trước thiết kế kéo-thả đang soạn (ADR-0034): cùng hàm sinh + cùng giới hạn với lưu nháp, không ghi gì.
+    app.post('/apps/:appId/templates/design-preview', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.read') }, async (request) => {
+      parseInput(appParams, request.params);
+      const { design } = parseInput(designPreviewBody, request.body);
+      return useCases.previewDesign.execute(design);
     });
 
     app.get('/apps/:appId/templates/:templateId', { config: access('app.read') }, async (request) => {
@@ -163,13 +189,19 @@ export function adminTemplatesRoutes(useCases: {
     app.put('/apps/:appId/templates/:templateId/draft', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
       const body = parseInput(draftBody, request.body);
-      return useCases.saveDraft.execute({ ...params, content: toContent(body) }, ctx(request));
+      return useCases.saveDraft.execute({ ...params, draft: toDraft(body) }, ctx(request));
     });
 
     app.post('/apps/:appId/templates/:templateId/draft/from/:version', { config: access('app.manage') }, async (request, reply) => {
       const { version, ...rest } = parseInput(versionParams, request.params);
       const created = await useCases.draftFromVersion.execute({ ...ids(rest), version }, ctx(request));
       return reply.status(201).send(created);
+    });
+
+    // Một chiều: nháp kéo-thả -> HTML, giữ HTML đã sinh. Bản đã xuất bản không đổi.
+    app.post('/apps/:appId/templates/:templateId/draft/convert-to-html', { config: access('app.manage') }, async (request) => {
+      const params = ids(parseInput(templateParams, request.params));
+      return useCases.convertDraftToHtml.execute(params, ctx(request));
     });
 
     app.post('/apps/:appId/templates/:templateId/publish', { config: access('app.manage') }, async (request) => {

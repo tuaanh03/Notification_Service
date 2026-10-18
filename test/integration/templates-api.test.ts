@@ -482,3 +482,108 @@ describe('Nhờ AI soạn — POST .../ai-compose', () => {
     expect((await compose(id, { instruction: 'x', mode: 'new' }, (await signInAdmin(application, api.url)).token)).status).toBe(200);
   });
 });
+
+describe('trình soạn kéo-thả (ADR-0034)', () => {
+  const settings = { width: 600, backgroundColor: '#f1f5f9', contentBackgroundColor: '#ffffff', textColor: '#1e293b', linkColor: '#2563eb', fontFamily: 'sans' };
+  const design = (blocks: Json[]) => ({ version: 1, settings, rows: [{ id: 'r1', columns: [{ id: 'c1', blocks }] }] });
+  const blocks = [
+    { id: 'h', type: 'heading', text: 'Máy ảo {{ payload.vm_name }}', level: 1, align: 'left' },
+    { id: 't', type: 'text', text: 'Vượt <ngưỡng>', align: 'left' },
+    { id: 'b', type: 'button', label: 'Xem', url: 'https://ews.example.com/vm', align: 'center', backgroundColor: '#2563eb', textColor: '#ffffff', borderRadius: 6 },
+  ];
+  const blocksDraft = {
+    editor: 'blocks',
+    subject: '[Cảnh báo] {{ payload.vm_name }}',
+    design: design(blocks),
+    variables: validDraft.variables,
+  };
+  const latest = (body: Json) => (body['versions'] as Json[])[0]!;
+
+  it('tạo kiểu blocks -> nháp v1 thiết kế rỗng; lưu nháp sinh html + text; xuất bản; gửi đổ biến như thường', async () => {
+    const id = (await admin('POST', base(), { name: 'Kéo thả 1', editor: 'blocks' })).body['id'] as string;
+    const created = (await admin('GET', `${base()}/${id}`)).body;
+    expect(created['editor']).toBe('blocks');
+    expect(latest(created)['design']).toMatchObject({ version: 1, rows: [] });
+    expect(latest(created)['html']).toBe('');
+
+    const saved = await admin('PUT', `${base()}/${id}/draft`, blocksDraft);
+    expect(saved.status).toBe(200);
+    const v1 = latest(saved.body);
+    expect(v1['editor']).toBe('blocks');
+    expect(v1['html']).toContain('Vượt &lt;ngưỡng&gt;');
+    expect(v1['html']).toContain('href="https://ews.example.com/vm"');
+    expect(v1['text']).toBe('Máy ảo {{ payload.vm_name }}\n\nVượt <ngưỡng>\n\nXem: https://ews.example.com/vm');
+
+    expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
+    const rendered = await admin('POST', `${base()}/${id}/render`, { payload: { vm_name: '<vm-01>' } });
+    expect(rendered.status).toBe(200);
+    expect(rendered.body['html']).toContain('Máy ảo &lt;vm-01&gt;');
+  });
+
+  it('kiểu blocks không nhận html / text; nháp khác kiểu -> 409 EDITOR_MISMATCH; ảnh http -> 422 IMAGE_URL_NOT_ALLOWED', async () => {
+    const id = (await admin('POST', base(), { name: 'Kéo thả 2', editor: 'blocks' })).body['id'] as string;
+    expect((await admin('PUT', `${base()}/${id}/draft`, { ...blocksDraft, html: '<p>x</p>' })).status).toBe(422);
+    const mismatch = await admin('PUT', `${base()}/${id}/draft`, validDraft);
+    expect(mismatch.status).toBe(409);
+    expect(mismatch.body['code']).toBe('EDITOR_MISMATCH');
+    const badImage = await admin('PUT', `${base()}/${id}/draft`, {
+      ...blocksDraft,
+      design: design([{ id: 'i', type: 'image', src: 'http://cdn.example.com/a.png', width: 100, align: 'center' }]),
+    });
+    expect(badImage.status).toBe(422);
+    expect(codesOf(badImage.body)).toEqual(['IMAGE_URL_NOT_ALLOWED']);
+    expect((await admin('PUT', `${base()}/${id}/draft`, { ...blocksDraft, design: design([{ id: 'x', type: 'video' }]) })).status).toBe(422);
+    const tooMany = await admin('PUT', `${base()}/${id}/draft`, {
+      ...blocksDraft,
+      design: design(Array.from({ length: 101 }, (_, i) => ({ id: `s${i}`, type: 'spacer', height: 8 }))),
+    });
+    expect(codesOf(tooMany.body)).toEqual(['DESIGN_TOO_MANY_BLOCKS']);
+  });
+
+  it('link nút sai -> nháp vẫn lưu, xuất bản 422 LINK_SCHEME_NOT_ALLOWED', async () => {
+    const id = (await admin('POST', base(), { name: 'Kéo thả 3', editor: 'blocks' })).body['id'] as string;
+    const bad = { ...blocksDraft, design: design([...blocks.slice(0, 2), { ...blocks[2], url: 'http://ews.example.com' }]) };
+    expect((await admin('PUT', `${base()}/${id}/draft`, bad)).status).toBe(200);
+    const res = await admin('POST', `${base()}/${id}/publish`);
+    expect(res.status).toBe(422);
+    expect(codesOf(res.body)).toEqual(['LINK_SCHEME_NOT_ALLOWED']);
+  });
+
+  it('tạo nháp từ bản cũ và nhân bản chép cả editor + design', async () => {
+    const id = (await admin('POST', base(), { name: 'Kéo thả 4', ...blocksDraft })).body['id'] as string;
+    expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
+    const v2 = latest((await admin('POST', `${base()}/${id}/draft/from/1`)).body);
+    expect(v2['editor']).toBe('blocks');
+    expect(v2['design']).toEqual(blocksDraft.design);
+    const copy = await admin('POST', `${base()}/${id}/duplicate`, { name: 'Kéo thả 4 (bản sao)' });
+    expect(copy.status).toBe(201);
+    expect(latest(copy.body)).toMatchObject({ editor: 'blocks', design: blocksDraft.design });
+  });
+
+  it('chuyển sang HTML: chỉ nháp đổi, giữ html đã sinh; bản đã xuất bản giữ kiểu blocks; chuyển lại -> 409', async () => {
+    const id = (await admin('POST', base(), { name: 'Kéo thả 5', ...blocksDraft })).body['id'] as string;
+    await admin('POST', `${base()}/${id}/publish`);
+    const draft = latest((await admin('POST', `${base()}/${id}/draft/from/1`)).body);
+    const res = await admin('POST', `${base()}/${id}/draft/convert-to-html`);
+    expect(res.status).toBe(200);
+    const [v2, v1] = res.body['versions'] as Json[];
+    expect(v2).toMatchObject({ version: 2, editor: 'html', design: null, html: draft['html'] });
+    expect(v1).toMatchObject({ version: 1, status: 'published', editor: 'blocks' });
+    expect((await admin('PUT', `${base()}/${id}/draft`, { ...validDraft, html: '<p>sửa tay {{ payload.vm_name }}</p>' })).status).toBe(200);
+    expect((await admin('POST', `${base()}/${id}/draft/convert-to-html`)).body['code']).toBe('EDITOR_MISMATCH');
+    await admin('POST', `${base()}/${id}/publish`);
+    expect((await admin('POST', `${base()}/${id}/draft/convert-to-html`)).body['code']).toBe('NO_DRAFT');
+  });
+
+  it('design-preview: trả html + text, không ghi DB; cùng giới hạn; hình dạng sai -> 422', async () => {
+    const before = (await t.db.select().from(templateVersions)).length;
+    const res = await admin('POST', `${base()}/design-preview`, { design: design(blocks) });
+    expect(res.status).toBe(200);
+    expect(res.body['html']).toContain('<!DOCTYPE html>');
+    expect(res.body['text']).toContain('Xem: https://ews.example.com/vm');
+    expect((await t.db.select().from(templateVersions)).length).toBe(before);
+    const bad = await admin('POST', `${base()}/design-preview`, { design: design([{ id: 'i', type: 'image', src: '{{ payload.img }}', width: 50, align: 'left' }]) });
+    expect(codesOf(bad.body)).toEqual(['IMAGE_URL_NOT_ALLOWED']);
+    expect((await admin('POST', `${base()}/design-preview`, { design: { ...design(blocks), version: 2 } })).status).toBe(422);
+  });
+});

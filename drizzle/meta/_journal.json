@@ -176,6 +176,13 @@
       "when": 1792303573207,
       "tag": "0024_template_category",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1792331377823,
+      "tag": "0025_template_editor_design",
+      "breakpoints": true
     }
   ]
 }

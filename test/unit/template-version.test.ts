@@ -12,6 +12,8 @@ const at = new Date('2026-09-30T03:00:00Z');
 const codes = (issues: readonly { code: string }[]) => issues.map((i) => i.code);
 
 const valid: TemplateContent = {
+  editor: 'html',
+  design: null,
   subject: '{{ payload.vm_name }} vượt ngưỡng',
   html: '<p>{{ payload.vm_name }} — <a href="https://ews.example.com/vm">Xem</a></p>',
   text: '',

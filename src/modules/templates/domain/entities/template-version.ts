@@ -4,16 +4,23 @@ import {
   ValidationError,
   issue,
   type Issue,
+  type TemplateEditor,
   type TemplateId,
   type TemplateVersionId,
   type TemplateVersionStatus,
   type TimestampInput,
 } from '../../../../shared/kernel/index.ts';
 import { validateBody, validateLinks, validateSchema, validateSupportedVariables } from '../rules/template-variables.ts';
+import type { EmailDesign } from '../types/email-design.ts';
 import type { VariableSpec } from '../types/template-variable.ts';
 
-/** Nội dung soạn được của một version — đúng thứ `PUT .../draft` ghi. */
+/**
+ * Nội dung soạn được của một version — đúng thứ `PUT .../draft` ghi. Kiểu `blocks` (ADR-0034): `html` /
+ * `text` do backend sinh từ `design`, vẫn là nguồn gửi; kiểu `html`: `design` = null.
+ */
 export interface TemplateContent {
+  editor: TemplateEditor;
+  design: EmailDesign | null;
   subject: string;
   html: string;
   text: string;
@@ -25,6 +32,9 @@ export interface TemplateVersionProps extends TimestampInput {
   templateId: TemplateId;
   version: number;
   status?: TemplateVersionStatus | undefined;
+  /** Bỏ trống = `html` (dòng có trước migration 0025). */
+  editor?: TemplateEditor | undefined;
+  design?: EmailDesign | null | undefined;
   subject: string;
   html: string;
   text: string;
@@ -48,6 +58,8 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
   readonly templateId: TemplateId;
   readonly version: number;
   status: TemplateVersionStatus;
+  editor: TemplateEditor;
+  design: EmailDesign | null;
   subject: string;
   html: string;
   text: string;
@@ -62,6 +74,8 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
     this.templateId = props.templateId;
     this.version = props.version;
     this.status = props.status ?? 'draft';
+    this.editor = props.editor ?? 'html';
+    this.design = this.editor === 'blocks' ? (props.design ?? null) : null;
     this.subject = props.subject;
     this.html = props.html;
     this.text = props.text;
@@ -73,19 +87,49 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
   }
 
   get content(): TemplateContent {
-    return { subject: this.subject, html: this.html, text: this.text, schema: this.schema };
+    return {
+      editor: this.editor,
+      design: this.design,
+      subject: this.subject,
+      html: this.html,
+      text: this.text,
+      schema: this.schema,
+    };
   }
 
   /** Chỉ bản nháp sửa được — bản đã xuất bản là thứ đang gửi đi, sửa tại chỗ là đổi thư giữa chừng. */
   edit(content: TemplateContent, at: Date): void {
-    if (this.status !== 'draft') {
-      throw new ConflictError('VERSION_NOT_DRAFT', `version ${this.version} is ${this.status}, only a draft can be edited`);
+    this.assertDraft();
+    // Đổi kiểu soạn không đi bằng lưu nháp: blocks -> html qua `convertToHtml`, html -> blocks không có.
+    if (content.editor !== this.editor) {
+      throw new ConflictError('EDITOR_MISMATCH', `draft version ${this.version} uses the ${this.editor} editor, not ${content.editor}`);
     }
+    this.design = content.design;
     this.subject = content.subject;
     this.html = content.html;
     this.text = content.text;
     this.schema = content.schema;
     this.touch(at);
+  }
+
+  /**
+   * Nháp kéo-thả -> HTML (ADR-0034): giữ `html` / `text` đã sinh, bỏ thiết kế. Một chiều — không dựng lại
+   * khối từ HTML tự do. Bản đã xuất bản không bao giờ tới đây (chỉ nháp).
+   */
+  convertToHtml(at: Date): void {
+    this.assertDraft();
+    if (this.editor !== 'blocks') {
+      throw new ConflictError('EDITOR_MISMATCH', `draft version ${this.version} already uses the html editor`);
+    }
+    this.editor = 'html';
+    this.design = null;
+    this.touch(at);
+  }
+
+  private assertDraft(): void {
+    if (this.status !== 'draft') {
+      throw new ConflictError('VERSION_NOT_DRAFT', `version ${this.version} is ${this.status}, only a draft can be edited`);
+    }
   }
 
   /** Trả về danh sách lỗi; rỗng = publish được. AI sinh ra cũng đi qua đúng cửa này. */

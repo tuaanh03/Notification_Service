@@ -3,6 +3,8 @@ import type { TemplateContent } from '../../src/modules/templates/domain/entitie
 import { renderTemplate } from '../../src/modules/templates/domain/rules/render-template.ts';
 
 const content = (over: Partial<TemplateContent> = {}): TemplateContent => ({
+  editor: 'html',
+  design: null,
   subject: '[Cảnh báo] {{ payload.vm_name }} vượt {{ payload.threshold }}%',
   html: '<p>Máy ảo {{ payload.vm_name }} — chủ: {{ payload.owner | default: "chưa rõ" }}</p>',
   text: 'Máy ảo {{ payload.vm_name }} (mã {{ user.external_id }})',

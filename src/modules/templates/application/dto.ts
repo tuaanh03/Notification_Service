@@ -1,5 +1,6 @@
 import type { TemplateVersion } from '../domain/entities/template-version.ts';
 import type { Template } from '../domain/entities/template.ts';
+import type { EmailDesign } from '../domain/types/email-design.ts';
 import type { VariableSpec } from '../domain/types/template-variable.ts';
 
 /** Một dòng của màn danh sách template. */
@@ -16,6 +17,8 @@ export interface TemplateSummaryDto {
   publishedAt: string | null;
   /** Số version của bản nháp đang có; null = không có nháp. */
   draftVersion: number | null;
+  /** Kiểu soạn của bản nháp (không có thì của bản đang xuất bản) — ADR-0034. */
+  editor: string;
   /** Số biến của bản đang xuất bản (không có thì của bản nháp). */
   variableCount: number;
   createdAt: string;
@@ -27,6 +30,9 @@ export interface TemplateVersionDto {
   id: string;
   version: number;
   status: string;
+  /** `html` | `blocks` (ADR-0034). `blocks`: `html` / `text` do backend sinh từ `design`. */
+  editor: string;
+  design: EmailDesign | null;
   subject: string;
   html: string;
   text: string;
@@ -48,6 +54,8 @@ export const toTemplateVersionDto = (v: TemplateVersion): TemplateVersionDto => 
   id: v.id,
   version: v.version,
   status: v.status,
+  editor: v.editor,
+  design: v.design,
   subject: v.subject,
   html: v.html,
   text: v.text,
@@ -74,6 +82,7 @@ export function toTemplateSummaryDto(t: Template, versions: readonly TemplateVer
     publishedVersion: published?.version ?? null,
     publishedAt: published?.publishedAt?.toISOString() ?? null,
     draftVersion: draft?.version ?? null,
+    editor: (draft ?? published)?.editor ?? 'html',
     variableCount: (published ?? draft)?.schema.length ?? 0,
     createdAt: t.createdAt.toISOString(),
     updatedAt: updatedAt.toISOString(),

@@ -25,7 +25,7 @@ export interface RenderedContent {
  * - Thiếu biến bắt buộc, giá trị không phải chữ / số / true-false, link sau khi đổ không phải https / mailto:
  *   gom MỌI lỗi vào một `ValidationError` — app sửa một lần là đủ.
  */
-export function renderTemplate(content: TemplateContent, input: RenderInput): RenderedContent {
+export function renderTemplate(content: Pick<TemplateContent, 'subject' | 'html' | 'text' | 'schema'>, input: RenderInput): RenderedContent {
   const issues: Issue[] = [];
   const values = new Map<string, string>();
   values.set('user.external_id', input.externalId);

@@ -47,7 +47,7 @@ export class DuplicateTemplate {
         id: TemplateVersionId.create(),
         templateId: template.id,
         version: 1,
-        ...(from?.content ?? { subject: '', html: '', text: '', schema: [] }),
+        ...(from?.content ?? { editor: 'html', design: null, subject: '', html: '', text: '', schema: [] }),
         createdBy: ctx.actor.id,
         createdAt: now,
       });

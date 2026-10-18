@@ -195,6 +195,8 @@ export class DrizzleTemplateRepository implements TemplateRepository {
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 
 const contentColumns = (v: TemplateVersion) => ({
+  editor: v.editor,
+  design: v.design,
   subject: v.subject,
   html: v.html,
   text: v.text,
@@ -220,6 +222,8 @@ function toVersion(row: VersionRow): TemplateVersion {
     templateId: TemplateId.parse(row.templateId),
     version: row.version,
     status: row.status,
+    editor: row.editor,
+    design: row.design,
     subject: row.subject,
     html: row.html,
     text: row.text,

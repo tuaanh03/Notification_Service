@@ -100,6 +100,10 @@ export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
 export const TEMPLATE_CATEGORIES = ['alert', 'system', 'onboarding', 'reminder', 'approval', 'report', 'other'] as const;
 export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
 
+/** Kiểu soạn của một version (ADR-0034): HTML tay, hoặc kéo-thả (`design` JSON, backend sinh HTML). */
+export const TEMPLATE_EDITORS = ['html', 'blocks'] as const;
+export type TemplateEditor = (typeof TEMPLATE_EDITORS)[number];
+
 export const TEMPLATE_VERSION_STATUSES = ['draft', 'published', 'superseded'] as const;
 export type TemplateVersionStatus = (typeof TEMPLATE_VERSION_STATUSES)[number];
 

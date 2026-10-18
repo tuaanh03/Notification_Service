@@ -7,3 +7,4 @@ export * from './publish-version.ts';
 export * from './save-draft.ts';
 export * from './update-template.ts';
 export * from './compose-template-draft.ts';
+export * from './convert-draft-to-html.ts';
