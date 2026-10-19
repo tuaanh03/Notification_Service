@@ -12,6 +12,7 @@ import { TemplateVersion, type TemplateContent } from '../../domain/entities/tem
 import { Template } from '../../domain/entities/template.ts';
 import { draftContent, emptyDesign } from '../../domain/rules/email-design.ts';
 import type { EmailDesign } from '../../domain/types/email-design.ts';
+import type { PresetLocale } from '../../domain/types/template-preset.ts';
 import { toTemplateDetailDto, type TemplateDetailDto } from '../dto.ts';
 import { TEMPLATE_AGGREGATE, TEMPLATE_EVENTS } from '../events.ts';
 import type { AppLookup, TemplateRepository } from '../ports/index.ts';
@@ -27,6 +28,8 @@ export interface CreateTemplateInput {
   design?: EmailDesign | undefined;
   /** Nội dung ban đầu của nháp v1; bỏ trống = nháp rỗng, soạn sau bằng `SaveDraft`. `html` / `text` chỉ với kiểu `html`. */
   content?: { [K in 'subject' | 'html' | 'text' | 'schema']?: TemplateContent[K] | undefined } | undefined;
+  /** Tạo từ thư viện mẫu (ADR-0035) — chỉ ghi vào audit, không có cột riêng. */
+  createdFromPreset?: { presetId: string; presetVersion: number; locale: PresetLocale } | undefined;
 }
 
 /** Tạo template kèm nháp v1. App chưa gửi được cho tới khi admin xuất bản. */
@@ -77,7 +80,16 @@ export class CreateTemplate {
           aggregateType: TEMPLATE_AGGREGATE,
           aggregateId: template.id,
           eventType: TEMPLATE_EVENTS.created,
-          payload: audited(ctx, { after: { appId: template.appId, name: template.name, category: template.category, draftVersion: draft.version, editor: draft.editor } }),
+          payload: audited(ctx, {
+            after: {
+              appId: template.appId,
+              name: template.name,
+              category: template.category,
+              draftVersion: draft.version,
+              editor: draft.editor,
+              ...(input.createdFromPreset ? { createdFromPreset: input.createdFromPreset } : {}),
+            },
+          }),
         },
       ]);
       return toTemplateDetailDto(template, [draft]);

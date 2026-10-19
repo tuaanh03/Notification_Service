@@ -40,6 +40,10 @@ describe('decide() — luật phân quyền /admin (ADR-0022)', () => {
     expect(decide(user(), 'org.create', null)).toBe('allow');
   });
 
+  it('đọc thư viện mẫu template: ai đăng nhập cũng được, kể cả chưa thuộc org nào (ADR-0035)', () => {
+    expect(decide(user(), 'catalog.read', null)).toBe('allow');
+  });
+
   it('quản lý thành viên org (org.manage): Owner, Org Admin; Member 403, người ngoài 404 (ADR-0026)', () => {
     expect(decide(user('owner'), 'org.manage', { orgId: ORG })).toBe('allow');
     expect(decide(user('org_admin'), 'org.manage', { orgId: ORG })).toBe('allow');

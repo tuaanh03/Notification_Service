@@ -4,12 +4,14 @@ import {
   ComposeTemplateDraft,
   ConvertDraftToHtml,
   CreateTemplate,
+  CreateTemplateFromPreset,
   DraftFromVersion,
   DuplicateTemplate,
   PreviewDesign,
   PublishVersion,
   RenderTemplate,
   SaveDraft,
+  TemplatePresetQueries,
   TemplateQueries,
   UpdateTemplate,
   type TemplateAiWriter,
@@ -55,12 +57,14 @@ export function templatesModule(
   });
 
   const renderTemplate = new RenderTemplate({ templates });
+  const createTemplate = new CreateTemplate({ ...deps, apps: new AppsAppLookup(dependencies) });
   const definition: ModuleDefinition = {
     name: 'templates',
     http: {
       admin: [
         adminTemplatesRoutes({
-          createTemplate: new CreateTemplate({ ...deps, apps: new AppsAppLookup(dependencies) }),
+          createTemplate,
+          createTemplateFromPreset: new CreateTemplateFromPreset({ createTemplate }),
           updateTemplate: new UpdateTemplate(deps),
           duplicateTemplate: new DuplicateTemplate(deps),
           saveDraft: new SaveDraft(deps),
@@ -72,6 +76,7 @@ export function templatesModule(
           composeTemplateDraft,
           renderTemplate,
           queries,
+          presets: new TemplatePresetQueries(),
         }),
       ],
     },

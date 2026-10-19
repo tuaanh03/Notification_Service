@@ -1,6 +1,7 @@
 import type { TemplateVersion } from '../domain/entities/template-version.ts';
 import type { Template } from '../domain/entities/template.ts';
 import type { EmailDesign } from '../domain/types/email-design.ts';
+import type { PresetLocale } from '../domain/types/template-preset.ts';
 import type { VariableSpec } from '../domain/types/template-variable.ts';
 
 /** Một dòng của màn danh sách template. */
@@ -92,4 +93,19 @@ export function toTemplateSummaryDto(t: Template, versions: readonly TemplateVer
 export function toTemplateDetailDto(t: Template, versions: readonly TemplateVersion[]): TemplateDetailDto {
   const sorted = [...versions].sort((a, b) => b.version - a.version);
   return { ...toTemplateSummaryDto(t, sorted), versions: sorted.map(toTemplateVersionDto) };
+}
+
+/** Một mẫu của thư viện (ADR-0035) ở MỘT ngôn ngữ — console làm thẻ, ảnh thu nhỏ và hộp xem trước. */
+export interface TemplatePresetDto {
+  id: string;
+  version: number;
+  category: string;
+  locale: PresetLocale;
+  name: string;
+  description: string;
+  subject: string;
+  variables: VariableSpec[];
+  design: EmailDesign;
+  /** HTML đã sinh từ `design` (còn nguyên `{{ … }}`), console tự thay giá trị mẫu như màn soạn. */
+  html: string;
 }

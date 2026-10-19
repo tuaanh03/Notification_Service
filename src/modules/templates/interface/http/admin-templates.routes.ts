@@ -7,17 +7,20 @@ import type {
   ComposeTemplateDraft,
   ConvertDraftToHtml,
   CreateTemplate,
+  CreateTemplateFromPreset,
   DraftFromVersion,
   DuplicateTemplate,
   PreviewDesign,
   PublishVersion,
   RenderTemplate,
   SaveDraft,
+  TemplatePresetQueries,
   TemplateQueries,
   UpdateTemplate,
 } from '../../application/index.ts';
 import { TEMPLATE_NAME_MAX_LENGTH } from '../../domain/entities/template.ts';
 import type { DraftInput } from '../../domain/rules/email-design.ts';
+import { PRESET_LOCALES } from '../../domain/types/template-preset.ts';
 import { emailDesignSchema } from './email-design.schema.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
@@ -75,6 +78,10 @@ const updateBody = z
   });
 /** Tên bắt buộc — console gửi tên đúng ngôn ngữ người soạn (vd "… (bản sao)" / "… (copy)"). */
 const duplicateBody = z.object({ name: NAME }).strict();
+/** Thư viện mẫu (ADR-0035): bỏ trống `locale` = tiếng Việt. */
+const presetListQuery = z.object({ category: CATEGORY.optional(), locale: z.enum(PRESET_LOCALES).default('vi') });
+/** Tên bắt buộc như nhân bản — console gợi ý sẵn tên mẫu theo ngôn ngữ thư. */
+const fromPresetBody = z.object({ presetId: z.string().min(1).max(64), locale: z.enum(PRESET_LOCALES), name: NAME }).strict();
 /** Xem trước trên màn Soạn thông báo: payload như lúc gửi; `externalId` = người nhận đầu tiên (nếu đã chọn). */
 const renderBody = z.object({ payload: z.record(z.string(), z.unknown()).default({}), externalId: EXTERNAL_ID.optional() }).strict();
 
@@ -106,6 +113,7 @@ const toDraft = (body: z.infer<typeof draftBody>): DraftInput =>
  */
 export function adminTemplatesRoutes(useCases: {
   createTemplate: CreateTemplate;
+  createTemplateFromPreset: CreateTemplateFromPreset;
   updateTemplate: UpdateTemplate;
   duplicateTemplate: DuplicateTemplate;
   saveDraft: SaveDraft;
@@ -117,6 +125,7 @@ export function adminTemplatesRoutes(useCases: {
   composeTemplateDraft: ComposeTemplateDraft;
   renderTemplate: RenderTemplate;
   queries: TemplateQueries;
+  presets: TemplatePresetQueries;
 }): HttpRoutes {
   return (app) => {
     const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
@@ -143,6 +152,20 @@ export function adminTemplatesRoutes(useCases: {
         },
         ctx(request),
       );
+      return reply.status(201).send(created);
+    });
+
+    // Thư viện mẫu không thuộc app / org nào — ai đăng nhập console cũng xem được (ADR-0035).
+    app.get('/template-presets', { config: access('catalog.read') }, async (request) => {
+      const { category, locale } = parseInput(presetListQuery, request.query);
+      return useCases.presets.list({ category, locale });
+    });
+
+    // "Dùng mẫu": template MỚI của app, nháp v1 kiểu blocks chép từ mẫu — quyền như lệnh tạo.
+    app.post('/apps/:appId/templates/from-preset', { config: access('app.manage') }, async (request, reply) => {
+      const { appId } = parseInput(appParams, request.params);
+      const body = parseInput(fromPresetBody, request.body);
+      const created = await useCases.createTemplateFromPreset.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
       return reply.status(201).send(created);
     });
 

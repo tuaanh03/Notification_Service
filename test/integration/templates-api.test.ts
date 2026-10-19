@@ -587,3 +587,81 @@ describe('trình soạn kéo-thả (ADR-0034)', () => {
     expect((await admin('POST', `${base()}/design-preview`, { design: { ...design(blocks), version: 2 } })).status).toBe(422);
   });
 });
+
+describe('thư viện mẫu (ADR-0035)', () => {
+  const fromPreset = (body: Json) => admin('POST', `${base()}/from-preset`, body);
+  const latest = (body: Json) => (body['versions'] as Json[])[0]!;
+
+  it('GET /template-presets: 12 mẫu, mặc định tiếng Việt, có html đã sinh; lọc nhóm; locale lạ -> 422', async () => {
+    const vi = await admin('GET', '/template-presets');
+    expect(vi.status).toBe(200);
+    const list = vi.body as unknown as Json[];
+    expect(list).toHaveLength(12);
+    expect(list[0]).toMatchObject({ id: 'incident-alert', version: 1, category: 'alert', locale: 'vi', name: 'Cảnh báo sự cố' });
+    expect(list[0]!['html']).toContain('<!DOCTYPE html>');
+    expect((list[0]!['variables'] as Json[]).map((v) => v['name'])).toContain('payload.detail_url');
+
+    const en = (await admin('GET', '/template-presets?locale=en&category=report')).body as unknown as Json[];
+    expect(en.map((p) => [p['id'], p['name']])).toEqual([['periodic-report', 'Periodic report']]);
+    expect((await admin('GET', '/template-presets?category=other')).body).toEqual([]);
+    expect((await admin('GET', '/template-presets?locale=fr')).status).toBe(422);
+    expect((await http('GET', '/admin/template-presets', {})).status).toBe(401);
+  });
+
+  it('tạo từ mẫu -> 201, nháp v1 kiểu blocks đúng nhóm + thiết kế + biến của mẫu; xuất bản được ngay; gửi đổ biến', async () => {
+    const preset = ((await admin('GET', '/template-presets?locale=en')).body as unknown as Json[]).find((p) => p['id'] === 'task-due-reminder')!;
+    const res = await fromPreset({ presetId: 'task-due-reminder', locale: 'en', name: 'Task due (preset)' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ name: 'Task due (preset)', category: 'reminder', editor: 'blocks', draftVersion: 1, publishedVersion: null });
+    const draft = latest(res.body);
+    expect(draft).toMatchObject({ version: 1, status: 'draft', editor: 'blocks', subject: preset['subject'], design: preset['design'] });
+    expect(draft['html']).toBe(preset['html']);
+    expect(draft['variables']).toEqual(preset['variables']);
+
+    const id = res.body['id'] as string;
+    expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
+    const rendered = await admin('POST', `${base()}/${id}/render`, {
+      payload: { task_name: 'Q3 <report>', due_at: 'Friday', task_url: 'https://work.example.com/t/1' },
+    });
+    expect(rendered.status).toBe(200);
+    expect(rendered.body['subject']).toBe('Reminder: Q3 <report> is due soon');
+    expect(rendered.body['html']).toContain('Q3 &lt;report&gt;');
+    expect(rendered.body['html']).toContain('href="https://work.example.com/t/1"');
+  });
+
+  it('mẫu lạ -> 404; trùng tên -> 409 TEMPLATE_NAME_TAKEN; locale sai / thiếu tên -> 422; app khác org -> 404', async () => {
+    const missing = await fromPreset({ presetId: 'no-such-preset', locale: 'vi', name: 'X' });
+    expect(missing.status).toBe(404);
+    expect(missing.body).toMatchObject({ code: 'NOT_FOUND', detail: 'template preset no-such-preset not found' });
+
+    expect((await fromPreset({ presetId: 'welcome', locale: 'vi', name: 'Chào mừng (mẫu)' })).status).toBe(201);
+    const taken = await fromPreset({ presetId: 'welcome', locale: 'vi', name: 'chao mung (mau)' });
+    expect(taken.status).toBe(409);
+    expect(taken.body['code']).toBe('TEMPLATE_NAME_TAKEN');
+
+    expect((await fromPreset({ presetId: 'welcome', locale: 'fr', name: 'Y' })).status).toBe(422);
+    expect((await fromPreset({ presetId: 'welcome', locale: 'vi', name: '  ' })).status).toBe(422);
+    expect((await fromPreset({ presetId: 'welcome', locale: 'vi' })).status).toBe(422);
+    expect((await admin('POST', '/apps/00000000-0000-4000-8000-000000000000/templates/from-preset', { presetId: 'welcome', locale: 'vi', name: 'Z' })).status).toBe(404);
+  });
+
+  it('audit TemplateCreated ghi after.createdFromPreset qua worker thật', async () => {
+    const worker = await startWorker(c, consumerRegistry(application));
+    try {
+      const res = await fromPreset({ presetId: 'periodic-report', locale: 'vi', name: 'Báo cáo tháng (mẫu)' });
+      const id = res.body['id'] as string;
+      while ((await c.infra.outboxRelay.relayOnce()) > 0);
+      let entries: Json[] = [];
+      await eventually(async () => {
+        entries = (await admin('GET', `/audit?targetType=Template&targetId=${id}`)).body as unknown as Json[];
+        return entries.length >= 1;
+      });
+      expect(entries[0]).toMatchObject({
+        action: 'TemplateCreated',
+        after: { category: 'report', editor: 'blocks', createdFromPreset: { presetId: 'periodic-report', presetVersion: 1, locale: 'vi' } },
+      });
+    } finally {
+      await worker.stop();
+    }
+  });
+});

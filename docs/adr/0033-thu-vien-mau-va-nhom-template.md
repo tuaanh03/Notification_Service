@@ -36,14 +36,13 @@ template sang template mới. Đợt 1 làm phần quản lý; thư viện mẫu
      app nào đang gửi bằng id cũ vẫn bị `TEMPLATE_ARCHIVED`.
    - Audit: `TemplateCreated` với `after.duplicatedFrom = { templateId, version }`.
 
-## 3. Đợt 3 — thư viện mẫu (CHƯA LÀM)
+## 3. Đợt 3 — thư viện mẫu: xem ADR-0035
 
-Hướng đã đề xuất, chờ người dùng chốt: mẫu hệ thống viết trong code backend (vi / en), chỉ đọc, gắn
-một nhóm của quyết định 1; "Dùng mẫu này" chép thành template mới của app như nhân bản — không đồng bộ khi
-mẫu đổi. Mẫu phải qua `validate()` với 0 lỗi (không chữ "unsubscribe", link https / mailto / biến).
-Cột `created_from_preset`, `description` thêm khi làm đợt này, không thêm trước.
+Đã làm theo hướng đề xuất ở đây: mẫu viết trong code backend (vi / en), chỉ đọc, gắn một nhóm của
+quyết định 1; "Dùng mẫu" chép thành template mới của app như nhân bản — không đồng bộ khi mẫu đổi; mẫu
+qua `validate()` với 0 lỗi. Khác dự kiến: KHÔNG thêm cột `created_from_preset` / `description` — "tạo từ
+mẫu" ghi trong audit (`after.createdFromPreset`). Chi tiết ở ADR-0035.
 
 ## 4. Chưa làm
 
-Thư viện mẫu (mục 3) · nhóm do app tự đặt / nhãn tự do · chép template sang app khác · trình soạn
-kéo-thả (đợt 2, ADR riêng: cột `editor` / `design`).
+Nhóm do app tự đặt / nhãn tự do · chép template sang app khác. (Kéo-thả: ADR-0034; thư viện mẫu: ADR-0035.)
