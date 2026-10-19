@@ -9,6 +9,8 @@ import {
   type EmailDesign,
 } from '../types/email-design.ts';
 import type { VariableSpec } from '../types/template-variable.ts';
+import type { VisualDesign } from '../types/visual-design.ts';
+import { checkEmailHtml, checkVisualDesign, emailHtmlToText, normalizeLiquid } from './email-html.ts';
 import { VARIABLE_RE } from './template-variables.ts';
 
 /**
@@ -93,15 +95,28 @@ export function assertDesign(design: EmailDesign): void {
   if (issues.length) throw new ValidationError(issues);
 }
 
-/** Nội dung người soạn gửi khi lưu nháp — kiểu `blocks` không có `html` / `text`, backend tự sinh. */
+/**
+ * Nội dung người soạn gửi khi lưu nháp — kiểu `blocks` không có `html` / `text`, backend tự sinh; kiểu
+ * `visual` có `html` (trình duyệt sinh) nhưng không có `text` (backend sinh từ HTML đã kiểm).
+ */
 export type DraftInput =
   | { editor: 'html'; subject: string; html: string; text: string; schema: readonly VariableSpec[] }
-  | { editor: 'blocks'; subject: string; design: EmailDesign; schema: readonly VariableSpec[] };
+  | { editor: 'blocks'; subject: string; design: EmailDesign; schema: readonly VariableSpec[] }
+  | { editor: 'visual'; subject: string; html: string; design: VisualDesign; schema: readonly VariableSpec[] };
 
-/** Đổi nội dung nháp thành `TemplateContent`; kiểu `blocks` kiểm giới hạn rồi sinh `html` + `text`. */
+/**
+ * Đổi nội dung nháp thành `TemplateContent`; kiểu `blocks` kiểm giới hạn rồi sinh `html` + `text`; kiểu
+ * `visual` kiểm an toàn HTML + cỡ dự án, chuẩn hoá biến rồi sinh `text` (ADR-0036).
+ */
 export function draftContent(input: DraftInput): TemplateContent {
   if (input.editor === 'html') {
     return { editor: 'html', design: null, subject: input.subject, html: input.html, text: input.text, schema: input.schema };
+  }
+  if (input.editor === 'visual') {
+    const issues = [...checkVisualDesign(input.design), ...checkEmailHtml(input.html)];
+    if (issues.length) throw new ValidationError(issues);
+    const html = normalizeLiquid(input.html);
+    return { editor: 'visual', design: input.design, subject: input.subject, html, text: emailHtmlToText(html), schema: input.schema };
   }
   assertDesign(input.design);
   return { editor: 'blocks', design: input.design, subject: input.subject, ...renderDesign(input.design), schema: input.schema };

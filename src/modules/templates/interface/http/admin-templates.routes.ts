@@ -14,6 +14,7 @@ import type {
   PublishVersion,
   RenderTemplate,
   SaveDraft,
+  TemplateEditorOptions,
   TemplatePresetQueries,
   TemplateQueries,
   UpdateTemplate,
@@ -22,6 +23,7 @@ import { TEMPLATE_NAME_MAX_LENGTH } from '../../domain/entities/template.ts';
 import type { DraftInput } from '../../domain/rules/email-design.ts';
 import { PRESET_LOCALES } from '../../domain/types/template-preset.ts';
 import { emailDesignSchema } from './email-design.schema.ts';
+import { visualDesignSchema } from './visual-design.schema.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
 const templateParams = appParams.extend({ templateId: z.string().uuid() });
@@ -52,12 +54,14 @@ const content = {
   variables: z.array(variable).max(100).default([]),
 };
 /**
- * Nháp kiểu `html` (bỏ trống `editor` = như client cũ) hoặc `blocks` — kiểu `blocks` KHÔNG nhận `html` /
- * `text`: backend sinh từ `design` (ADR-0034).
+ * Nháp kiểu `html` (bỏ trống `editor` = như client cũ), `blocks` hoặc `visual`. Kiểu `blocks` KHÔNG nhận
+ * `html` / `text`: backend sinh từ `design` (ADR-0034). Kiểu `visual` nhận `html` do trình duyệt sinh (backend
+ * kiểm, từ chối nếu không an toàn) nhưng KHÔNG nhận `text`: backend sinh từ HTML đã kiểm (ADR-0036).
  */
 const draftBody = z.union([
   z.object({ editor: z.literal('html').optional(), ...content }).strict(),
   z.object({ editor: z.literal('blocks'), subject: content.subject, design: emailDesignSchema, variables: content.variables }).strict(),
+  z.object({ editor: z.literal('visual'), subject: content.subject, html: content.html, design: visualDesignSchema, variables: content.variables }).strict(),
 ]);
 const createShared = {
   name: NAME,
@@ -68,6 +72,14 @@ const createShared = {
 const createBody = z.union([
   z.object({ ...createShared, editor: z.literal('html').optional(), html: content.html.optional(), text: content.text.optional() }).strict(),
   z.object({ ...createShared, editor: z.literal('blocks'), design: emailDesignSchema.optional() }).strict(),
+  // Trực quan: bỏ trống cả hai = thư trống (console dựng thư mẫu ban đầu); có thì phải đi cùng nhau.
+  z
+    .object({ ...createShared, editor: z.literal('visual'), html: content.html.optional(), design: visualDesignSchema.optional() })
+    .strict()
+    .refine((body) => (body.html === undefined) === (body.design === undefined), {
+      message: 'html and design must be sent together',
+      path: ['design'],
+    }),
 ]);
 const designPreviewBody = z.object({ design: emailDesignSchema }).strict();
 const updateBody = z
@@ -102,10 +114,17 @@ const aiComposeBody = z
     path: ['current'],
   });
 
-const toDraft = (body: z.infer<typeof draftBody>): DraftInput =>
-  body.editor === 'blocks'
-    ? { editor: 'blocks', subject: body.subject, design: body.design, schema: body.variables }
-    : { editor: 'html', subject: body.subject, html: body.html, text: body.text, schema: body.variables };
+function toDraft(body: z.infer<typeof draftBody>): DraftInput {
+  if (body.editor === 'blocks') return { editor: 'blocks', subject: body.subject, design: body.design, schema: body.variables };
+  if (body.editor === 'visual') return { editor: 'visual', subject: body.subject, html: body.html, design: body.design, schema: body.variables };
+  return { editor: 'html', subject: body.subject, html: body.html, text: body.text, schema: body.variables };
+}
+
+function toCreateContent(body: z.infer<typeof createBody>) {
+  if (body.editor === 'blocks') return { design: body.design, content: { subject: body.subject, schema: body.variables } };
+  if (body.editor === 'visual') return { design: body.design, content: { subject: body.subject, html: body.html, schema: body.variables } };
+  return { content: { subject: body.subject, html: body.html, text: body.text, schema: body.variables } };
+}
 
 /**
  * `/admin/apps/:appId/templates` — admin soạn và xuất bản template. App service KHÔNG có đường ghi
@@ -126,6 +145,7 @@ export function adminTemplatesRoutes(useCases: {
   renderTemplate: RenderTemplate;
   queries: TemplateQueries;
   presets: TemplatePresetQueries;
+  editorOptions: TemplateEditorOptions;
 }): HttpRoutes {
   return (app) => {
     const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
@@ -146,9 +166,7 @@ export function adminTemplatesRoutes(useCases: {
           name: body.name,
           category: body.category,
           editor: body.editor,
-          ...(body.editor === 'blocks'
-            ? { design: body.design, content: { subject: body.subject, schema: body.variables } }
-            : { content: { subject: body.subject, html: body.html, text: body.text, schema: body.variables } }),
+          ...toCreateContent(body),
         },
         ctx(request),
       );
@@ -160,6 +178,9 @@ export function adminTemplatesRoutes(useCases: {
       const { category, locale } = parseInput(presetListQuery, request.query);
       return useCases.presets.list({ category, locale });
     });
+
+    // Kiểu soạn nào đang mở cho người tạo (cờ bộ soạn trực quan — ADR-0036). Không thuộc app nào.
+    app.get('/template-editor-options', { config: access('catalog.read') }, async () => useCases.editorOptions.execute());
 
     // "Dùng mẫu": template MỚI của app, nháp v1 kiểu blocks chép từ mẫu — quyền như lệnh tạo.
     app.post('/apps/:appId/templates/from-preset', { config: access('app.manage') }, async (request, reply) => {

@@ -226,8 +226,11 @@ describe('Cài đặt hệ thống', () => {
       'incoming.max_hooks_per_app': 20,
       'apps.max_active_api_keys': 20,
       'webhooks.max_endpoints_per_app': 10,
+      'templates.visual_editor_enabled': false,
     });
     expect(effectiveSettings(new Map([['incoming.dedupe_window_minutes', 99999]]))['incoming.dedupe_window_minutes']).toBe(10);
+    expect(effectiveSettings(new Map([['templates.visual_editor_enabled', 'yes']]))['templates.visual_editor_enabled']).toBe(false);
+    expect(effectiveSettings(new Map([['templates.visual_editor_enabled', true]]))['templates.visual_editor_enabled']).toBe(true);
   });
 
   it('kiểm khoảng và URL', () => {
@@ -238,7 +241,10 @@ describe('Cài đặt hệ thống', () => {
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'http://ews-api.example.com'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'https://a.com/?x=1'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('apps.max_active_api_keys', 101))).toBe('SETTING_OUT_OF_RANGE');
-    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(6);
+    expect(normalizeSetting('templates.visual_editor_enabled', true)).toBe(true);
+    expect(codeOf(() => normalizeSetting('templates.visual_editor_enabled', 'true'))).toBe('SETTING_INVALID_BOOLEAN');
+    expect(codeOf(() => normalizeSetting('templates.visual_editor_enabled', 1))).toBe('SETTING_INVALID_BOOLEAN');
+    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(7);
   });
 });
 

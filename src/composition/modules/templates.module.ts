@@ -11,6 +11,8 @@ import {
   PublishVersion,
   RenderTemplate,
   SaveDraft,
+  ScanHtmlTemplates,
+  TemplateEditorOptions,
   TemplatePresetQueries,
   TemplateQueries,
   UpdateTemplate,
@@ -22,20 +24,28 @@ import {
   DrizzleTemplateRepository,
   OpenAiCompatibleTemplateWriter,
   RedisAiComposeRateLimiter,
+  SettingsTemplateFeatures,
 } from '../../modules/templates/infrastructure/adapters/index.ts';
+import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
 import { FixedWindowRateLimiter } from '../../shared/rate-limit/index.ts';
 import { adminTemplatesRoutes } from '../../modules/templates/interface/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
 
 /**
- * Ghép module templates: admin soạn / xuất bản (ADR-0020). Hỏi apps qua adapter. Trả thêm hai use case
- * công khai cho notifications: `renderTemplate` (đổ biến lúc nhận gửi) và `templateQueries` (nhãn theo lô).
+ * Ghép module templates: admin soạn / xuất bản (ADR-0020). Hỏi apps và settings (cờ bộ soạn trực quan —
+ * ADR-0036) qua adapter. Trả thêm hai use case công khai cho notifications: `renderTemplate` (đổ biến lúc
+ * nhận gửi) và `templateQueries` (nhãn theo lô); `scanHtmlTemplates` chỉ cho admin-cli.
  */
 export function templatesModule(
   container: Container,
-  dependencies: { appQueries: AppQueries; aiWriter?: TemplateAiWriter | undefined },
-): { definition: ModuleDefinition; renderTemplate: RenderTemplate; templateQueries: TemplateQueries } {
+  dependencies: { appQueries: AppQueries; systemSettings: SystemSettingsQueries; aiWriter?: TemplateAiWriter | undefined },
+): {
+  definition: ModuleDefinition;
+  renderTemplate: RenderTemplate;
+  templateQueries: TemplateQueries;
+  scanHtmlTemplates: ScanHtmlTemplates;
+} {
   const { uow, outbox, clock, logger } = container.ports;
   const { transactions } = container.infra;
   const templates = new DrizzleTemplateRepository({ transactions });
@@ -57,7 +67,8 @@ export function templatesModule(
   });
 
   const renderTemplate = new RenderTemplate({ templates });
-  const createTemplate = new CreateTemplate({ ...deps, apps: new AppsAppLookup(dependencies) });
+  const features = new SettingsTemplateFeatures(dependencies);
+  const createTemplate = new CreateTemplate({ ...deps, apps: new AppsAppLookup(dependencies), features });
   const definition: ModuleDefinition = {
     name: 'templates',
     http: {
@@ -77,11 +88,12 @@ export function templatesModule(
           renderTemplate,
           queries,
           presets: new TemplatePresetQueries(),
+          editorOptions: new TemplateEditorOptions({ features }),
         }),
       ],
     },
   };
-  return { definition, renderTemplate, templateQueries: queries };
+  return { definition, renderTemplate, templateQueries: queries, scanHtmlTemplates: new ScanHtmlTemplates({ templates }) };
 }
 
 /** Giới hạn gọi AI của MỘT admin — cố định trong code, không qua env (chống tốn tiền, không phải tinh chỉnh). */

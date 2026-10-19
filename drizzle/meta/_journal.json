@@ -183,6 +183,13 @@
       "when": 1792331377823,
       "tag": "0025_template_editor_design",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1792406929200,
+      "tag": "0026_template_editor_visual",
+      "breakpoints": true
     }
   ]
 }

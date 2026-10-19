@@ -30,8 +30,8 @@ export class UpdateSystemSettings {
     if (entries.length === 0) throw ValidationError.of('SETTINGS_EMPTY', 'send at least one setting', 'values');
     const changes = entries.map(([key, raw]) => {
       if (!isSystemSettingKey(key)) throw ValidationError.of('SETTING_UNKNOWN', `unknown setting ${key}`, key);
-      // null = về mặc định cho cài đặt số; với URL, null chính là "chưa khai" (cũng là mặc định).
-      const reset = raw === null && (SYSTEM_SETTINGS[key].kind === 'int' || SYSTEM_SETTINGS[key].default === null);
+      // null = về mặc định cho cài đặt số / bật-tắt; với URL, null chính là "chưa khai" (cũng là mặc định).
+      const reset = raw === null && (SYSTEM_SETTINGS[key].kind !== 'url' || SYSTEM_SETTINGS[key].default === null);
       return { key, reset, value: reset ? null : normalizeSetting(key, raw) };
     });
 

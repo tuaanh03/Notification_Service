@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApplication, consumerRegistry, createContainer, type Application, type Container } from '../../src/composition/index.ts';
@@ -585,6 +586,120 @@ describe('trình soạn kéo-thả (ADR-0034)', () => {
     const bad = await admin('POST', `${base()}/design-preview`, { design: design([{ id: 'i', type: 'image', src: '{{ payload.img }}', width: 50, align: 'left' }]) });
     expect(codesOf(bad.body)).toEqual(['IMAGE_URL_NOT_ALLOWED']);
     expect((await admin('POST', `${base()}/design-preview`, { design: { ...design(blocks), version: 2 } })).status).toBe(422);
+  });
+});
+
+describe('bộ soạn trực quan (ADR-0036)', () => {
+  /** HTML thật do GrapesJS + grapesjs-mjml sinh (có nhánh [if mso], biến trong href, user.external_id). */
+  const mjmlHtml = readFileSync(new URL('../unit/fixtures/grapesjs-mjml-email.html', import.meta.url), 'utf8');
+  const mjml = readFileSync(new URL('../unit/fixtures/grapesjs-mjml-email.mjml', import.meta.url), 'utf8');
+  const visualDesign = { format: 'grapesjs-mjml', version: 1, project: { pages: [{ id: 'p1' }] }, mjml };
+  const visualDraft = {
+    editor: 'visual',
+    subject: '[Cảnh báo] {{ payload.vm_name }}',
+    html: mjmlHtml,
+    design: visualDesign,
+    variables: [
+      { name: 'payload.vm_name', source: 'payload', required: true, sample: 'ai-gateway' },
+      { name: 'payload.name', source: 'payload', required: false },
+      { name: 'payload.detail_url', source: 'payload', required: false },
+      { name: 'user.external_id', source: 'user', required: true },
+    ],
+  };
+  const latest = (body: Json) => (body['versions'] as Json[])[0]!;
+  const setFlag = (value: boolean | null) => admin('PUT', '/system-settings', { values: { 'templates.visual_editor_enabled': value } });
+
+  afterAll(async () => {
+    await setFlag(null);
+  });
+
+  it('cờ mặc định TẮT: options báo false, tạo kiểu visual -> 403 VISUAL_EDITOR_DISABLED; bật lên thì tạo được', async () => {
+    expect((await admin('GET', '/template-editor-options')).body).toEqual({ visualEditor: false });
+    const denied = await admin('POST', base(), { name: 'Trực quan 0', editor: 'visual' });
+    expect(denied.status).toBe(403);
+    expect(denied.body['code']).toBe('VISUAL_EDITOR_DISABLED');
+
+    expect((await setFlag(true)).status).toBe(200);
+    expect((await admin('GET', '/template-editor-options')).body).toEqual({ visualEditor: true });
+    const created = await admin('POST', base(), { name: 'Trực quan 0', editor: 'visual' });
+    expect(created.status).toBe(201);
+    expect(latest(created.body)).toMatchObject({ editor: 'visual', html: '', text: '', design: { format: 'grapesjs-mjml', version: 1, project: {}, mjml: '' } });
+    // html và design phải đi cùng nhau lúc tạo
+    expect((await admin('POST', base(), { name: 'Trực quan 0b', editor: 'visual', html: '<p>x</p>' })).status).toBe(422);
+  });
+
+  it('lưu nháp: HTML đã kiểm giữ nguyên, backend sinh text; xuất bản bằng validate() cũ; gửi đổ biến', async () => {
+    await setFlag(true);
+    const id = await createTemplate('Trực quan 1', { editor: 'visual' });
+    const saved = await admin('PUT', `${base()}/${id}/draft`, visualDraft);
+    expect(saved.status).toBe(200);
+    const v1 = latest(saved.body);
+    expect(v1).toMatchObject({ editor: 'visual', html: mjmlHtml, design: visualDesign });
+    expect(v1['text']).toContain('Cảnh báo: {{ payload.vm_name }}');
+    expect(v1['text']).not.toContain('<');
+
+    expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
+    const rendered = await admin('POST', `${base()}/${id}/render`, { payload: { vm_name: '<vm-01>', name: 'An' }, externalId: 'u-1' });
+    expect(rendered.status).toBe(200);
+    expect(rendered.body['html']).toContain('Cảnh báo: &lt;vm-01&gt;');
+    expect(rendered.body['html']).toContain('Xin chào An');
+    expect(rendered.body['html']).toContain('href="https://eon.vn"');
+    expect(rendered.body['html']).toContain('<!--[if mso | IE]>');
+  });
+
+  it('HTML không an toàn -> 422 kèm từng mã, KHÔNG ghi; text gửi lên -> 422; &quot; trong biến được chuẩn hoá', async () => {
+    await setFlag(true);
+    const id = await createTemplate('Trực quan 2', { editor: 'visual' });
+    const bad = await admin('PUT', `${base()}/${id}/draft`, {
+      ...visualDraft,
+      html: '<p onclick="x()">a</p><script>alert(1)</script><a href="javascript:alert(1)">b</a><img src="http://x.vn/a.png">',
+    });
+    expect(bad.status).toBe(422);
+    expect(codesOf(bad.body)).toEqual(['HTML_ATTRIBUTE_NOT_ALLOWED', 'HTML_TAG_NOT_ALLOWED', 'HTML_URL_NOT_ALLOWED', 'IMAGE_URL_NOT_ALLOWED']);
+    expect(latest((await admin('GET', `${base()}/${id}`)).body)['html']).toBe('');
+    expect((await admin('PUT', `${base()}/${id}/draft`, { ...visualDraft, text: 'x' })).status).toBe(422);
+    const tooBig = await admin('PUT', `${base()}/${id}/draft`, { ...visualDraft, design: { ...visualDesign, mjml: 'x'.repeat(64_001) } });
+    expect(codesOf(tooBig.body)).toEqual(['DESIGN_TOO_LARGE']);
+
+    const quoted = await admin('PUT', `${base()}/${id}/draft`, {
+      ...visualDraft,
+      html: '<p>Hi {{ payload.vm_name }}</p><a href="{{ payload.detail_url | default: &quot;https://x.vn&quot; }}">Xem</a>',
+    });
+    expect(quoted.status).toBe(200);
+    expect(latest(quoted.body)['html']).toContain(`href="{{ payload.detail_url | default: 'https://x.vn' }}"`);
+  });
+
+  it('nháp khác kiểu -> 409 EDITOR_MISMATCH; visual không chuyển sang HTML được', async () => {
+    await setFlag(true);
+    const htmlId = await createTemplate('Trực quan 3 html', validDraft);
+    expect((await admin('PUT', `${base()}/${htmlId}/draft`, visualDraft)).body['code']).toBe('EDITOR_MISMATCH');
+    const id = await createTemplate('Trực quan 3', { editor: 'visual' });
+    expect((await admin('PUT', `${base()}/${id}/draft`, validDraft)).body['code']).toBe('EDITOR_MISMATCH');
+    expect((await admin('POST', `${base()}/${id}/draft/convert-to-html`)).body['code']).toBe('EDITOR_MISMATCH');
+  });
+
+  it('cờ TẮT sau khi đã có template trực quan: vẫn lưu / xuất bản / tạo nháp từ bản cũ / nhân bản được', async () => {
+    await setFlag(true);
+    const id = await createTemplate('Trực quan 4', { editor: 'visual' });
+    await setFlag(false);
+    expect((await admin('PUT', `${base()}/${id}/draft`, visualDraft)).status).toBe(200);
+    expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
+    const v2 = latest((await admin('POST', `${base()}/${id}/draft/from/1`)).body);
+    expect(v2).toMatchObject({ version: 2, editor: 'visual', design: visualDesign, html: mjmlHtml });
+    const copy = await admin('POST', `${base()}/${id}/duplicate`, { name: 'Trực quan 4 (bản sao)' });
+    expect(copy.status).toBe(201);
+    expect(latest(copy.body)).toMatchObject({ editor: 'visual', design: visualDesign });
+  });
+
+  it('admin-cli chạy thử: liệt kê template kiểu html sẽ bị chặn, không ghi gì', async () => {
+    const id = await createTemplate('HTML có script', { ...validDraft, html: '<p>x</p><script>alert(1)</script>' });
+    const before = (await t.db.select().from(templateVersions)).length;
+    const { scanned, findings } = await application.adminOps.scanHtmlTemplates.execute();
+    expect(scanned).toBeGreaterThan(0);
+    const mine = findings.filter((f) => f.templateId === id);
+    expect(mine).toEqual([expect.objectContaining({ name: 'HTML có script', version: 1, status: 'draft', codes: ['HTML_TAG_NOT_ALLOWED'] })]);
+    expect(findings.every((f) => f.codes.length > 0)).toBe(true);
+    expect((await t.db.select().from(templateVersions)).length).toBe(before);
   });
 });
 

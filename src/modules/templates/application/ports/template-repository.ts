@@ -1,4 +1,4 @@
-import type { AppId, TemplateCategory, TemplateId, TemplateVersionId, TemplateVersionStatus } from '../../../../shared/kernel/index.ts';
+import type { AppId, TemplateCategory, TemplateEditor, TemplateId, TemplateVersionId, TemplateVersionStatus } from '../../../../shared/kernel/index.ts';
 import type { TemplateVersion } from '../../domain/entities/template-version.ts';
 import type { Template } from '../../domain/entities/template.ts';
 
@@ -26,6 +26,11 @@ export interface TemplateRepository {
   findPublishedVersion(templateId: TemplateId): Promise<TemplateVersion | null>;
   /** Tên template + số version theo LÔ — lịch sử gửi chỉ lưu `template_version_id`. */
   labelsOfVersions(versionIds: readonly TemplateVersionId[]): Promise<TemplateVersionLabel[]>;
+  /**
+   * Mọi version (mọi app, mọi trạng thái) của một kiểu soạn, kèm template — CHỈ ĐỌC, cho lệnh chạy thử
+   * của admin-cli (ADR-0036). Không dùng ở đường HTTP: không lọc theo app.
+   */
+  versionsByEditor(editor: TemplateEditor): Promise<{ template: Template; version: TemplateVersion }[]>;
   insertVersion(version: TemplateVersion): Promise<void>;
   /** Ghi có điều kiện theo trạng thái lúc đọc -> ConcurrentTransitionError (409) nếu bên kia đổi trước. */
   updateVersion(version: TemplateVersion, expectedStatus: TemplateVersionStatus): Promise<void>;

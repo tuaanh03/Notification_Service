@@ -22,6 +22,7 @@ const USAGE = `admin-cli — quản trị admin, chạy trong container
   set-member     --org <orgId> --email <email> --role owner|org_admin|member
   grant-app-role --app <appId> --email <email> --role app_admin|app_viewer
   list-accounts
+  scan-template-html   CHẠY THỬ, chỉ đọc: template kiểu html nào sẽ bị bộ kiểm an toàn (ADR-0036) chặn
 
 Mật khẩu nhập qua stdin (nhắc 2 lần), không truyền bằng tham số.
 --login m365: không đặt mật khẩu — người này chỉ đăng nhập bằng Microsoft 365 (khớp theo email).
@@ -194,6 +195,16 @@ export async function runAdminCli(env: Env, argv: readonly string[]): Promise<nu
           ctx,
         );
         process.stdout.write(`${granted.email} là ${granted.role} của app ${granted.appId}\n`);
+        return 0;
+      }
+      case 'scan-template-html': {
+        // Chỉ đọc: không sửa template nào, không ghi audit. In ra để quyết định có bật kiểm cho kiểu html không.
+        const { scanned, findings } = await app.adminOps.scanHtmlTemplates.execute();
+        for (const f of findings) {
+          process.stdout.write(`${f.appId}  ${f.templateId}  v${f.version} (${f.status})  ${f.name}\n`);
+          for (const message of f.messages) process.stdout.write(`    - ${message}\n`);
+        }
+        process.stdout.write(`đã quét ${scanned} version kiểu html — ${findings.length} version sẽ bị chặn\n`);
         return 0;
       }
       default:

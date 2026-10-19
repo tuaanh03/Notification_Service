@@ -1,6 +1,6 @@
 import type { AdminAuthenticator, AdminAuthorizer, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
-import type { TemplateAiWriter } from '../modules/templates/application/index.ts';
+import type { ScanHtmlTemplates, TemplateAiWriter } from '../modules/templates/application/index.ts';
 import type { MicrosoftIdentity, TenantDirectory } from '../modules/tenancy/application/index.ts';
 import type { WebhookTransport } from '../modules/webhooks/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
@@ -28,14 +28,14 @@ export interface Application {
   /** Kiểm quyền mọi route `/admin/*` (ADR-0022) — do module apps hiện thực. */
   readonly adminAuthorizer: AdminAuthorizer;
   /** Việc quản trị KHÔNG có route HTTP — chỉ `entrypoints/admin-cli` gọi (tạo admin đầu tiên). */
-  readonly adminOps: AdminOps & { grantAppRole: GrantAppRole };
+  readonly adminOps: AdminOps & { grantAppRole: GrantAppRole; scanHtmlTemplates: ScanHtmlTemplates };
 }
 
 /**
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
  * Thứ tự dựng theo phụ thuộc: settings -> tenancy -> apps (cần findOrganization, settings); subscriptions -> directory (cần apps)
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
- * -> templates (cần apps) -> delivery (provider email) -> notifications (cần apps, settings, directory, subscriptions, topics, templates, delivery)
+ * -> templates (cần apps, settings) -> delivery (provider email) -> notifications (cần apps, settings, directory, subscriptions, topics, templates, delivery)
  * -> webhooks (cần notifications, settings) -> incoming (cần apps, templates, topics, notifications, settings).
  */
 export interface ApplicationOverrides {
@@ -70,7 +70,11 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     findUser: directory.findUser,
     setOptedOutOptional: subscriptions.setOptedOutOptional,
   });
-  const templates = templatesModule(container, { appQueries: apps.appQueries, aiWriter: overrides.templateAiWriter });
+  const templates = templatesModule(container, {
+    appQueries: apps.appQueries,
+    systemSettings: settings.systemSettings,
+    aiWriter: overrides.templateAiWriter,
+  });
   const delivery = deliveryModule(container, overrides);
   const notifications = notificationsModule(container, {
     findUser: directory.findUser,
@@ -118,7 +122,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
       admin: tenancy.adminAuthenticator,
     },
     adminAuthorizer: apps.adminAuthorizer,
-    adminOps: { ...tenancy.adminOps, grantAppRole: apps.grantAppRole },
+    adminOps: { ...tenancy.adminOps, grantAppRole: apps.grantAppRole, scanHtmlTemplates: templates.scanHtmlTemplates },
   };
 }
 

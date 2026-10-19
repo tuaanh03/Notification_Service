@@ -3,7 +3,7 @@ import { boolean, int, json, mediumtext, mysqlEnum, mysqlTable, uniqueIndex, var
 import { CHANNELS, TEMPLATE_CATEGORIES, TEMPLATE_EDITORS, TEMPLATE_STATUSES, TEMPLATE_VERSION_STATUSES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 import { apps } from '../../../apps/infrastructure/db/schema.ts';
-import type { EmailDesign } from '../../domain/types/email-design.ts';
+import type { TemplateDesign } from '../../domain/types/visual-design.ts';
 import type { VariableSpec } from '../../domain/types/template-variable.ts';
 
 export const templates = mysqlTable(
@@ -38,10 +38,13 @@ export const templateVersions = mysqlTable(
       .references(() => templates.templateId),
     version: int('version').notNull(),
     status: mysqlEnum('status', TEMPLATE_VERSION_STATUSES).notNull().default('draft'),
-    /** Kiểu soạn (ADR-0034). `blocks`: `html` / `text` do backend sinh từ `design`, vẫn là nguồn gửi. */
+    /**
+     * Kiểu soạn (ADR-0034, ADR-0036). `blocks`: `html` / `text` do backend sinh từ `design`; `visual`: trình
+     * duyệt sinh `html`, backend kiểm rồi sinh `text`. Cả hai vẫn gửi từ cột `html` / `text`.
+     */
     editor: mysqlEnum('editor', TEMPLATE_EDITORS).notNull().default('html'),
-    /** Thiết kế kéo-thả; NULL khi `editor = 'html'`. */
-    design: json('design').$type<EmailDesign>(),
+    /** `blocks`: thiết kế kéo-thả; `visual`: dự án GrapesJS + MJML; NULL khi `editor = 'html'`. */
+    design: json('design').$type<TemplateDesign>(),
     subject: varchar('subject', { length: 500 }).notNull(),
     /** MEDIUMTEXT như `notifications.body_html` — TEXT chỉ 64 KB, HTML email có style inline dễ vượt. */
     html: mediumtext('html').notNull(),

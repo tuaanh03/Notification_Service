@@ -1,0 +1,1 @@
+ALTER TABLE `template_versions` MODIFY COLUMN `editor` enum('html','blocks','visual') NOT NULL DEFAULT 'html';

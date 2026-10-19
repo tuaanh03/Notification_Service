@@ -11,16 +11,17 @@ import {
   type TimestampInput,
 } from '../../../../shared/kernel/index.ts';
 import { validateBody, validateLinks, validateSchema, validateSupportedVariables } from '../rules/template-variables.ts';
-import type { EmailDesign } from '../types/email-design.ts';
+import type { TemplateDesign } from '../types/visual-design.ts';
 import type { VariableSpec } from '../types/template-variable.ts';
 
 /**
  * Nội dung soạn được của một version — đúng thứ `PUT .../draft` ghi. Kiểu `blocks` (ADR-0034): `html` /
- * `text` do backend sinh từ `design`, vẫn là nguồn gửi; kiểu `html`: `design` = null.
+ * `text` do backend sinh từ `design`; kiểu `visual` (ADR-0036): `html` do trình duyệt sinh (đã kiểm), `text`
+ * backend sinh, `design` là dự án GrapesJS. Cả hai vẫn gửi từ `html` / `text`. Kiểu `html`: `design` = null.
  */
 export interface TemplateContent {
   editor: TemplateEditor;
-  design: EmailDesign | null;
+  design: TemplateDesign | null;
   subject: string;
   html: string;
   text: string;
@@ -34,7 +35,7 @@ export interface TemplateVersionProps extends TimestampInput {
   status?: TemplateVersionStatus | undefined;
   /** Bỏ trống = `html` (dòng có trước migration 0025). */
   editor?: TemplateEditor | undefined;
-  design?: EmailDesign | null | undefined;
+  design?: TemplateDesign | null | undefined;
   subject: string;
   html: string;
   text: string;
@@ -59,7 +60,7 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
   readonly version: number;
   status: TemplateVersionStatus;
   editor: TemplateEditor;
-  design: EmailDesign | null;
+  design: TemplateDesign | null;
   subject: string;
   html: string;
   text: string;
@@ -75,7 +76,7 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
     this.version = props.version;
     this.status = props.status ?? 'draft';
     this.editor = props.editor ?? 'html';
-    this.design = this.editor === 'blocks' ? (props.design ?? null) : null;
+    this.design = this.editor === 'html' ? null : (props.design ?? null);
     this.subject = props.subject;
     this.html = props.html;
     this.text = props.text;
@@ -100,7 +101,7 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
   /** Chỉ bản nháp sửa được — bản đã xuất bản là thứ đang gửi đi, sửa tại chỗ là đổi thư giữa chừng. */
   edit(content: TemplateContent, at: Date): void {
     this.assertDraft();
-    // Đổi kiểu soạn không đi bằng lưu nháp: blocks -> html qua `convertToHtml`, html -> blocks không có.
+    // Đổi kiểu soạn không đi bằng lưu nháp: blocks -> html qua `convertToHtml`; chiều khác chưa có.
     if (content.editor !== this.editor) {
       throw new ConflictError('EDITOR_MISMATCH', `draft version ${this.version} uses the ${this.editor} editor, not ${content.editor}`);
     }
@@ -119,7 +120,7 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
   convertToHtml(at: Date): void {
     this.assertDraft();
     if (this.editor !== 'blocks') {
-      throw new ConflictError('EDITOR_MISMATCH', `draft version ${this.version} already uses the html editor`);
+      throw new ConflictError('EDITOR_MISMATCH', `draft version ${this.version} uses the ${this.editor} editor, only blocks converts to html`);
     }
     this.editor = 'html';
     this.design = null;

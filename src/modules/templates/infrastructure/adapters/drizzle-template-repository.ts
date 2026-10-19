@@ -7,6 +7,7 @@ import {
   TemplateId,
   TemplateVersionId,
   type AppId as AppIdType,
+  type TemplateEditor,
   type TemplateId as TemplateIdType,
   type TemplateVersionId as TemplateVersionIdType,
   type TemplateVersionStatus,
@@ -141,6 +142,17 @@ export class DrizzleTemplateRepository implements TemplateRepository {
       name: row.name,
       version: row.version,
     }));
+  }
+
+  async versionsByEditor(editor: TemplateEditor): Promise<{ template: Template; version: TemplateVersion }[]> {
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(templateVersions)
+      .innerJoin(templates, eq(templates.templateId, templateVersions.templateId))
+      .where(eq(templateVersions.editor, editor))
+      .orderBy(asc(templates.appId), asc(templates.name), desc(templateVersions.version));
+    return rows.map((row) => ({ template: toTemplate(row.templates), version: toVersion(row.template_versions) }));
   }
 
   async insertVersion(version: TemplateVersion): Promise<void> {
