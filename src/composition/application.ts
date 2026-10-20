@@ -1,6 +1,6 @@
 import type { AdminAuthenticator, AdminAuthorizer, ApiKeyAuthenticator, HttpRoutes, HttpSurfaces } from '../shared/http/index.ts';
 import type { EmailProvider } from '../modules/delivery/application/index.ts';
-import type { PurgeBlocksTemplates, ScanHtmlTemplates, TemplateAiWriter } from '../modules/templates/application/index.ts';
+import type { ScanHtmlTemplates, TemplateAiWriter } from '../modules/templates/application/index.ts';
 import type { MicrosoftIdentity, TenantDirectory } from '../modules/tenancy/application/index.ts';
 import type { WebhookTransport } from '../modules/webhooks/application/index.ts';
 import type { Job } from '../shared/jobs/index.ts';
@@ -16,7 +16,7 @@ import { subscriptionsModule } from './modules/subscriptions.module.ts';
 import { templatesModule } from './modules/templates.module.ts';
 import { topicsModule } from './modules/topics.module.ts';
 import { webhooksModule } from './modules/webhooks.module.ts';
-import { incomingModule, incomingTemplateUsage } from './modules/incoming.module.ts';
+import { incomingModule } from './modules/incoming.module.ts';
 import { settingsModule } from './modules/settings.module.ts';
 import { tenancyModule, type AdminOps } from './modules/tenancy.module.ts';
 import type { GrantAppRole } from '../modules/apps/application/index.ts';
@@ -28,18 +28,14 @@ export interface Application {
   /** Kiểm quyền mọi route `/admin/*` (ADR-0022) — do module apps hiện thực. */
   readonly adminAuthorizer: AdminAuthorizer;
   /** Việc quản trị KHÔNG có route HTTP — chỉ `entrypoints/admin-cli` gọi (tạo admin đầu tiên). */
-  readonly adminOps: AdminOps & {
-    grantAppRole: GrantAppRole;
-    scanHtmlTemplates: ScanHtmlTemplates;
-    purgeBlocksTemplates: PurgeBlocksTemplates;
-  };
+  readonly adminOps: AdminOps & { grantAppRole: GrantAppRole; scanHtmlTemplates: ScanHtmlTemplates };
 }
 
 /**
  * DANH SÁCH MODULE — thêm module mới là thêm MỘT dòng ở đây (và một file trong `modules/`).
  * Thứ tự dựng theo phụ thuộc: settings -> tenancy -> apps (cần findOrganization, settings); subscriptions -> directory (cần apps)
  * (directory đặt email qua use case của subscriptions) -> topics (cần apps, directory, subscriptions)
- * -> templates (cần apps; lệnh dọn của admin-cli cần thêm notifications + incoming) -> delivery (provider email) -> notifications (cần apps, settings, directory, subscriptions, topics, templates, delivery)
+ * -> templates (cần apps) -> delivery (provider email) -> notifications (cần apps, settings, directory, subscriptions, topics, templates, delivery)
  * -> webhooks (cần notifications, settings) -> incoming (cần apps, templates, topics, notifications, settings).
  */
 export interface ApplicationOverrides {
@@ -125,15 +121,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
       admin: tenancy.adminAuthenticator,
     },
     adminAuthorizer: apps.adminAuthorizer,
-    adminOps: {
-      ...tenancy.adminOps,
-      grantAppRole: apps.grantAppRole,
-      scanHtmlTemplates: templates.scanHtmlTemplates,
-      purgeBlocksTemplates: templates.purgeBlocksTemplates({
-        countTemplateUsage: notifications.countTemplateUsage,
-        countHooksByTemplate: incomingTemplateUsage(container),
-      }),
-    },
+    adminOps: { ...tenancy.adminOps, grantAppRole: apps.grantAppRole, scanHtmlTemplates: templates.scanHtmlTemplates },
   };
 }
 

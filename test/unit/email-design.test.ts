@@ -4,11 +4,8 @@ import { TemplateVersion } from '../../src/modules/templates/domain/entities/tem
 import { renderTemplate } from '../../src/modules/templates/domain/rules/render-template.ts';
 import type { TemplateContent } from '../../src/modules/templates/domain/entities/template-version.ts';
 import {
-  assertDesign,
-  assertEditorSupported,
   checkDesign,
   DESIGN_LIMITS,
-  draftContent,
   emptyDesign,
   escapeKeepingVariables,
   renderDesign,
@@ -47,25 +44,25 @@ const image = (src: string, over: Partial<Extract<DesignBlock, { type: 'image' }
 });
 
 /**
- * Dòng kiểu blocks như lúc còn lưu được (ADR-0034): HTML sinh bằng `renderDesign`. Kiểu này đã ngừng (ADR-0037) —
- * không lưu mới được, nhưng dòng cũ vẫn đọc / xuất bản / gửi như thường.
+ * HTML `renderDesign` sinh (ảnh thu nhỏ của thư viện mẫu — ADR-0037) đặt vào một version kiểu `html` để chạy đúng
+ * `validate()` của xuất bản: hàm sinh không được tạo ra thứ luật nội dung từ chối.
  */
-const legacyBlocks = (subject: string, d: EmailDesign, schema: readonly VariableSpec[]): TemplateContent => ({
-  editor: 'blocks',
-  design: d,
+const rendered = (subject: string, d: EmailDesign, schema: readonly VariableSpec[]): TemplateContent => ({
+  editor: 'html',
+  design: null,
   subject,
   ...renderDesign(d),
   schema,
 });
 
-/** Dòng kiểu blocks rồi chạy `validate()` của xuất bản. */
+/** Thiết kế -> HTML rồi chạy `validate()` của xuất bản. */
 const publishIssues = (d: EmailDesign, schema = [{ name: 'payload.vm_name', source: 'payload' as const, required: true }]) =>
   codes(
     new TemplateVersion({
       id: TemplateVersionId.create(),
       templateId: TemplateId.create(),
       version: 1,
-      ...legacyBlocks('Cảnh báo {{ payload.vm_name }}', d, schema),
+      ...rendered('Cảnh báo {{ payload.vm_name }}', d, schema),
       createdAt: at,
     }).validate(),
   );
@@ -90,7 +87,7 @@ describe('renderDesign — escape chữ người soạn, giữ biến (ADR-0034)
 
   it('biến trong thuộc tính: " đổi thành \' và vẫn đổ đúng lúc gửi', () => {
     expect(escapeKeepingVariables('{{ payload.url | default: "https://a.vn" }}', true)).toBe("{{ payload.url | default: 'https://a.vn' }}");
-    const content = legacyBlocks('s', design([[button('{{ payload.url | default: "https://ews.vn/?a=1&b=2" }}')]]), [
+    const content = rendered('s', design([[button('{{ payload.url | default: "https://ews.vn/?a=1&b=2" }}')]]), [
       { name: 'payload.url', source: 'payload', required: false },
     ]);
     const out = renderTemplate(content, { payload: {}, externalId: 'emp_01' });
@@ -170,42 +167,5 @@ describe('checkDesign — giới hạn và link ảnh (lúc lưu)', () => {
     expect(codes(checkDesign(design([many])))).toEqual(['DESIGN_TOO_MANY_BLOCKS']);
     const big = Array.from({ length: 20 }, () => text('x'.repeat(DESIGN_LIMITS.textChars)));
     expect(codes(checkDesign(design([big])))).toEqual(['DESIGN_TOO_LARGE']);
-    expect(() => assertDesign(design([many]))).toThrow();
-  });
-});
-
-describe('TemplateVersion — kiểu soạn', () => {
-  const blocksDraft = () =>
-    new TemplateVersion({
-      id: TemplateVersionId.create(),
-      templateId: TemplateId.create(),
-      version: 1,
-      ...legacyBlocks('s', design([[text('a')]]), []),
-      createdAt: at,
-    });
-
-  it('kiểu blocks đã ngừng (ADR-0037): không tạo / lưu mới -> EDITOR_NOT_SUPPORTED; html / visual qua', () => {
-    expect(() => assertEditorSupported('blocks')).toThrow(
-      expect.objectContaining({ issues: [expect.objectContaining({ code: 'EDITOR_NOT_SUPPORTED', path: 'editor' })] }),
-    );
-    expect(() => assertEditorSupported('html')).not.toThrow();
-    expect(() => assertEditorSupported('visual')).not.toThrow();
-  });
-
-  it('lưu nháp khác kiểu -> EDITOR_MISMATCH', () => {
-    const v = blocksDraft();
-    expect(() => v.edit(draftContent({ editor: 'html', subject: 's', html: '<p>x</p>', text: '', schema: [] }), at)).toThrow(
-      expect.objectContaining({ code: 'EDITOR_MISMATCH' }),
-    );
-  });
-
-  it('chuyển sang HTML giữ html đã sinh, bỏ design; chuyển lần hai -> EDITOR_MISMATCH', () => {
-    const v = blocksDraft();
-    const html = v.html;
-    v.convertToHtml(at);
-    expect(v.editor).toBe('html');
-    expect(v.design).toBeNull();
-    expect(v.html).toBe(html);
-    expect(() => v.convertToHtml(at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
   });
 });

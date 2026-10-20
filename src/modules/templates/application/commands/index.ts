@@ -7,6 +7,4 @@ export * from './publish-version.ts';
 export * from './save-draft.ts';
 export * from './update-template.ts';
 export * from './compose-template-draft.ts';
-export * from './convert-draft-to-html.ts';
 export * from './create-template-from-preset.ts';
-export * from './purge-blocks-templates.ts';

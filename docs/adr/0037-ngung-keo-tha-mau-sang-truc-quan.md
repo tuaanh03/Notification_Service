@@ -70,6 +70,23 @@ deploy: migration chạy TRƯỚC app — nên không thể đổi ENUM `editor`
      `design-preview`, schema zod của thiết kế và lệnh dọn. `EmailDesign` + `renderDesign` + `designToMjml` giữ cho mẫu
      dựng sẵn (định dạng viết mẫu + ảnh thu nhỏ).
 
+### Bổ sung deploy 2 (làm xong)
+
+- Migration `0027_blocks_editor_removed`: câu đầu `ADD CONSTRAINT chk_no_blocks_left__run_admin_cli_purge_blocks_templates_apply
+  CHECK (editor <> 'blocks')` — còn dòng `blocks` thì MySQL dừng với "Check constraint '…' is violated" (tên ràng buộc
+  là lời nhắn), chưa đổi gì; qua thì gỡ ràng buộc, `MODIFY` ENUM = (`html`, `visual`), xoá dòng cũ
+  `system_settings.templates.visual_editor_enabled`. Không dùng stored procedure + `SIGNAL` (cần quyền `CREATE ROUTINE`
+  mà tài khoản migrate chưa chắc có). Test: `migrations.test.ts` dựng DB ở mốc 0026 có dòng `blocks` -> dừng đúng lời
+  nhắn, ENUM giữ nguyên; dọn xong chạy lại -> qua.
+- Gỡ: `blocks` khỏi `TEMPLATE_EDITORS`, `TemplateDesign` (chỉ còn `VisualDesign`), `convertToHtml` / `ConvertDraftToHtml`
+  / `POST …/draft/convert-to-html`, `PreviewDesign` / `POST …/templates/design-preview`, `email-design.schema.ts`,
+  `assertEditorSupported` (gửi `editor: 'blocks'` nay là 422 hình dạng như mọi giá trị lạ).
+- **Gỡ lệnh `purge-blocks-templates`** cùng `TemplatePurged` và hai query đếm chỗ dùng (`CountTemplateUsage`,
+  `CountHooksByTemplate`): sau 0027 không thể còn dòng `blocks`, lệnh không còn việc; giữ lại là code chết có quyền xoá
+  dữ liệu. Audit các lần dọn đã ghi vẫn còn trong `audit_log`.
+- Giữ: `EmailDesign`, `renderDesign` (ảnh thu nhỏ), `checkDesign` (test mẫu), `designToMjml`, `draftContent`.
+- Console: bỏ `blocks` khỏi `TEMPLATE_EDITORS`, bỏ màn chỉ đọc kiểu cũ + dải "Kiểu soạn cũ đã ngừng".
+
 ## 3. Hệ quả
 
 - Console: màn tạo mới có 2 kiểu — Trực quan (mặc định) và HTML. Không còn `@dnd-kit`, `components/templates/blocks/*`,

@@ -7,7 +7,7 @@ import {
   normalizeLiquid,
 } from '../../src/modules/templates/domain/rules/email-html.ts';
 import { parseVariables } from '../../src/modules/templates/domain/rules/template-variables.ts';
-import { draftContent, emptyDesign, normalizeSubject, renderDesign } from '../../src/modules/templates/domain/rules/email-design.ts';
+import { draftContent, normalizeSubject } from '../../src/modules/templates/domain/rules/email-design.ts';
 import { TemplateVersion } from '../../src/modules/templates/domain/entities/template-version.ts';
 import { emptyVisualDesign, type VisualDesign } from '../../src/modules/templates/domain/types/visual-design.ts';
 import { TemplateId, TemplateVersionId } from '../../src/shared/kernel/index.ts';
@@ -218,9 +218,8 @@ describe('draftContent — kiểu visual (ADR-0036)', () => {
     const v = new TemplateVersion({ id: TemplateVersionId.create(), templateId: TemplateId.create(), version: 1, ...visual(MJML_HTML), createdAt: at });
     expect(v.validate()).toEqual([]);
     expect(v.design).not.toBeNull();
-    const blocks = { editor: 'blocks' as const, design: emptyDesign(), subject: 'x', ...renderDesign(emptyDesign()), schema: [] };
-    expect(() => v.edit(blocks, at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
-    expect(() => v.convertToHtml(at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
+    const html = draftContent({ editor: 'html', subject: 'x', html: '<p>x</p>', text: 'x', schema: [] });
+    expect(() => v.edit(html, at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
   });
 });
 

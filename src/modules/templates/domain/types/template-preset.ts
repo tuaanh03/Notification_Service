@@ -13,7 +13,7 @@ export interface TemplatePresetContent {
   /** Một câu cho thẻ mẫu trên console. */
   description: string;
   subject: string;
-  /** Kiểu `blocks`, không có ảnh (chưa có chỗ lưu ảnh). */
+  /** Thiết kế `EmailDesign` (ra MJML bằng `designToMjml` — ADR-0037), không có ảnh (chưa có chỗ lưu ảnh). */
   design: EmailDesign;
   schema: readonly VariableSpec[];
 }

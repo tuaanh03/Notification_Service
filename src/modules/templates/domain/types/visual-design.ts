@@ -1,5 +1,3 @@
-import type { EmailDesign } from './email-design.ts';
-
 /**
  * Bộ soạn trực quan (ADR-0036) — GrapesJS + grapesjs-mjml chạy ở trình duyệt. Lưu ở `template_versions.design`
  * khi `editor = 'visual'`:
@@ -18,11 +16,5 @@ export interface VisualDesign {
   project: Record<string, unknown>;
   mjml: string;
 }
-
-/** `design` của một version theo kiểu soạn: `blocks` -> `EmailDesign`, `visual` -> `VisualDesign`. */
-export type TemplateDesign = EmailDesign | VisualDesign;
-
-export const isVisualDesign = (design: TemplateDesign | null): design is VisualDesign =>
-  design !== null && 'format' in design && design.format === VISUAL_DESIGN_FORMAT;
 
 export const emptyVisualDesign = (): VisualDesign => ({ format: VISUAL_DESIGN_FORMAT, version: VISUAL_DESIGN_VERSION, project: {}, mjml: '' });

@@ -1,4 +1,4 @@
-import { issue, ValidationError, type Issue, type TemplateEditor } from '../../../../shared/kernel/index.ts';
+import { issue, ValidationError, type Issue } from '../../../../shared/kernel/index.ts';
 import type { TemplateContent } from '../entities/template-version.ts';
 import {
   EMAIL_DESIGN_VERSION,
@@ -14,7 +14,9 @@ import { checkEmailHtml, checkVisualDesign, emailHtmlToText, normalizeLiquid } f
 import { VARIABLE_RE } from './template-variables.ts';
 
 /**
- * Trình soạn kéo-thả (ADR-0034): thiết kế JSON -> HTML email + bản chữ thường.
+ * Thiết kế JSON (`EmailDesign`, ADR-0034) -> HTML email + bản chữ thường. Trình kéo-thả đã gỡ (ADR-0037): định dạng
+ * này chỉ còn là cách VIẾT thư viện mẫu dựng sẵn; `renderDesign` làm ảnh thu nhỏ, `designToMjml` ra MJML để console
+ * biên dịch. File này cũng giữ `draftContent` — đường lưu nháp chung của kiểu `html` / `visual`.
  *
  * HTML dạng bảng, style inline, rộng tối đa 600px — chạy được trên Outlook bản Windows. Cột kiểu
  * "fluid hybrid": mỗi cột `inline-block` có `max-width`, Outlook đọc bảng ẩn trong `<!--[if mso]>`;
@@ -90,14 +92,9 @@ export function checkDesign(design: EmailDesign): Issue[] {
   return issues;
 }
 
-export function assertDesign(design: EmailDesign): void {
-  const issues = checkDesign(design);
-  if (issues.length) throw new ValidationError(issues);
-}
-
 /**
  * Nội dung người soạn gửi khi lưu nháp — kiểu `visual` có `html` (trình duyệt sinh) nhưng không có `text`
- * (backend sinh từ HTML đã kiểm). Kiểu `blocks` đã ngừng (ADR-0037): không tạo / lưu nháp được nữa, chỉ còn đọc.
+ * (backend sinh từ HTML đã kiểm).
  */
 export type DraftInput =
   | { editor: 'html'; subject: string; html: string; text: string; schema: readonly VariableSpec[] }
@@ -126,15 +123,6 @@ export function draftContent(raw: DraftInput): TemplateContent {
   return { editor: 'visual', design: input.design, subject: input.subject, html, text: emailHtmlToText(html), schema: input.schema };
 }
 
-/**
- * Kiểu soạn kéo-thả đã ngừng (ADR-0037): không tạo / lưu nháp / nhân bản / tạo nháp từ bản cũ kiểu `blocks`.
- * Dòng `blocks` còn trong DB vẫn ĐỌC được (để dọn bằng `admin-cli purge-blocks-templates`).
- */
-export function assertEditorSupported(editor: TemplateEditor, path = 'editor'): void {
-  if (editor === 'blocks') {
-    throw ValidationError.of('EDITOR_NOT_SUPPORTED', 'the blocks editor is no longer supported, use the visual or html editor', path);
-  }
-}
 
 // ---------------------------------------------------------------- sinh HTML
 

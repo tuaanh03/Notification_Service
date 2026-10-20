@@ -111,7 +111,74 @@ describe('0008 — chuyển dữ liệu sang RBAC', () => {
   });
 });
 
+/**
+ * 0027 (ADR-0037) gỡ `blocks` khỏi ENUM `template_versions.editor`. Còn dòng `blocks` (chưa chạy lệnh dọn) thì
+ * migration phải DỪNG với lỗi nêu đúng việc phải làm và không đổi gì; dọn xong chạy lại thì qua.
+ */
+describe('0027 — gỡ kiểu soạn blocks', () => {
+  let old: TestDatabase;
+  let folder: string;
+  beforeAll(async () => {
+    folder = mkdtempSync(join(tmpdir(), 'drizzle-0026-'));
+    cpSync('drizzle', folder, { recursive: true });
+    const journalPath = join(folder, 'meta', '_journal.json');
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as { entries: { idx: number }[] };
+    journal.entries = journal.entries.filter((e) => e.idx <= 26);
+    writeFileSync(journalPath, JSON.stringify(journal));
+    old = await createTestDatabase({ migrationsFolder: folder });
+  });
+  afterAll(async () => {
+    await old?.close();
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  const editorColumn = async () => {
+    const [rows] = (await old.db.execute(
+      sql`SELECT column_type AS type FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'template_versions' AND column_name = 'editor'`,
+    )) as unknown as [{ type: string }[]];
+    return rows[0]?.type;
+  };
+
+  it('còn dòng blocks -> dừng, lỗi chỉ lệnh dọn, ENUM giữ nguyên; dọn xong -> ENUM (html, visual), bỏ dòng cờ cũ', async () => {
+    const accountId = AccountId.create();
+    await old.db.execute(sql`INSERT INTO accounts (account_id, name) VALUES (${accountId}, 'A')`);
+    await old.db.execute(sql`INSERT INTO organizations (org_id, account_id, name) VALUES (${ORG}, ${accountId}, 'O')`);
+    await old.db.execute(
+      sql`INSERT INTO apps (app_id, org_id, account_id, slug, name, namespace) VALUES (${APP}, ${ORG}, ${accountId}, 'a', 'A', 'a')`,
+    );
+    await old.db.execute(sql`INSERT INTO templates (template_id, app_id, name, channel) VALUES (${TEMPLATE}, ${APP}, 'Kéo thả', 'email')`);
+    await old.db.execute(sql`INSERT INTO template_versions (template_version_id, template_id, version, editor, subject, html, text)
+      VALUES (${VERSION_BLOCKS}, ${TEMPLATE}, 1, 'blocks', 's', '<p>x</p>', 'x')`);
+    await old.db.execute(sql`INSERT INTO system_settings (setting_key, value) VALUES ('templates.visual_editor_enabled', CAST('true' AS JSON))`);
+
+    // Lỗi của MySQL (không phải câu SQL mà Drizzle chép vào message) — đúng chữ người deploy đọc được trong log.
+    const failure = await migrate(old.db, { migrationsFolder: 'drizzle' }).then(
+      () => null,
+      (err: unknown) => err as { message: string; cause?: { message?: string } },
+    );
+    expect(failure?.cause?.message ?? failure?.message).toMatch(
+      /Check constraint 'chk_no_blocks_left__run_admin_cli_purge_blocks_templates_apply' is violated/,
+    );
+    expect(await editorColumn()).toBe("enum('html','blocks','visual')");
+
+    // Đúng việc `purge-blocks-templates --apply` làm: xoá version rồi template.
+    await old.db.execute(sql`DELETE FROM template_versions WHERE template_id = ${TEMPLATE}`);
+    await old.db.execute(sql`DELETE FROM templates WHERE template_id = ${TEMPLATE}`);
+    await migrate(old.db, { migrationsFolder: 'drizzle' });
+
+    expect(await editorColumn()).toBe("enum('html','visual')");
+    const [settings] = (await old.db.execute(sql`SELECT setting_key AS k FROM system_settings`)) as unknown as [{ k: string }[]];
+    expect(settings).toEqual([]);
+    const [checks] = (await old.db.execute(
+      sql`SELECT constraint_name AS name FROM information_schema.check_constraints WHERE constraint_schema = DATABASE()`,
+    )) as unknown as [{ name: string }[]];
+    expect(checks).toEqual([]);
+  });
+});
+
 const ORG = '00000000-0000-4000-8000-000000000001';
 const APP = '00000000-0000-4000-8000-000000000002';
 const ADMIN_1 = '00000000-0000-4000-8000-0000000000a1';
 const ADMIN_2 = '00000000-0000-4000-8000-0000000000a2';
+const TEMPLATE = '00000000-0000-4000-8000-0000000000b1';
+const VERSION_BLOCKS = '00000000-0000-4000-8000-0000000000b2';

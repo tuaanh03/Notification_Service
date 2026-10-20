@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, lt } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -9,7 +9,6 @@ import {
   TopicId,
   type AppId as AppIdType,
   type IncomingHookId as IncomingHookIdType,
-  type TemplateId as TemplateIdType,
 } from '../../../../shared/kernel/index.ts';
 import { IncomingSlotTakenError } from '../../application/errors.ts';
 import type { IncomingCallRepository, IncomingHookRepository } from '../../application/ports/index.ts';
@@ -55,11 +54,6 @@ export class DrizzleIncomingHookRepository implements IncomingHookRepository {
   async findById(id: IncomingHookIdType): Promise<IncomingHook | null> {
     const [row] = await this.transactions.executor().select().from(incomingHooks).where(eq(incomingHooks.hookId, id));
     return row ? toHook(row) : null;
-  }
-
-  async countByTemplate(templateId: TemplateIdType): Promise<number> {
-    const [row] = await this.transactions.executor().select({ n: count() }).from(incomingHooks).where(eq(incomingHooks.templateId, templateId));
-    return row?.n ?? 0;
   }
 
   async findByTokenHash(hash: string): Promise<IncomingHook | null> {

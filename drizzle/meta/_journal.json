@@ -190,6 +190,13 @@
       "when": 1792406929200,
       "tag": "0026_template_editor_visual",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1792466655131,
+      "tag": "0027_blocks_editor_removed",
+      "breakpoints": true
     }
   ]
 }

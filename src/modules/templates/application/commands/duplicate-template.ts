@@ -2,7 +2,6 @@ import { audited, type CommandContext, type EventOutbox, type UnitOfWork } from 
 import { TemplateId, TemplateVersionId, type AppId, type Clock } from '../../../../shared/kernel/index.ts';
 import { TemplateVersion } from '../../domain/entities/template-version.ts';
 import { Template } from '../../domain/entities/template.ts';
-import { assertEditorSupported } from '../../domain/rules/email-design.ts';
 import { toTemplateDetailDto, type TemplateDetailDto } from '../dto.ts';
 import { TEMPLATE_AGGREGATE, TEMPLATE_EVENTS } from '../events.ts';
 import type { TemplateRepository } from '../ports/index.ts';
@@ -17,7 +16,6 @@ import { lockTemplate } from './lock-template.ts';
  * của người soạn, console biết, backend thì không.
  *
  * Bản gốc đã lưu trữ vẫn nhân bản được: bản gốc giữ nguyên `archived`, đây không phải đường bỏ lưu trữ.
- * Bản chép kiểu `blocks` -> 422 `EDITOR_NOT_SUPPORTED` (ADR-0037).
  */
 export class DuplicateTemplate {
   private readonly deps: { uow: UnitOfWork; outbox: EventOutbox; clock: Clock; templates: TemplateRepository };
@@ -36,8 +34,6 @@ export class DuplicateTemplate {
       const source = await lockTemplate(templates, input.appId, input.templateId);
       const versions = await templates.versionsOf(source.id);
       const from = versions.find((v) => v.status === 'draft') ?? versions.find((v) => v.status === 'published');
-      // Không nhân bản ra template kéo-thả mới (ADR-0037).
-      if (from) assertEditorSupported(from.editor);
       const now = clock.now();
       const template = new Template({
         id: TemplateId.create(),

@@ -2,14 +2,11 @@ import type { AppQueries } from '../../modules/apps/application/index.ts';
 import {
   ArchiveTemplate,
   ComposeTemplateDraft,
-  ConvertDraftToHtml,
   CreateTemplate,
   CreateTemplateFromPreset,
   DraftFromVersion,
   DuplicateTemplate,
-  PreviewDesign,
   PublishVersion,
-  PurgeBlocksTemplates,
   RenderTemplate,
   SaveDraft,
   ScanHtmlTemplates,
@@ -23,11 +20,8 @@ import {
   DisabledTemplateWriter,
   DrizzleTemplateRepository,
   OpenAiCompatibleTemplateWriter,
-  ModulesTemplateUsageLookup,
   RedisAiComposeRateLimiter,
 } from '../../modules/templates/infrastructure/adapters/index.ts';
-import type { CountHooksByTemplate } from '../../modules/incoming/application/index.ts';
-import type { CountTemplateUsage } from '../../modules/notifications/application/index.ts';
 import { FixedWindowRateLimiter } from '../../shared/rate-limit/index.ts';
 import { adminTemplatesRoutes } from '../../modules/templates/interface/index.ts';
 import type { Container } from '../container.ts';
@@ -36,8 +30,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
 /**
  * Ghép module templates: admin soạn / xuất bản (ADR-0020). Hỏi apps qua adapter. Trả thêm hai use case công khai
  * cho notifications: `renderTemplate` (đổ biến lúc nhận gửi) và `templateQueries` (nhãn theo lô);
- * `scanHtmlTemplates` + `purgeBlocksTemplates` chỉ cho admin-cli. Lệnh dọn cần notifications + incoming (dựng SAU
- * templates) nên trả hàm dựng, `buildApplication` gọi khi đã có hai module đó.
+ * `scanHtmlTemplates` chỉ cho admin-cli.
  */
 export function templatesModule(
   container: Container,
@@ -47,7 +40,6 @@ export function templatesModule(
   renderTemplate: RenderTemplate;
   templateQueries: TemplateQueries;
   scanHtmlTemplates: ScanHtmlTemplates;
-  purgeBlocksTemplates: (usage: { countTemplateUsage: CountTemplateUsage; countHooksByTemplate: CountHooksByTemplate }) => PurgeBlocksTemplates;
 } {
   const { uow, outbox, clock, logger } = container.ports;
   const { transactions } = container.infra;
@@ -82,8 +74,6 @@ export function templatesModule(
           duplicateTemplate: new DuplicateTemplate(deps),
           saveDraft: new SaveDraft(deps),
           draftFromVersion: new DraftFromVersion(deps),
-          convertDraftToHtml: new ConvertDraftToHtml(deps),
-          previewDesign: new PreviewDesign(),
           publishVersion: new PublishVersion(deps),
           archiveTemplate: new ArchiveTemplate(deps),
           composeTemplateDraft,
@@ -94,13 +84,7 @@ export function templatesModule(
       ],
     },
   };
-  return {
-    definition,
-    renderTemplate,
-    templateQueries: queries,
-    scanHtmlTemplates: new ScanHtmlTemplates({ templates }),
-    purgeBlocksTemplates: (usage) => new PurgeBlocksTemplates({ uow, outbox, templates, usage: new ModulesTemplateUsageLookup(usage) }),
-  };
+  return { definition, renderTemplate, templateQueries: queries, scanHtmlTemplates: new ScanHtmlTemplates({ templates }) };
 }
 
 /** Giới hạn gọi AI của MỘT admin — cố định trong code, không qua env (chống tốn tiền, không phải tinh chỉnh). */

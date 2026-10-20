@@ -1,7 +1,7 @@
 import type { TemplateVersion } from '../domain/entities/template-version.ts';
 import type { Template } from '../domain/entities/template.ts';
 import type { EmailDesign } from '../domain/types/email-design.ts';
-import type { TemplateDesign } from '../domain/types/visual-design.ts';
+import type { VisualDesign } from '../domain/types/visual-design.ts';
 import type { PresetLocale } from '../domain/types/template-preset.ts';
 import type { VariableSpec } from '../domain/types/template-variable.ts';
 
@@ -33,11 +33,10 @@ export interface TemplateVersionDto {
   version: number;
   status: string;
   /**
-   * `html` | `blocks` (ADR-0034) | `visual` (ADR-0036). `blocks`: `html` / `text` do backend sinh từ `design`
-   * (`EmailDesign`); `visual`: `design` là dự án GrapesJS + MJML (`VisualDesign`), `text` do backend sinh.
+   * `html` | `visual` (ADR-0036): `design` là dự án GrapesJS + MJML (`VisualDesign`), `text` do backend sinh.
    */
   editor: string;
-  design: TemplateDesign | null;
+  design: VisualDesign | null;
   subject: string;
   html: string;
   text: string;

@@ -5,12 +5,10 @@ import { AppId, TEMPLATE_CATEGORIES, TemplateId, VARIABLE_SOURCES } from '../../
 import type {
   ArchiveTemplate,
   ComposeTemplateDraft,
-  ConvertDraftToHtml,
   CreateTemplate,
   CreateTemplateFromPreset,
   DraftFromVersion,
   DuplicateTemplate,
-  PreviewDesign,
   PublishVersion,
   RenderTemplate,
   SaveDraft,
@@ -19,9 +17,8 @@ import type {
   UpdateTemplate,
 } from '../../application/index.ts';
 import { TEMPLATE_NAME_MAX_LENGTH } from '../../domain/entities/template.ts';
-import { assertEditorSupported, type DraftInput } from '../../domain/rules/email-design.ts';
+import type { DraftInput } from '../../domain/rules/email-design.ts';
 import { PRESET_LOCALES } from '../../domain/types/template-preset.ts';
-import { emailDesignSchema } from './email-design.schema.ts';
 import { visualDesignSchema } from './visual-design.schema.ts';
 
 const appParams = z.object({ appId: z.string().uuid() });
@@ -55,7 +52,7 @@ const content = {
 /**
  * Nháp kiểu `html` (bỏ trống `editor` = như client cũ) hoặc `visual`. Kiểu `visual` nhận `html` do trình duyệt
  * sinh (backend kiểm, từ chối nếu không an toàn) nhưng KHÔNG nhận `text`: backend sinh từ HTML đã kiểm
- * (ADR-0036). Kiểu `blocks` đã ngừng -> 422 `EDITOR_NOT_SUPPORTED` (`rejectBlocks`, ADR-0037).
+ * (ADR-0036).
  */
 const draftBody = z.union([
   z.object({ editor: z.literal('html').optional(), ...content }).strict(),
@@ -78,7 +75,6 @@ const createBody = z.union([
       path: ['design'],
     }),
 ]);
-const designPreviewBody = z.object({ design: emailDesignSchema }).strict();
 const updateBody = z
   .object({ name: NAME.optional(), category: CATEGORY.optional() })
   .strict()
@@ -116,14 +112,6 @@ const aiComposeBody = z
     path: ['current'],
   });
 
-/**
- * Kiểu kéo-thả đã ngừng (ADR-0037): báo mã rõ ràng `EDITOR_NOT_SUPPORTED` thay vì lỗi hình dạng chung của zod.
- * Chạy TRƯỚC `parseInput`.
- */
-function rejectBlocks(body: unknown): void {
-  if (typeof body === 'object' && body !== null && (body as { editor?: unknown }).editor === 'blocks') assertEditorSupported('blocks');
-}
-
 function toDraft(body: z.infer<typeof draftBody>): DraftInput {
   if (body.editor === 'visual') return { editor: 'visual', subject: body.subject, html: body.html, design: body.design, schema: body.variables };
   return { editor: 'html', subject: body.subject, html: body.html, text: body.text, schema: body.variables };
@@ -145,8 +133,6 @@ export function adminTemplatesRoutes(useCases: {
   duplicateTemplate: DuplicateTemplate;
   saveDraft: SaveDraft;
   draftFromVersion: DraftFromVersion;
-  convertDraftToHtml: ConvertDraftToHtml;
-  previewDesign: PreviewDesign;
   publishVersion: PublishVersion;
   archiveTemplate: ArchiveTemplate;
   composeTemplateDraft: ComposeTemplateDraft;
@@ -166,7 +152,6 @@ export function adminTemplatesRoutes(useCases: {
 
     app.post('/apps/:appId/templates', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
-      rejectBlocks(request.body);
       const body = parseInput(createBody, request.body);
       const created = await useCases.createTemplate.execute(
         {
@@ -209,13 +194,6 @@ export function adminTemplatesRoutes(useCases: {
       return useCases.renderTemplate.execute({ ...params, payload, externalId: externalId ?? 'preview' });
     });
 
-    // Xem trước thiết kế kéo-thả đang soạn (ADR-0034): cùng hàm sinh + cùng giới hạn với lưu nháp, không ghi gì.
-    app.post('/apps/:appId/templates/design-preview', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.read') }, async (request) => {
-      parseInput(appParams, request.params);
-      const { design } = parseInput(designPreviewBody, request.body);
-      return useCases.previewDesign.execute(design);
-    });
-
     app.get('/apps/:appId/templates/:templateId', { config: access('app.read') }, async (request) => {
       const { appId, templateId } = ids(parseInput(templateParams, request.params));
       return useCases.queries.get(appId, templateId);
@@ -237,7 +215,6 @@ export function adminTemplatesRoutes(useCases: {
 
     app.put('/apps/:appId/templates/:templateId/draft', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
-      rejectBlocks(request.body);
       const body = parseInput(draftBody, request.body);
       return useCases.saveDraft.execute({ ...params, draft: toDraft(body) }, ctx(request));
     });
@@ -246,12 +223,6 @@ export function adminTemplatesRoutes(useCases: {
       const { version, ...rest } = parseInput(versionParams, request.params);
       const created = await useCases.draftFromVersion.execute({ ...ids(rest), version }, ctx(request));
       return reply.status(201).send(created);
-    });
-
-    // Một chiều: nháp kéo-thả -> HTML, giữ HTML đã sinh. Bản đã xuất bản không đổi.
-    app.post('/apps/:appId/templates/:templateId/draft/convert-to-html', { config: access('app.manage') }, async (request) => {
-      const params = ids(parseInput(templateParams, request.params));
-      return useCases.convertDraftToHtml.execute(params, ctx(request));
     });
 
     app.post('/apps/:appId/templates/:templateId/publish', { config: access('app.manage') }, async (request) => {

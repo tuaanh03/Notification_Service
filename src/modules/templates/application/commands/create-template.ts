@@ -10,7 +10,7 @@ import {
 } from '../../../../shared/kernel/index.ts';
 import { TemplateVersion, type TemplateContent } from '../../domain/entities/template-version.ts';
 import { Template } from '../../domain/entities/template.ts';
-import { assertEditorSupported, draftContent, type DraftInput } from '../../domain/rules/email-design.ts';
+import { draftContent, type DraftInput } from '../../domain/rules/email-design.ts';
 import { emptyVisualDesign, type VisualDesign } from '../../domain/types/visual-design.ts';
 import type { PresetLocale } from '../../domain/types/template-preset.ts';
 import { toTemplateDetailDto, type TemplateDetailDto } from '../dto.ts';
@@ -22,7 +22,7 @@ export interface CreateTemplateInput {
   name: string;
   /** Bỏ trống = `other`. */
   category?: TemplateCategory | undefined;
-  /** Kiểu soạn của nháp v1 (ADR-0036); bỏ trống = `html`. `blocks` đã ngừng -> 422 `EDITOR_NOT_SUPPORTED` (ADR-0037). */
+  /** Kiểu soạn của nháp v1 (ADR-0036); bỏ trống = `html`. */
   editor?: TemplateEditor | undefined;
   /** Chỉ kiểu `visual`; bỏ trống = thư trống (console dựng thư mở đầu). */
   design?: VisualDesign | undefined;
@@ -99,9 +99,7 @@ function draftOf(input: CreateTemplateInput): DraftInput {
   const c = input.content;
   const subject = c?.subject ?? '';
   const schema = c?.schema ?? [];
-  const editor = input.editor ?? 'html';
-  assertEditorSupported(editor);
-  return editor === 'visual'
+  return input.editor === 'visual'
     ? { editor: 'visual', subject, html: c?.html ?? '', design: input.design ?? emptyVisualDesign(), schema }
     : { editor: 'html', subject, html: c?.html ?? '', text: c?.text ?? '', schema };
 }

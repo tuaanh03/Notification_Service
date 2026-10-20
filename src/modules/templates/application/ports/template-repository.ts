@@ -34,11 +34,6 @@ export interface TemplateRepository {
   insertVersion(version: TemplateVersion): Promise<void>;
   /** Ghi có điều kiện theo trạng thái lúc đọc -> ConcurrentTransitionError (409) nếu bên kia đổi trước. */
   updateVersion(version: TemplateVersion, expectedStatus: TemplateVersionStatus): Promise<void>;
-  /**
-   * XOÁ HẲN template + mọi version của nó — CHỈ lệnh dọn kiểu kéo-thả của admin-cli (ADR-0037), trong `uow.run`.
-   * Còn thư / lần phát / incoming hook trỏ tới thì khoá ngoại chặn (lệnh dọn kiểm trước khi gọi).
-   */
-  deleteWithVersions(templateId: TemplateId): Promise<void>;
 }
 
 export interface TemplateListFilter {

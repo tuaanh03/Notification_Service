@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -7,7 +7,6 @@ import {
   TopicId,
   type AppId as AppIdType,
   type PublicationId as PublicationIdType,
-  type TemplateVersionId as TemplateVersionIdType,
 } from '../../../../shared/kernel/index.ts';
 import { PublicationKeyTakenError } from '../../application/errors.ts';
 import type { PublicationRepository } from '../../application/ports/index.ts';
@@ -54,16 +53,6 @@ export class DrizzlePublicationRepository implements PublicationRepository {
       .from(publications)
       .where(and(eq(publications.appId, appId), eq(publications.idempotencyKey, key)));
     return row ? toPublication(row) : null;
-  }
-
-  async countByTemplateVersions(versionIds: readonly TemplateVersionIdType[]): Promise<number> {
-    if (versionIds.length === 0) return 0;
-    const [row] = await this.transactions
-      .executor()
-      .select({ n: count() })
-      .from(publications)
-      .where(inArray(publications.templateVersionId, [...versionIds]));
-    return row?.n ?? 0;
   }
 }
 
