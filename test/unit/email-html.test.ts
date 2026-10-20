@@ -7,7 +7,7 @@ import {
   normalizeLiquid,
 } from '../../src/modules/templates/domain/rules/email-html.ts';
 import { parseVariables } from '../../src/modules/templates/domain/rules/template-variables.ts';
-import { draftContent, emptyDesign, normalizeSubject } from '../../src/modules/templates/domain/rules/email-design.ts';
+import { draftContent, emptyDesign, normalizeSubject, renderDesign } from '../../src/modules/templates/domain/rules/email-design.ts';
 import { TemplateVersion } from '../../src/modules/templates/domain/entities/template-version.ts';
 import { emptyVisualDesign, type VisualDesign } from '../../src/modules/templates/domain/types/visual-design.ts';
 import { TemplateId, TemplateVersionId } from '../../src/shared/kernel/index.ts';
@@ -218,7 +218,7 @@ describe('draftContent — kiểu visual (ADR-0036)', () => {
     const v = new TemplateVersion({ id: TemplateVersionId.create(), templateId: TemplateId.create(), version: 1, ...visual(MJML_HTML), createdAt: at });
     expect(v.validate()).toEqual([]);
     expect(v.design).not.toBeNull();
-    const blocks = draftContent({ editor: 'blocks', subject: 'x', design: emptyDesign(), schema: [] });
+    const blocks = { editor: 'blocks' as const, design: emptyDesign(), subject: 'x', ...renderDesign(emptyDesign()), schema: [] };
     expect(() => v.edit(blocks, at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
     expect(() => v.convertToHtml(at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
   });
@@ -230,10 +230,9 @@ describe('normalizeSubject — tiêu đề lưu nháp (mọi kiểu soạn)', ()
     expect(normalizeSubject(raw)).toBe('Báo cáo{{ payload.ky_bao_cao }}X cho {{ user.external_id }} tháng  này!');
   });
 
-  it('draftContent chuẩn hoá tiêu đề cả kiểu html, blocks, visual', () => {
+  it('draftContent chuẩn hoá tiêu đề cả kiểu html, visual', () => {
     const subject = 'A\u00a0B';
     expect(draftContent({ editor: 'html', subject, html: '', text: '', schema: [] }).subject).toBe('A B');
-    expect(draftContent({ editor: 'blocks', subject, design: emptyDesign(), schema: [] }).subject).toBe('A B');
     expect(draftContent({ editor: 'visual', subject, html: '<p>x</p>', design: emptyVisualDesign(), schema: [] }).subject).toBe('A B');
   });
 });

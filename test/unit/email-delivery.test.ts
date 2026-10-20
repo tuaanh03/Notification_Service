@@ -157,6 +157,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         listStuckSending: async () => [],
         listDueScheduled: async () => [],
         listByPublication: async () => [],
+        countByTemplateVersions: async () => 0,
       },
       recipients: {
         findByNotification: async () => null,

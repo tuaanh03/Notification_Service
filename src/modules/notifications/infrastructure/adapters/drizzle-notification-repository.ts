@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, lt, lte, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, lt, lte, type SQL } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -13,6 +13,7 @@ import {
   type AppId as AppIdType,
   type NotificationId as NotificationIdType,
   type PublicationId as PublicationIdType,
+  type TemplateVersionId as TemplateVersionIdType,
 } from '../../../../shared/kernel/index.ts';
 import { IdempotencyKeyTakenError } from '../../application/errors.ts';
 import type { NotificationFilter, NotificationPage, NotificationRepository } from '../../application/ports/index.ts';
@@ -171,6 +172,16 @@ export class DrizzleNotificationRepository implements NotificationRepository {
       .where(eq(notifications.publicationId, publicationId))
       .orderBy(asc(notifications.createdAt), asc(notifications.notificationId));
     return rows.map(toNotification);
+  }
+
+  async countByTemplateVersions(versionIds: readonly TemplateVersionIdType[]): Promise<number> {
+    if (versionIds.length === 0) return 0;
+    const [row] = await this.transactions
+      .executor()
+      .select({ n: count() })
+      .from(notifications)
+      .where(inArray(notifications.templateVersionId, [...versionIds]));
+    return row?.n ?? 0;
   }
 }
 

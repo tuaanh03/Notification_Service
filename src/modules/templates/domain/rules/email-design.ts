@@ -1,4 +1,4 @@
-import { issue, ValidationError, type Issue } from '../../../../shared/kernel/index.ts';
+import { issue, ValidationError, type Issue, type TemplateEditor } from '../../../../shared/kernel/index.ts';
 import type { TemplateContent } from '../entities/template-version.ts';
 import {
   EMAIL_DESIGN_VERSION,
@@ -96,12 +96,11 @@ export function assertDesign(design: EmailDesign): void {
 }
 
 /**
- * Nội dung người soạn gửi khi lưu nháp — kiểu `blocks` không có `html` / `text`, backend tự sinh; kiểu
- * `visual` có `html` (trình duyệt sinh) nhưng không có `text` (backend sinh từ HTML đã kiểm).
+ * Nội dung người soạn gửi khi lưu nháp — kiểu `visual` có `html` (trình duyệt sinh) nhưng không có `text`
+ * (backend sinh từ HTML đã kiểm). Kiểu `blocks` đã ngừng (ADR-0037): không tạo / lưu nháp được nữa, chỉ còn đọc.
  */
 export type DraftInput =
   | { editor: 'html'; subject: string; html: string; text: string; schema: readonly VariableSpec[] }
-  | { editor: 'blocks'; subject: string; design: EmailDesign; schema: readonly VariableSpec[] }
   | { editor: 'visual'; subject: string; html: string; design: VisualDesign; schema: readonly VariableSpec[] };
 
 /**
@@ -113,22 +112,28 @@ export function normalizeSubject(subject: string): string {
 }
 
 /**
- * Đổi nội dung nháp thành `TemplateContent`; kiểu `blocks` kiểm giới hạn rồi sinh `html` + `text`; kiểu
- * `visual` kiểm an toàn HTML + cỡ dự án, chuẩn hoá biến rồi sinh `text` (ADR-0036).
+ * Đổi nội dung nháp thành `TemplateContent`; kiểu `visual` kiểm an toàn HTML + cỡ dự án, chuẩn hoá biến rồi
+ * sinh `text` (ADR-0036).
  */
 export function draftContent(raw: DraftInput): TemplateContent {
   const input = { ...raw, subject: normalizeSubject(raw.subject) };
   if (input.editor === 'html') {
     return { editor: 'html', design: null, subject: input.subject, html: input.html, text: input.text, schema: input.schema };
   }
-  if (input.editor === 'visual') {
-    const issues = [...checkVisualDesign(input.design), ...checkEmailHtml(input.html)];
-    if (issues.length) throw new ValidationError(issues);
-    const html = normalizeLiquid(input.html);
-    return { editor: 'visual', design: input.design, subject: input.subject, html, text: emailHtmlToText(html), schema: input.schema };
+  const issues = [...checkVisualDesign(input.design), ...checkEmailHtml(input.html)];
+  if (issues.length) throw new ValidationError(issues);
+  const html = normalizeLiquid(input.html);
+  return { editor: 'visual', design: input.design, subject: input.subject, html, text: emailHtmlToText(html), schema: input.schema };
+}
+
+/**
+ * Kiểu soạn kéo-thả đã ngừng (ADR-0037): không tạo / lưu nháp / nhân bản / tạo nháp từ bản cũ kiểu `blocks`.
+ * Dòng `blocks` còn trong DB vẫn ĐỌC được (để dọn bằng `admin-cli purge-blocks-templates`).
+ */
+export function assertEditorSupported(editor: TemplateEditor, path = 'editor'): void {
+  if (editor === 'blocks') {
+    throw ValidationError.of('EDITOR_NOT_SUPPORTED', 'the blocks editor is no longer supported, use the visual or html editor', path);
   }
-  assertDesign(input.design);
-  return { editor: 'blocks', design: input.design, subject: input.subject, ...renderDesign(input.design), schema: input.schema };
 }
 
 // ---------------------------------------------------------------- sinh HTML
@@ -166,8 +171,8 @@ export function escapeKeepingVariables(value: string, inAttribute = false): stri
 
 const INLINE_RE = /\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\(([^)\n]+)\)/g;
 
-/** Đoạn chữ: `**đậm**`, `[chữ](link)`, xuống dòng = `<br>`. Phần còn lại escape. */
-function inlineHtml(text: string, linkColor: string): string {
+/** Đoạn chữ: `**đậm**`, `[chữ](link)`, xuống dòng = `<br>`. Phần còn lại escape. Dùng chung với `designToMjml`. */
+export function inlineHtml(text: string, linkColor: string): string {
   let out = '';
   let last = 0;
   for (const match of text.matchAll(INLINE_RE)) {

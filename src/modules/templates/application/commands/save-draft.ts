@@ -8,7 +8,7 @@ import type { TemplateRepository } from '../ports/index.ts';
 import { lockTemplate, nextVersionNumber } from './lock-template.ts';
 
 /**
- * Ghi bản nháp (kiểu `blocks`: sinh `html` + `text` từ thiết kế trước — ADR-0034): có nháp thì ghi đè, chưa có thì tạo nháp số kế tiếp. Mỗi template TỐI ĐA MỘT nháp —
+ * Ghi bản nháp (kiểu `visual`: kiểm HTML rồi sinh `text` trước — ADR-0036): có nháp thì ghi đè, chưa có thì tạo nháp số kế tiếp. Mỗi template TỐI ĐA MỘT nháp —
  * ép ở đây, sau khi khoá dòng cha. Nháp được lưu cả khi còn lỗi; kiểm tra đầy đủ chạy lúc xuất bản.
  */
 export class SaveDraft {

@@ -1,6 +1,8 @@
 # ADR-0034 — Template: trình soạn kéo-thả, thiết kế JSON theo version, backend sinh HTML
 
-**Trạng thái:** chấp nhận — 2026-10-18 (đợt 2 của ADR-0033). Mở rộng ADR-0020.
+**Trạng thái:** chấp nhận — 2026-10-18 (đợt 2 của ADR-0033). Mở rộng ADR-0020. **Đã ngừng — ADR-0037 (2026-10-20):**
+không tạo / lưu kiểu `blocks` được nữa, dòng cũ chỉ đọc rồi dọn bằng `admin-cli purge-blocks-templates`;
+`EmailDesign` + `renderDesign` chỉ còn cho thư viện mẫu.
 
 ## 1. Bối cảnh
 

@@ -5,7 +5,12 @@ import { buildApplication, consumerRegistry, createContainer, type Application, 
 import { startApi, startWorker, type RunningApi } from '../../src/entrypoints/index.ts';
 import type { AiCompletion, TemplateAiWriter } from '../../src/modules/templates/application/index.ts';
 import type { AiChatMessage } from '../../src/modules/templates/domain/rules/ai-compose-prompt.ts';
-import { templateVersions } from '../../src/modules/templates/infrastructure/db/schema.ts';
+import { renderDesign } from '../../src/modules/templates/domain/rules/email-design.ts';
+import type { EmailDesign } from '../../src/modules/templates/domain/types/email-design.ts';
+import type { VariableSpec } from '../../src/modules/templates/domain/types/template-variable.ts';
+import { templates, templateVersions } from '../../src/modules/templates/infrastructure/db/schema.ts';
+import { incomingHooks } from '../../src/modules/incoming/infrastructure/db/schema.ts';
+import { IncomingHookId, TemplateId, TemplateVersionId } from '../../src/shared/kernel/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
@@ -32,7 +37,7 @@ let c: Container;
 let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
-let shop: { appId: string };
+let shop: { appId: string; apiKey: string };
 let other: { appId: string };
 
 beforeAll(async () => {
@@ -484,108 +489,99 @@ describe('Nhờ AI soạn — POST .../ai-compose', () => {
   });
 });
 
-describe('trình soạn kéo-thả (ADR-0034)', () => {
-  const settings = { width: 600, backgroundColor: '#f1f5f9', contentBackgroundColor: '#ffffff', textColor: '#1e293b', linkColor: '#2563eb', fontFamily: 'sans' };
-  const design = (blocks: Json[]) => ({ version: 1, settings, rows: [{ id: 'r1', columns: [{ id: 'c1', blocks }] }] });
-  const blocks = [
-    { id: 'h', type: 'heading', text: 'Máy ảo {{ payload.vm_name }}', level: 1, align: 'left' },
-    { id: 't', type: 'text', text: 'Vượt <ngưỡng>', align: 'left' },
-    { id: 'b', type: 'button', label: 'Xem', url: 'https://ews.example.com/vm', align: 'center', backgroundColor: '#2563eb', textColor: '#ffffff', borderRadius: 6 },
-  ];
-  const blocksDraft = {
+/**
+ * Dòng kiểu kéo-thả có từ trước UX-4 (ADR-0034) — không tạo qua API được nữa (ADR-0037), nên dựng thẳng trong DB
+ * như lúc nó còn lưu được: HTML sinh bằng `renderDesign`.
+ */
+async function insertLegacyBlocks(name: string, opts: { published?: boolean; appId?: string } = {}): Promise<{ id: string; versionId: string }> {
+  const settings = { width: 600, backgroundColor: '#f1f5f9', contentBackgroundColor: '#ffffff', textColor: '#1e293b', linkColor: '#2563eb', fontFamily: 'sans' as const };
+  const design: EmailDesign = {
+    version: 1,
+    settings,
+    rows: [
+      {
+        id: 'r1',
+        columns: [
+          {
+            id: 'c1',
+            blocks: [
+              { id: 'h', type: 'heading', text: 'Máy ảo {{ payload.vm_name }}', level: 1, align: 'left' },
+              { id: 'b', type: 'button', label: 'Xem', url: 'https://ews.example.com/vm', align: 'center', backgroundColor: '#2563eb', textColor: '#ffffff', borderRadius: 6 },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const id = TemplateId.create();
+  const versionId = TemplateVersionId.create();
+  const now = new Date();
+  await t.db.insert(templates).values({ templateId: id, appId: opts.appId ?? shop.appId, name, channel: 'email', category: 'alert', status: 'active', createdAt: now, updatedAt: now });
+  await t.db.insert(templateVersions).values({
+    templateVersionId: versionId,
+    templateId: id,
+    version: 1,
+    status: opts.published ? 'published' : 'draft',
     editor: 'blocks',
+    design,
     subject: '[Cảnh báo] {{ payload.vm_name }}',
-    design: design(blocks),
+    ...renderDesign(design),
+    schema: validDraft.variables as VariableSpec[],
+    publishedAt: opts.published ? now : null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { id, versionId };
+}
+
+describe('kiểu kéo-thả đã ngừng (ADR-0037)', () => {
+  const latest = (body: Json) => (body['versions'] as Json[])[0]!;
+  const visualDraft = {
+    editor: 'visual',
+    subject: '[Cảnh báo] {{ payload.vm_name }}',
+    html: '<p>Máy ảo {{ payload.vm_name }}</p>',
+    design: { format: 'grapesjs-mjml', version: 1, project: {}, mjml: '<mjml></mjml>' },
     variables: validDraft.variables,
   };
-  const latest = (body: Json) => (body['versions'] as Json[])[0]!;
 
-  it('tạo kiểu blocks -> nháp v1 thiết kế rỗng; lưu nháp sinh html + text; xuất bản; gửi đổ biến như thường', async () => {
-    const id = (await admin('POST', base(), { name: 'Kéo thả 1', editor: 'blocks' })).body['id'] as string;
-    const created = (await admin('GET', `${base()}/${id}`)).body;
-    expect(created['editor']).toBe('blocks');
-    expect(latest(created)['design']).toMatchObject({ version: 1, rows: [] });
-    expect(latest(created)['html']).toBe('');
+  it('tạo / lưu nháp kiểu blocks -> 422 EDITOR_NOT_SUPPORTED, không ghi gì', async () => {
+    const before = (await t.db.select().from(templateVersions)).length;
+    const created = await admin('POST', base(), { name: 'Kéo thả mới', editor: 'blocks' });
+    expect(created.status).toBe(422);
+    expect(codesOf(created.body)).toEqual(['EDITOR_NOT_SUPPORTED']);
+    const id = await createTemplate('Kéo thả qua lưu nháp', validDraft);
+    const saved = await admin('PUT', `${base()}/${id}/draft`, { editor: 'blocks', subject: 'x', design: {}, variables: [] });
+    expect([saved.status, codesOf(saved.body)]).toEqual([422, ['EDITOR_NOT_SUPPORTED']]);
+    expect((await t.db.select().from(templateVersions)).length).toBe(before + 1);
+  });
 
-    const saved = await admin('PUT', `${base()}/${id}/draft`, blocksDraft);
-    expect(saved.status).toBe(200);
-    const v1 = latest(saved.body);
-    expect(v1['editor']).toBe('blocks');
-    expect(v1['html']).toContain('Vượt &lt;ngưỡng&gt;');
-    expect(v1['html']).toContain('href="https://ews.example.com/vm"');
-    expect(v1['text']).toBe('Máy ảo {{ payload.vm_name }}\n\nVượt <ngưỡng>\n\nXem: https://ews.example.com/vm');
-
+  it('dòng blocks cũ vẫn ĐỌC được (chi tiết, danh sách), xuất bản + gửi như thường', async () => {
+    const { id } = await insertLegacyBlocks('Kéo thả cũ 1');
+    const detail = await admin('GET', `${base()}/${id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body).toMatchObject({ editor: 'blocks', draftVersion: 1 });
+    expect(latest(detail.body)['html']).toContain('Máy ảo {{ payload.vm_name }}');
+    const list = (await admin('GET', base())).body as unknown as Json[];
+    expect(list.find((x) => x['id'] === id)).toMatchObject({ editor: 'blocks' });
     expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
     const rendered = await admin('POST', `${base()}/${id}/render`, { payload: { vm_name: '<vm-01>' } });
-    expect(rendered.status).toBe(200);
     expect(rendered.body['html']).toContain('Máy ảo &lt;vm-01&gt;');
   });
 
-  it('kiểu blocks không nhận html / text; nháp khác kiểu -> 409 EDITOR_MISMATCH; ảnh http -> 422 IMAGE_URL_NOT_ALLOWED', async () => {
-    const id = (await admin('POST', base(), { name: 'Kéo thả 2', editor: 'blocks' })).body['id'] as string;
-    expect((await admin('PUT', `${base()}/${id}/draft`, { ...blocksDraft, html: '<p>x</p>' })).status).toBe(422);
-    const mismatch = await admin('PUT', `${base()}/${id}/draft`, validDraft);
-    expect(mismatch.status).toBe(409);
-    expect(mismatch.body['code']).toBe('EDITOR_MISMATCH');
-    const badImage = await admin('PUT', `${base()}/${id}/draft`, {
-      ...blocksDraft,
-      design: design([{ id: 'i', type: 'image', src: 'http://cdn.example.com/a.png', width: 100, align: 'center' }]),
-    });
-    expect(badImage.status).toBe(422);
-    expect(codesOf(badImage.body)).toEqual(['IMAGE_URL_NOT_ALLOWED']);
-    expect((await admin('PUT', `${base()}/${id}/draft`, { ...blocksDraft, design: design([{ id: 'x', type: 'video' }]) })).status).toBe(422);
-    const tooMany = await admin('PUT', `${base()}/${id}/draft`, {
-      ...blocksDraft,
-      design: design(Array.from({ length: 101 }, (_, i) => ({ id: `s${i}`, type: 'spacer', height: 8 }))),
-    });
-    expect(codesOf(tooMany.body)).toEqual(['DESIGN_TOO_MANY_BLOCKS']);
-  });
+  it('nháp blocks không lưu được bằng kiểu khác (409); không nhân bản / tạo nháp từ bản blocks (422); vẫn chuyển sang HTML được', async () => {
+    const draft = await insertLegacyBlocks('Kéo thả cũ 2');
+    expect((await admin('PUT', `${base()}/${draft.id}/draft`, visualDraft)).body['code']).toBe('EDITOR_MISMATCH');
+    const copy = await admin('POST', `${base()}/${draft.id}/duplicate`, { name: 'Kéo thả cũ 2 (bản sao)' });
+    expect([copy.status, codesOf(copy.body)]).toEqual([422, ['EDITOR_NOT_SUPPORTED']]);
 
-  it('link nút sai -> nháp vẫn lưu, xuất bản 422 LINK_SCHEME_NOT_ALLOWED', async () => {
-    const id = (await admin('POST', base(), { name: 'Kéo thả 3', editor: 'blocks' })).body['id'] as string;
-    const bad = { ...blocksDraft, design: design([...blocks.slice(0, 2), { ...blocks[2], url: 'http://ews.example.com' }]) };
-    expect((await admin('PUT', `${base()}/${id}/draft`, bad)).status).toBe(200);
-    const res = await admin('POST', `${base()}/${id}/publish`);
-    expect(res.status).toBe(422);
-    expect(codesOf(res.body)).toEqual(['LINK_SCHEME_NOT_ALLOWED']);
-  });
+    const published = await insertLegacyBlocks('Kéo thả cũ 3', { published: true });
+    const from = await admin('POST', `${base()}/${published.id}/draft/from/1`);
+    expect([from.status, codesOf(from.body)]).toEqual([422, ['EDITOR_NOT_SUPPORTED']]);
 
-  it('tạo nháp từ bản cũ và nhân bản chép cả editor + design', async () => {
-    const id = (await admin('POST', base(), { name: 'Kéo thả 4', ...blocksDraft })).body['id'] as string;
-    expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
-    const v2 = latest((await admin('POST', `${base()}/${id}/draft/from/1`)).body);
-    expect(v2['editor']).toBe('blocks');
-    expect(v2['design']).toEqual(blocksDraft.design);
-    const copy = await admin('POST', `${base()}/${id}/duplicate`, { name: 'Kéo thả 4 (bản sao)' });
-    expect(copy.status).toBe(201);
-    expect(latest(copy.body)).toMatchObject({ editor: 'blocks', design: blocksDraft.design });
-  });
-
-  it('chuyển sang HTML: chỉ nháp đổi, giữ html đã sinh; bản đã xuất bản giữ kiểu blocks; chuyển lại -> 409', async () => {
-    const id = (await admin('POST', base(), { name: 'Kéo thả 5', ...blocksDraft })).body['id'] as string;
-    await admin('POST', `${base()}/${id}/publish`);
-    const draft = latest((await admin('POST', `${base()}/${id}/draft/from/1`)).body);
-    const res = await admin('POST', `${base()}/${id}/draft/convert-to-html`);
-    expect(res.status).toBe(200);
-    const [v2, v1] = res.body['versions'] as Json[];
-    expect(v2).toMatchObject({ version: 2, editor: 'html', design: null, html: draft['html'] });
-    expect(v1).toMatchObject({ version: 1, status: 'published', editor: 'blocks' });
-    expect((await admin('PUT', `${base()}/${id}/draft`, { ...validDraft, html: '<p>sửa tay {{ payload.vm_name }}</p>' })).status).toBe(200);
-    expect((await admin('POST', `${base()}/${id}/draft/convert-to-html`)).body['code']).toBe('EDITOR_MISMATCH');
-    await admin('POST', `${base()}/${id}/publish`);
-    expect((await admin('POST', `${base()}/${id}/draft/convert-to-html`)).body['code']).toBe('NO_DRAFT');
-  });
-
-  it('design-preview: trả html + text, không ghi DB; cùng giới hạn; hình dạng sai -> 422', async () => {
-    const before = (await t.db.select().from(templateVersions)).length;
-    const res = await admin('POST', `${base()}/design-preview`, { design: design(blocks) });
-    expect(res.status).toBe(200);
-    expect(res.body['html']).toContain('<!DOCTYPE html>');
-    expect(res.body['text']).toContain('Xem: https://ews.example.com/vm');
-    expect((await t.db.select().from(templateVersions)).length).toBe(before);
-    const bad = await admin('POST', `${base()}/design-preview`, { design: design([{ id: 'i', type: 'image', src: '{{ payload.img }}', width: 50, align: 'left' }]) });
-    expect(codesOf(bad.body)).toEqual(['IMAGE_URL_NOT_ALLOWED']);
-    expect((await admin('POST', `${base()}/design-preview`, { design: { ...design(blocks), version: 2 } })).status).toBe(422);
+    // "Chuyển sang HTML" (ADR-0034) còn tới deploy 2 — đường thoát duy nhất của một nháp blocks, không tạo blocks mới.
+    const converted = await admin('POST', `${base()}/${draft.id}/draft/convert-to-html`);
+    expect(converted.status).toBe(200);
+    expect(latest(converted.body)).toMatchObject({ editor: 'html', design: null });
   });
 });
 
@@ -607,29 +603,16 @@ describe('bộ soạn trực quan (ADR-0036)', () => {
     ],
   };
   const latest = (body: Json) => (body['versions'] as Json[])[0]!;
-  const setFlag = (value: boolean | null) => admin('PUT', '/system-settings', { values: { 'templates.visual_editor_enabled': value } });
 
-  afterAll(async () => {
-    await setFlag(null);
-  });
-
-  it('cờ mặc định TẮT: options báo false, tạo kiểu visual -> 403 VISUAL_EDITOR_DISABLED; bật lên thì tạo được', async () => {
-    expect((await admin('GET', '/template-editor-options')).body).toEqual({ visualEditor: false });
-    const denied = await admin('POST', base(), { name: 'Trực quan 0', editor: 'visual' });
-    expect(denied.status).toBe(403);
-    expect(denied.body['code']).toBe('VISUAL_EDITOR_DISABLED');
-
-    expect((await setFlag(true)).status).toBe(200);
-    expect((await admin('GET', '/template-editor-options')).body).toEqual({ visualEditor: true });
+  it('luôn bật (ADR-0037 gỡ cờ): tạo kiểu visual -> 201 thư trống; html + design phải đi cùng nhau; route cờ cũ đã gỡ', async () => {
     const created = await admin('POST', base(), { name: 'Trực quan 0', editor: 'visual' });
     expect(created.status).toBe(201);
     expect(latest(created.body)).toMatchObject({ editor: 'visual', html: '', text: '', design: { format: 'grapesjs-mjml', version: 1, project: {}, mjml: '' } });
-    // html và design phải đi cùng nhau lúc tạo
     expect((await admin('POST', base(), { name: 'Trực quan 0b', editor: 'visual', html: '<p>x</p>' })).status).toBe(422);
+    expect((await admin('GET', '/template-editor-options')).status).toBe(404);
   });
 
   it('lưu nháp: HTML đã kiểm giữ nguyên, backend sinh text; xuất bản bằng validate() cũ; gửi đổ biến', async () => {
-    await setFlag(true);
     const id = await createTemplate('Trực quan 1', { editor: 'visual' });
     const saved = await admin('PUT', `${base()}/${id}/draft`, visualDraft);
     expect(saved.status).toBe(200);
@@ -648,7 +631,6 @@ describe('bộ soạn trực quan (ADR-0036)', () => {
   });
 
   it('HTML không an toàn -> 422 kèm từng mã, KHÔNG ghi; text gửi lên -> 422; &quot; trong biến được chuẩn hoá', async () => {
-    await setFlag(true);
     const id = await createTemplate('Trực quan 2', { editor: 'visual' });
     const bad = await admin('PUT', `${base()}/${id}/draft`, {
       ...visualDraft,
@@ -670,7 +652,6 @@ describe('bộ soạn trực quan (ADR-0036)', () => {
   });
 
   it('nháp khác kiểu -> 409 EDITOR_MISMATCH; visual không chuyển sang HTML được', async () => {
-    await setFlag(true);
     const htmlId = await createTemplate('Trực quan 3 html', validDraft);
     expect((await admin('PUT', `${base()}/${htmlId}/draft`, visualDraft)).body['code']).toBe('EDITOR_MISMATCH');
     const id = await createTemplate('Trực quan 3', { editor: 'visual' });
@@ -678,10 +659,8 @@ describe('bộ soạn trực quan (ADR-0036)', () => {
     expect((await admin('POST', `${base()}/${id}/draft/convert-to-html`)).body['code']).toBe('EDITOR_MISMATCH');
   });
 
-  it('cờ TẮT sau khi đã có template trực quan: vẫn lưu / xuất bản / tạo nháp từ bản cũ / nhân bản được', async () => {
-    await setFlag(true);
+  it('xuất bản / tạo nháp từ bản cũ / nhân bản chép cả editor + design', async () => {
     const id = await createTemplate('Trực quan 4', { editor: 'visual' });
-    await setFlag(false);
     expect((await admin('PUT', `${base()}/${id}/draft`, visualDraft)).status).toBe(200);
     expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
     const v2 = latest((await admin('POST', `${base()}/${id}/draft/from/1`)).body);
@@ -703,16 +682,33 @@ describe('bộ soạn trực quan (ADR-0036)', () => {
   });
 });
 
-describe('thư viện mẫu (ADR-0035)', () => {
+describe('thư viện mẫu (ADR-0035, ADR-0037)', () => {
+  /** HTML THẬT do mjml-browser biên dịch từ MJML của mẫu — đúng thứ console gửi lên khi "Dùng mẫu". */
+  const compiled = JSON.parse(readFileSync(new URL('../unit/fixtures/preset-html.json', import.meta.url), 'utf8')) as {
+    presets: Record<string, { html: string }>;
+  };
+  const project = { pages: [{ id: 'p1' }] };
+  /** Thân "Dùng mẫu" như console gửi: MJML của mẫu (từ thư viện) + HTML biên dịch + dự án GrapesJS. */
+  async function presetBody(presetId: string, locale: 'vi' | 'en', name: string): Promise<Json> {
+    const preset = ((await admin('GET', `/template-presets?locale=${locale}`)).body as unknown as Json[]).find((p) => p['id'] === presetId);
+    return {
+      presetId,
+      locale,
+      name,
+      html: compiled.presets[`${presetId}/${locale}`]?.html ?? '<p>x</p>',
+      design: { format: 'grapesjs-mjml', version: 1, project, mjml: (preset?.['mjml'] as string | undefined) ?? '<mjml></mjml>' },
+    };
+  }
   const fromPreset = (body: Json) => admin('POST', `${base()}/from-preset`, body);
   const latest = (body: Json) => (body['versions'] as Json[])[0]!;
 
-  it('GET /template-presets: 12 mẫu, mặc định tiếng Việt, có html đã sinh; lọc nhóm; locale lạ -> 422', async () => {
+  it('GET /template-presets: 12 mẫu, mặc định tiếng Việt, có mjml + html ảnh thu nhỏ; lọc nhóm; locale lạ -> 422', async () => {
     const vi = await admin('GET', '/template-presets');
     expect(vi.status).toBe(200);
     const list = vi.body as unknown as Json[];
     expect(list).toHaveLength(12);
     expect(list[0]).toMatchObject({ id: 'incident-alert', version: 1, category: 'alert', locale: 'vi', name: 'Cảnh báo sự cố' });
+    expect(list[0]!['mjml']).toMatch(/^<mjml>/);
     expect(list[0]!['html']).toContain('<!DOCTYPE html>');
     expect((list[0]!['variables'] as Json[]).map((v) => v['name'])).toContain('payload.detail_url');
 
@@ -723,14 +719,16 @@ describe('thư viện mẫu (ADR-0035)', () => {
     expect((await http('GET', '/admin/template-presets', {})).status).toBe(401);
   });
 
-  it('tạo từ mẫu -> 201, nháp v1 kiểu blocks đúng nhóm + thiết kế + biến của mẫu; xuất bản được ngay; gửi đổ biến', async () => {
+  it('tạo từ mẫu -> 201, nháp v1 kiểu visual đúng nhóm + tiêu đề + biến của mẫu, HTML đã kiểm; xuất bản được ngay; gửi đổ biến', async () => {
     const preset = ((await admin('GET', '/template-presets?locale=en')).body as unknown as Json[]).find((p) => p['id'] === 'task-due-reminder')!;
-    const res = await fromPreset({ presetId: 'task-due-reminder', locale: 'en', name: 'Task due (preset)' });
+    const body = await presetBody('task-due-reminder', 'en', 'Task due (preset)');
+    const res = await fromPreset(body);
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ name: 'Task due (preset)', category: 'reminder', editor: 'blocks', draftVersion: 1, publishedVersion: null });
+    expect(res.body).toMatchObject({ name: 'Task due (preset)', category: 'reminder', editor: 'visual', draftVersion: 1, publishedVersion: null });
     const draft = latest(res.body);
-    expect(draft).toMatchObject({ version: 1, status: 'draft', editor: 'blocks', subject: preset['subject'], design: preset['design'] });
-    expect(draft['html']).toBe(preset['html']);
+    expect(draft).toMatchObject({ version: 1, status: 'draft', editor: 'visual', subject: preset['subject'], design: body['design'] });
+    expect(draft['html']).toBe(body['html']);
+    expect(draft['text']).toContain('{{ payload.task_name }}');
     expect(draft['variables']).toEqual(preset['variables']);
 
     const id = res.body['id'] as string;
@@ -744,26 +742,30 @@ describe('thư viện mẫu (ADR-0035)', () => {
     expect(rendered.body['html']).toContain('href="https://work.example.com/t/1"');
   });
 
-  it('mẫu lạ -> 404; trùng tên -> 409 TEMPLATE_NAME_TAKEN; locale sai / thiếu tên -> 422; app khác org -> 404', async () => {
-    const missing = await fromPreset({ presetId: 'no-such-preset', locale: 'vi', name: 'X' });
+  it('mẫu lạ -> 404; trùng tên -> 409; thiếu html / design, HTML không an toàn, locale sai / thiếu tên -> 422; app khác org -> 404', async () => {
+    const missing = await fromPreset({ ...(await presetBody('welcome', 'vi', 'X')), presetId: 'no-such-preset' });
     expect(missing.status).toBe(404);
     expect(missing.body).toMatchObject({ code: 'NOT_FOUND', detail: 'template preset no-such-preset not found' });
 
-    expect((await fromPreset({ presetId: 'welcome', locale: 'vi', name: 'Chào mừng (mẫu)' })).status).toBe(201);
-    const taken = await fromPreset({ presetId: 'welcome', locale: 'vi', name: 'chao mung (mau)' });
+    const welcome = await presetBody('welcome', 'vi', 'Chào mừng (mẫu)');
+    expect((await fromPreset(welcome)).status).toBe(201);
+    const taken = await fromPreset({ ...welcome, name: 'chao mung (mau)' });
     expect(taken.status).toBe(409);
     expect(taken.body['code']).toBe('TEMPLATE_NAME_TAKEN');
 
-    expect((await fromPreset({ presetId: 'welcome', locale: 'fr', name: 'Y' })).status).toBe(422);
-    expect((await fromPreset({ presetId: 'welcome', locale: 'vi', name: '  ' })).status).toBe(422);
-    expect((await fromPreset({ presetId: 'welcome', locale: 'vi' })).status).toBe(422);
-    expect((await admin('POST', '/apps/00000000-0000-4000-8000-000000000000/templates/from-preset', { presetId: 'welcome', locale: 'vi', name: 'Z' })).status).toBe(404);
+    // Console cũ (chỉ gửi presetId / locale / name) không tạo được nữa — HTML phải do trình duyệt biên dịch.
+    expect((await fromPreset({ presetId: 'welcome', locale: 'vi', name: 'Y' })).status).toBe(422);
+    const unsafe = await fromPreset({ ...welcome, name: 'Y', html: '<p>x</p><script>alert(1)</script>' });
+    expect([unsafe.status, codesOf(unsafe.body)]).toEqual([422, ['HTML_TAG_NOT_ALLOWED']]);
+    expect((await fromPreset({ ...welcome, name: 'Y', locale: 'fr' })).status).toBe(422);
+    expect((await fromPreset({ ...welcome, name: '  ' })).status).toBe(422);
+    expect((await admin('POST', '/apps/00000000-0000-4000-8000-000000000000/templates/from-preset', { ...welcome, name: 'Z' })).status).toBe(404);
   });
 
   it('audit TemplateCreated ghi after.createdFromPreset qua worker thật', async () => {
     const worker = await startWorker(c, consumerRegistry(application));
     try {
-      const res = await fromPreset({ presetId: 'periodic-report', locale: 'vi', name: 'Báo cáo tháng (mẫu)' });
+      const res = await fromPreset(await presetBody('periodic-report', 'vi', 'Báo cáo tháng (mẫu)'));
       const id = res.body['id'] as string;
       while ((await c.infra.outboxRelay.relayOnce()) > 0);
       let entries: Json[] = [];
@@ -773,10 +775,124 @@ describe('thư viện mẫu (ADR-0035)', () => {
       });
       expect(entries[0]).toMatchObject({
         action: 'TemplateCreated',
-        after: { category: 'report', editor: 'blocks', createdFromPreset: { presetId: 'periodic-report', presetVersion: 1, locale: 'vi' } },
+        after: { category: 'report', editor: 'visual', createdFromPreset: { presetId: 'periodic-report', presetVersion: 1, locale: 'vi' } },
       });
     } finally {
       await worker.stop();
     }
+  });
+});
+
+// Đặt CUỐI file: `--apply` dọn MỌI template kiểu blocks trong DB test (kể cả của các describe trên).
+describe('admin-cli purge-blocks-templates (ADR-0037)', () => {
+  const ctx = { actor: { id: 'admin-cli', type: 'admin' as const }, source: 'system' as const };
+  const purge = (apply: boolean) => application.adminOps.purgeBlocksTemplates.execute({ apply }, ctx);
+  const countRows = async (templateId: string) => ({
+    templates: (await t.db.select().from(templates).where(eq(templates.templateId, templateId))).length,
+    versions: (await t.db.select().from(templateVersions).where(eq(templateVersions.templateId, templateId))).length,
+  });
+
+  it('chạy thử: liệt kê, KHÔNG xoá; --apply xoá template + mọi version trong một transaction, ghi audit TemplatePurged', async () => {
+    const plain = await insertLegacyBlocks('Dọn: nháp kéo thả');
+    const html = await createTemplate('Dọn: kiểu html', validDraft);
+
+    const dry = await purge(false);
+    expect(dry.find((x) => x.templateId === plain.id)).toMatchObject({
+      appId: shop.appId,
+      name: 'Dọn: nháp kéo thả',
+      versions: [{ version: 1, status: 'draft', editor: 'blocks' }],
+      references: { notifications: 0, publications: 0, incomingHooks: 0 },
+      outcome: 'would_delete',
+      reason: null,
+    });
+    expect(dry.some((x) => x.templateId === html)).toBe(false);
+    expect(await countRows(plain.id)).toEqual({ templates: 1, versions: 1 });
+
+    const worker = await startWorker(c, consumerRegistry(application));
+    try {
+      const applied = await purge(true);
+      expect(applied.find((x) => x.templateId === plain.id)).toMatchObject({ outcome: 'deleted' });
+      expect(await countRows(plain.id)).toEqual({ templates: 0, versions: 0 });
+      expect(await countRows(html)).toEqual({ templates: 1, versions: 1 });
+      while ((await c.infra.outboxRelay.relayOnce()) > 0);
+      let entries: Json[] = [];
+      await eventually(async () => {
+        entries = (await admin('GET', `/audit?targetType=Template&targetId=${plain.id}`)).body as unknown as Json[];
+        return entries.length >= 1;
+      });
+      expect(entries[0]).toMatchObject({
+        action: 'TemplatePurged',
+        actor: 'admin-cli',
+        source: 'system',
+        before: { appId: shop.appId, name: 'Dọn: nháp kéo thả', versions: [{ version: 1, status: 'draft', editor: 'blocks' }] },
+      });
+    } finally {
+      await worker.stop();
+    }
+    expect((await purge(false)).some((x) => x.templateId === plain.id)).toBe(false);
+  });
+
+  it('từ chối template còn thư / incoming hook trỏ tới, hoặc có version kiểu khác — chạy thử và --apply đều không xoá', async () => {
+    // Thư đã gửi bằng bản blocks đang xuất bản -> lịch sử gửi trỏ tới version.
+    const sent = await insertLegacyBlocks('Dọn: đã gửi', { published: true });
+    const topic = await admin('POST', `/apps/${shop.appId}/topics`, { key: 'purge-alerts', name: 'Dọn' });
+    await admin('POST', `/apps/${shop.appId}/topics/purge-alerts/activate`);
+    const v1 = (method: string, path: string, body: unknown) => http(method, `/v1${path}`, { token: shop.apiKey, body });
+    expect((await v1('PUT', '/users/purge_u1', { email: 'purge.u1@company.com' })).status).toBeLessThan(300);
+    const accepted = await v1('POST', '/notifications', {
+      to: { externalId: 'purge_u1' },
+      topic: 'purge-alerts',
+      templateId: sent.id,
+      payload: { vm_name: 'vm-01' },
+      idempotencyKey: 'purge-1',
+    });
+    expect(accepted.status).toBe(202);
+
+    // Incoming hook trỏ tới template (dựng thẳng trong DB — tạo qua API cần khoá ký webhook).
+    const hooked = await insertLegacyBlocks('Dọn: có incoming hook');
+    await t.db.insert(incomingHooks).values({
+      hookId: IncomingHookId.create(),
+      appId: shop.appId,
+      slot: 1,
+      name: 'Dọn',
+      topicId: topic.body['id'] as string,
+      templateId: hooked.id,
+      mappings: [],
+      tokenHash: 'a'.repeat(64),
+      tokenHint: 'whk_…aaaa',
+    });
+
+    // Có version kiểu khác (nháp đã "Chuyển sang HTML") -> xoá là mất bản đang dùng.
+    const mixed = await insertLegacyBlocks('Dọn: lẫn kiểu', { published: true });
+    expect((await admin('POST', `${base()}/${mixed.id}/draft/from/1`)).status).toBe(422);
+    await t.db.insert(templateVersions).values({
+      templateVersionId: TemplateVersionId.create(),
+      templateId: mixed.id,
+      version: 2,
+      status: 'draft',
+      editor: 'html',
+      subject: validDraft.subject,
+      html: validDraft.html,
+      text: validDraft.text,
+      schema: validDraft.variables as VariableSpec[],
+    });
+
+    for (const apply of [false, true]) {
+      const result = await purge(apply);
+      expect(result.find((x) => x.templateId === sent.id)).toMatchObject({
+        outcome: 'refused',
+        reason: 'referenced',
+        references: { notifications: 1, publications: 0, incomingHooks: 0 },
+      });
+      expect(result.find((x) => x.templateId === hooked.id)).toMatchObject({
+        outcome: 'refused',
+        reason: 'referenced',
+        references: { notifications: 0, publications: 0, incomingHooks: 1 },
+      });
+      expect(result.find((x) => x.templateId === mixed.id)).toMatchObject({ outcome: 'refused', reason: 'mixed_editors' });
+    }
+    expect(await countRows(sent.id)).toEqual({ templates: 1, versions: 1 });
+    expect(await countRows(hooked.id)).toEqual({ templates: 1, versions: 1 });
+    expect(await countRows(mixed.id)).toEqual({ templates: 1, versions: 2 });
   });
 });

@@ -1,4 +1,4 @@
-import type { AppId, NotificationId, NotificationStatus, PublicationId, TopicId, UserId } from '../../../../shared/kernel/index.ts';
+import type { AppId, NotificationId, NotificationStatus, PublicationId, TemplateVersionId, TopicId, UserId } from '../../../../shared/kernel/index.ts';
 import type { Notification } from '../../domain/entities/notification.ts';
 import type { NotificationRecipient } from '../../domain/entities/notification-recipient.ts';
 import type { Publication } from '../../domain/entities/publication.ts';
@@ -38,6 +38,8 @@ export interface NotificationRepository {
   listDueScheduled(now: Date, limit: number): Promise<Notification[]>;
   /** Mọi thư con của MỘT lần phát (ADR-0028) — tối đa `MAX_PUBLICATION_RECIPIENTS` dòng. */
   listByPublication(publicationId: PublicationId): Promise<Notification[]>;
+  /** Số thư (mọi app, mọi trạng thái) gửi bằng các version này — lệnh dọn template của admin-cli (ADR-0037). */
+  countByTemplateVersions(versionIds: readonly TemplateVersionId[]): Promise<number>;
 }
 
 /** Lần phát tin vào topic (ADR-0028). Thư con ghi qua `NotificationRepository`. */
@@ -46,6 +48,8 @@ export interface PublicationRepository {
   insert(publication: Publication): Promise<void>;
   findById(id: PublicationId): Promise<Publication | null>;
   findByIdempotencyKey(appId: AppId, key: string): Promise<Publication | null>;
+  /** Số lần phát dùng các version này — lệnh dọn template của admin-cli (ADR-0037). */
+  countByTemplateVersions(versionIds: readonly TemplateVersionId[]): Promise<number>;
 }
 
 export interface RecipientRepository {

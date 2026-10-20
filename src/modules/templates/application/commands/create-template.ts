@@ -1,7 +1,6 @@
 import { audited, type CommandContext, type EventOutbox, type UnitOfWork } from '../../../../shared/application/index.ts';
 import {
   NotFoundError,
-  PermissionDeniedError,
   TemplateId,
   TemplateVersionId,
   type AppId,
@@ -11,23 +10,22 @@ import {
 } from '../../../../shared/kernel/index.ts';
 import { TemplateVersion, type TemplateContent } from '../../domain/entities/template-version.ts';
 import { Template } from '../../domain/entities/template.ts';
-import { draftContent, emptyDesign, type DraftInput } from '../../domain/rules/email-design.ts';
-import type { EmailDesign } from '../../domain/types/email-design.ts';
-import { emptyVisualDesign, isVisualDesign, type VisualDesign } from '../../domain/types/visual-design.ts';
+import { assertEditorSupported, draftContent, type DraftInput } from '../../domain/rules/email-design.ts';
+import { emptyVisualDesign, type VisualDesign } from '../../domain/types/visual-design.ts';
 import type { PresetLocale } from '../../domain/types/template-preset.ts';
 import { toTemplateDetailDto, type TemplateDetailDto } from '../dto.ts';
 import { TEMPLATE_AGGREGATE, TEMPLATE_EVENTS } from '../events.ts';
-import type { AppLookup, TemplateFeatures, TemplateRepository } from '../ports/index.ts';
+import type { AppLookup, TemplateRepository } from '../ports/index.ts';
 
 export interface CreateTemplateInput {
   appId: AppId;
   name: string;
   /** Bỏ trống = `other`. */
   category?: TemplateCategory | undefined;
-  /** Kiểu soạn của nháp v1 (ADR-0034, ADR-0036); bỏ trống = `html`. `visual` chỉ khi cờ đang bật. */
+  /** Kiểu soạn của nháp v1 (ADR-0036); bỏ trống = `html`. `blocks` đã ngừng -> 422 `EDITOR_NOT_SUPPORTED` (ADR-0037). */
   editor?: TemplateEditor | undefined;
-  /** `blocks`: `EmailDesign`, `visual`: `VisualDesign`; bỏ trống = thiết kế rỗng. */
-  design?: EmailDesign | VisualDesign | undefined;
+  /** Chỉ kiểu `visual`; bỏ trống = thư trống (console dựng thư mở đầu). */
+  design?: VisualDesign | undefined;
   /**
    * Nội dung ban đầu của nháp v1; bỏ trống = nháp rỗng, soạn sau bằng `SaveDraft`. `html` với kiểu `html` /
    * `visual`, `text` chỉ với kiểu `html`.
@@ -45,7 +43,6 @@ export class CreateTemplate {
     clock: Clock;
     templates: TemplateRepository;
     apps: AppLookup;
-    features: TemplateFeatures;
   };
 
   constructor(deps: CreateTemplate['deps']) {
@@ -53,11 +50,7 @@ export class CreateTemplate {
   }
 
   async execute(input: CreateTemplateInput, ctx: CommandContext): Promise<TemplateDetailDto> {
-    const { uow, outbox, clock, templates, apps, features } = this.deps;
-    // Cờ chỉ chặn TẠO MỚI kiểu trực quan; template trực quan đã có vẫn sửa / xuất bản / nhân bản được (ADR-0036).
-    if (input.editor === 'visual' && !(await features.visualEditorEnabled())) {
-      throw new PermissionDeniedError('VISUAL_EDITOR_DISABLED', 'the visual editor is turned off in system settings');
-    }
+    const { uow, outbox, clock, templates, apps } = this.deps;
     const content = draftContent(draftOf(input));
     return uow.run(async () => {
       if (!(await apps.exists(input.appId))) throw new NotFoundError('app', input.appId);
@@ -106,16 +99,9 @@ function draftOf(input: CreateTemplateInput): DraftInput {
   const c = input.content;
   const subject = c?.subject ?? '';
   const schema = c?.schema ?? [];
-  switch (input.editor) {
-    case 'blocks': {
-      const design = input.design && !isVisualDesign(input.design) ? input.design : emptyDesign();
-      return { editor: 'blocks', subject, design, schema };
-    }
-    case 'visual': {
-      const design = input.design && isVisualDesign(input.design) ? input.design : emptyVisualDesign();
-      return { editor: 'visual', subject, html: c?.html ?? '', design, schema };
-    }
-    default:
-      return { editor: 'html', subject, html: c?.html ?? '', text: c?.text ?? '', schema };
-  }
+  const editor = input.editor ?? 'html';
+  assertEditorSupported(editor);
+  return editor === 'visual'
+    ? { editor: 'visual', subject, html: c?.html ?? '', design: input.design ?? emptyVisualDesign(), schema }
+    : { editor: 'html', subject, html: c?.html ?? '', text: c?.text ?? '', schema };
 }

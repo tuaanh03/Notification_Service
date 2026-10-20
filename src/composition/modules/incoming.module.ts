@@ -1,5 +1,6 @@
 import type { AuthorizeAppIngress } from '../../modules/apps/application/index.ts';
 import {
+  CountHooksByTemplate,
   CreateIncomingHook,
   DeleteIncomingHook,
   IncomingHookQueries,
@@ -98,4 +99,9 @@ export function incomingModule(
     },
     jobs: [purgeIncomingCallsJob({ purge: new PurgeIncomingCalls({ clock, calls }) })],
   };
+}
+
+/** Query công khai cho lệnh dọn template của admin-cli (ADR-0037): số hook trỏ tới một template. */
+export function incomingTemplateUsage(container: Container): CountHooksByTemplate {
+  return new CountHooksByTemplate({ hooks: new DrizzleIncomingHookRepository({ transactions: container.infra.transactions }) });
 }

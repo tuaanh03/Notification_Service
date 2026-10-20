@@ -110,6 +110,11 @@ export interface TemplatePresetDto {
   subject: string;
   variables: VariableSpec[];
   design: EmailDesign;
-  /** HTML đã sinh từ `design` (còn nguyên `{{ … }}`), console tự thay giá trị mẫu như màn soạn. */
+  /**
+   * MJML của mẫu (`designToMjml`, ADR-0037): "Dùng mẫu" nạp vào GrapesJS + grapesjs-mjml, biên dịch ở trình duyệt
+   * rồi gửi `html` + dự án lên `from-preset`. Còn nguyên `{{ … }}`.
+   */
+  mjml: string;
+  /** HTML sinh bằng `renderDesign` (còn nguyên `{{ … }}`) — chỉ cho ảnh thu nhỏ; console tự thay giá trị mẫu. */
   html: string;
 }

@@ -23,6 +23,9 @@ const USAGE = `admin-cli — quản trị admin, chạy trong container
   grant-app-role --app <appId> --email <email> --role app_admin|app_viewer
   list-accounts
   scan-template-html   CHẠY THỬ, chỉ đọc: template kiểu html nào sẽ bị bộ kiểm an toàn (ADR-0036) chặn
+  purge-blocks-templates [--apply]
+                 dọn template kiểu kéo-thả đã ngừng (ADR-0037). Mặc định CHẠY THỬ (chỉ liệt kê);
+                 --apply mới xoá hẳn. Không xoá template còn thư / lần phát / incoming hook trỏ tới.
 
 Mật khẩu nhập qua stdin (nhắc 2 lần), không truyền bằng tham số.
 --login m365: không đặt mật khẩu — người này chỉ đăng nhập bằng Microsoft 365 (khớp theo email).
@@ -38,6 +41,9 @@ interface Args {
   flags: Map<string, string>;
 }
 
+/** Cờ không có giá trị (có mặt = bật). Mọi cờ khác bắt buộc có giá trị. */
+const SWITCHES = new Set(['apply']);
+
 export function parseArgs(argv: readonly string[]): Args {
   const flags = new Map<string, string>();
   const [command, ...rest] = argv;
@@ -45,6 +51,10 @@ export function parseArgs(argv: readonly string[]): Args {
     const token = rest[i]!;
     if (!token.startsWith('--')) throw new Error(`tham số lạ: ${token}`);
     const name = token.slice(2);
+    if (SWITCHES.has(name)) {
+      flags.set(name, 'true');
+      continue;
+    }
     const value = rest[i + 1];
     if (value === undefined || value.startsWith('--')) throw new Error(`--${name} thiếu giá trị`);
     flags.set(name, value);
@@ -206,6 +216,30 @@ export async function runAdminCli(env: Env, argv: readonly string[]): Promise<nu
         }
         process.stdout.write(`đã quét ${scanned} version kiểu html — ${findings.length} version sẽ bị chặn\n`);
         return 0;
+      }
+      case 'purge-blocks-templates': {
+        // Mặc định chỉ đọc; --apply mới xoá (mỗi template một transaction, audit TemplatePurged).
+        const apply = flags.get('apply') === 'true';
+        const candidates = await app.adminOps.purgeBlocksTemplates.execute({ apply }, ctx);
+        const label = { would_delete: 'SẼ XOÁ', deleted: 'ĐÃ XOÁ', refused: 'BỎ QUA' } as const;
+        const why = { referenced: 'còn thư / lần phát / incoming hook trỏ tới', mixed_editors: 'có version kiểu khác kéo-thả' } as const;
+        for (const c of candidates) {
+          const r = c.references;
+          process.stdout.write(
+            `${label[c.outcome]}  ${c.templateId}  app ${c.appId}  "${c.name}"  ${c.versions.length} version` +
+              ` (${c.versions.map((v) => `v${v.version} ${v.status} ${v.editor}`).join(', ')})` +
+              `  thư ${r.notifications} · lần phát ${r.publications} · incoming hook ${r.incomingHooks}` +
+              (c.reason ? `  — ${why[c.reason]}` : '') +
+              '\n',
+          );
+        }
+        const count = (o: (typeof candidates)[number]['outcome']) => candidates.filter((c) => c.outcome === o).length;
+        process.stdout.write(
+          apply
+            ? `đã xoá ${count('deleted')} template, bỏ qua ${count('refused')}\n`
+            : `CHẠY THỬ: ${count('would_delete')} template sẽ xoá, ${count('refused')} bỏ qua — thêm --apply để xoá thật\n`,
+        );
+        return count('refused') > 0 ? 2 : 0;
       }
       default:
         throw new Error(`không có lệnh '${command}'\n\n${USAGE}`);

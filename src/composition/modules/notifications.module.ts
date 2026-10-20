@@ -3,6 +3,7 @@ import type { SendEmail, SendRateLimiter } from '../../modules/delivery/applicat
 import type { FindUserByExternalId } from '../../modules/directory/application/index.ts';
 import {
   AcceptEmailNotification,
+  CountTemplateUsage,
   DeliverEmailNotification,
   FailStuckSending,
   GetAppOverview,
@@ -73,7 +74,12 @@ export function notificationsModule(
     appQueries: AppQueries;
     systemSettings: SystemSettingsQueries;
   },
-): { definition: ModuleDefinition; notificationOutcomes: GetNotificationOutcome; publishToTopic: PublishToTopic } {
+): {
+  definition: ModuleDefinition;
+  notificationOutcomes: GetNotificationOutcome;
+  publishToTopic: PublishToTopic;
+  countTemplateUsage: CountTemplateUsage;
+} {
   const { uow, outbox, clock, logger } = container.ports;
   const { transactions } = container.infra;
 
@@ -120,6 +126,7 @@ export function notificationsModule(
 
   return {
     publishToTopic,
+    countTemplateUsage: new CountTemplateUsage({ notifications, publications }),
     notificationOutcomes: new GetNotificationOutcome({ notifications, recipients, users, topics }),
     definition: {
       name: 'notifications',

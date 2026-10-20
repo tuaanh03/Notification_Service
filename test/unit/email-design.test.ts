@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { TemplateId, TemplateVersionId } from '../../src/shared/kernel/index.ts';
 import { TemplateVersion } from '../../src/modules/templates/domain/entities/template-version.ts';
 import { renderTemplate } from '../../src/modules/templates/domain/rules/render-template.ts';
+import type { TemplateContent } from '../../src/modules/templates/domain/entities/template-version.ts';
 import {
+  assertDesign,
+  assertEditorSupported,
   checkDesign,
   DESIGN_LIMITS,
   draftContent,
@@ -11,6 +14,7 @@ import {
   renderDesign,
 } from '../../src/modules/templates/domain/rules/email-design.ts';
 import type { DesignBlock, EmailDesign } from '../../src/modules/templates/domain/types/email-design.ts';
+import type { VariableSpec } from '../../src/modules/templates/domain/types/template-variable.ts';
 
 const at = new Date('2026-10-18T03:00:00Z');
 const codes = (issues: readonly { code: string }[]) => issues.map((i) => i.code);
@@ -42,14 +46,26 @@ const image = (src: string, over: Partial<Extract<DesignBlock, { type: 'image' }
   ...over,
 });
 
-/** Nháp kiểu blocks qua đúng đường lưu (`draftContent`) rồi chạy `validate()` của xuất bản. */
+/**
+ * Dòng kiểu blocks như lúc còn lưu được (ADR-0034): HTML sinh bằng `renderDesign`. Kiểu này đã ngừng (ADR-0037) —
+ * không lưu mới được, nhưng dòng cũ vẫn đọc / xuất bản / gửi như thường.
+ */
+const legacyBlocks = (subject: string, d: EmailDesign, schema: readonly VariableSpec[]): TemplateContent => ({
+  editor: 'blocks',
+  design: d,
+  subject,
+  ...renderDesign(d),
+  schema,
+});
+
+/** Dòng kiểu blocks rồi chạy `validate()` của xuất bản. */
 const publishIssues = (d: EmailDesign, schema = [{ name: 'payload.vm_name', source: 'payload' as const, required: true }]) =>
   codes(
     new TemplateVersion({
       id: TemplateVersionId.create(),
       templateId: TemplateId.create(),
       version: 1,
-      ...draftContent({ editor: 'blocks', subject: 'Cảnh báo {{ payload.vm_name }}', design: d, schema }),
+      ...legacyBlocks('Cảnh báo {{ payload.vm_name }}', d, schema),
       createdAt: at,
     }).validate(),
   );
@@ -74,12 +90,9 @@ describe('renderDesign — escape chữ người soạn, giữ biến (ADR-0034)
 
   it('biến trong thuộc tính: " đổi thành \' và vẫn đổ đúng lúc gửi', () => {
     expect(escapeKeepingVariables('{{ payload.url | default: "https://a.vn" }}', true)).toBe("{{ payload.url | default: 'https://a.vn' }}");
-    const content = draftContent({
-      editor: 'blocks',
-      subject: 's',
-      design: design([[button('{{ payload.url | default: "https://ews.vn/?a=1&b=2" }}')]]),
-      schema: [{ name: 'payload.url', source: 'payload', required: false }],
-    });
+    const content = legacyBlocks('s', design([[button('{{ payload.url | default: "https://ews.vn/?a=1&b=2" }}')]]), [
+      { name: 'payload.url', source: 'payload', required: false },
+    ]);
     const out = renderTemplate(content, { payload: {}, externalId: 'emp_01' });
     expect(out.html).toContain('href="https://ews.vn/?a=1&amp;b=2"');
   });
@@ -157,7 +170,7 @@ describe('checkDesign — giới hạn và link ảnh (lúc lưu)', () => {
     expect(codes(checkDesign(design([many])))).toEqual(['DESIGN_TOO_MANY_BLOCKS']);
     const big = Array.from({ length: 20 }, () => text('x'.repeat(DESIGN_LIMITS.textChars)));
     expect(codes(checkDesign(design([big])))).toEqual(['DESIGN_TOO_LARGE']);
-    expect(() => draftContent({ editor: 'blocks', subject: '', design: design([many]), schema: [] })).toThrow();
+    expect(() => assertDesign(design([many]))).toThrow();
   });
 });
 
@@ -167,9 +180,17 @@ describe('TemplateVersion — kiểu soạn', () => {
       id: TemplateVersionId.create(),
       templateId: TemplateId.create(),
       version: 1,
-      ...draftContent({ editor: 'blocks', subject: 's', design: design([[text('a')]]), schema: [] }),
+      ...legacyBlocks('s', design([[text('a')]]), []),
       createdAt: at,
     });
+
+  it('kiểu blocks đã ngừng (ADR-0037): không tạo / lưu mới -> EDITOR_NOT_SUPPORTED; html / visual qua', () => {
+    expect(() => assertEditorSupported('blocks')).toThrow(
+      expect.objectContaining({ issues: [expect.objectContaining({ code: 'EDITOR_NOT_SUPPORTED', path: 'editor' })] }),
+    );
+    expect(() => assertEditorSupported('html')).not.toThrow();
+    expect(() => assertEditorSupported('visual')).not.toThrow();
+  });
 
   it('lưu nháp khác kiểu -> EDITOR_MISMATCH', () => {
     const v = blocksDraft();

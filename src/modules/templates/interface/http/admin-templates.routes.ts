@@ -14,13 +14,12 @@ import type {
   PublishVersion,
   RenderTemplate,
   SaveDraft,
-  TemplateEditorOptions,
   TemplatePresetQueries,
   TemplateQueries,
   UpdateTemplate,
 } from '../../application/index.ts';
 import { TEMPLATE_NAME_MAX_LENGTH } from '../../domain/entities/template.ts';
-import type { DraftInput } from '../../domain/rules/email-design.ts';
+import { assertEditorSupported, type DraftInput } from '../../domain/rules/email-design.ts';
 import { PRESET_LOCALES } from '../../domain/types/template-preset.ts';
 import { emailDesignSchema } from './email-design.schema.ts';
 import { visualDesignSchema } from './visual-design.schema.ts';
@@ -54,13 +53,12 @@ const content = {
   variables: z.array(variable).max(100).default([]),
 };
 /**
- * Nháp kiểu `html` (bỏ trống `editor` = như client cũ), `blocks` hoặc `visual`. Kiểu `blocks` KHÔNG nhận
- * `html` / `text`: backend sinh từ `design` (ADR-0034). Kiểu `visual` nhận `html` do trình duyệt sinh (backend
- * kiểm, từ chối nếu không an toàn) nhưng KHÔNG nhận `text`: backend sinh từ HTML đã kiểm (ADR-0036).
+ * Nháp kiểu `html` (bỏ trống `editor` = như client cũ) hoặc `visual`. Kiểu `visual` nhận `html` do trình duyệt
+ * sinh (backend kiểm, từ chối nếu không an toàn) nhưng KHÔNG nhận `text`: backend sinh từ HTML đã kiểm
+ * (ADR-0036). Kiểu `blocks` đã ngừng -> 422 `EDITOR_NOT_SUPPORTED` (`rejectBlocks`, ADR-0037).
  */
 const draftBody = z.union([
   z.object({ editor: z.literal('html').optional(), ...content }).strict(),
-  z.object({ editor: z.literal('blocks'), subject: content.subject, design: emailDesignSchema, variables: content.variables }).strict(),
   z.object({ editor: z.literal('visual'), subject: content.subject, html: content.html, design: visualDesignSchema, variables: content.variables }).strict(),
 ]);
 const createShared = {
@@ -71,7 +69,6 @@ const createShared = {
 };
 const createBody = z.union([
   z.object({ ...createShared, editor: z.literal('html').optional(), html: content.html.optional(), text: content.text.optional() }).strict(),
-  z.object({ ...createShared, editor: z.literal('blocks'), design: emailDesignSchema.optional() }).strict(),
   // Trực quan: bỏ trống cả hai = thư trống (console dựng thư mẫu ban đầu); có thì phải đi cùng nhau.
   z
     .object({ ...createShared, editor: z.literal('visual'), html: content.html.optional(), design: visualDesignSchema.optional() })
@@ -92,8 +89,13 @@ const updateBody = z
 const duplicateBody = z.object({ name: NAME }).strict();
 /** Thư viện mẫu (ADR-0035): bỏ trống `locale` = tiếng Việt. */
 const presetListQuery = z.object({ category: CATEGORY.optional(), locale: z.enum(PRESET_LOCALES).default('vi') });
-/** Tên bắt buộc như nhân bản — console gợi ý sẵn tên mẫu theo ngôn ngữ thư. */
-const fromPresetBody = z.object({ presetId: z.string().min(1).max(64), locale: z.enum(PRESET_LOCALES), name: NAME }).strict();
+/**
+ * Tên bắt buộc như nhân bản — console gợi ý sẵn tên mẫu theo ngôn ngữ thư. `html` + `design` là MJML của mẫu
+ * đã nạp vào GrapesJS và biên dịch ở trình duyệt (ADR-0037) — kiểm như lưu nháp trực quan.
+ */
+const fromPresetBody = z
+  .object({ presetId: z.string().min(1).max(64), locale: z.enum(PRESET_LOCALES), name: NAME, html: content.html, design: visualDesignSchema })
+  .strict();
 /** Xem trước trên màn Soạn thông báo: payload như lúc gửi; `externalId` = người nhận đầu tiên (nếu đã chọn). */
 const renderBody = z.object({ payload: z.record(z.string(), z.unknown()).default({}), externalId: EXTERNAL_ID.optional() }).strict();
 
@@ -114,14 +116,20 @@ const aiComposeBody = z
     path: ['current'],
   });
 
+/**
+ * Kiểu kéo-thả đã ngừng (ADR-0037): báo mã rõ ràng `EDITOR_NOT_SUPPORTED` thay vì lỗi hình dạng chung của zod.
+ * Chạy TRƯỚC `parseInput`.
+ */
+function rejectBlocks(body: unknown): void {
+  if (typeof body === 'object' && body !== null && (body as { editor?: unknown }).editor === 'blocks') assertEditorSupported('blocks');
+}
+
 function toDraft(body: z.infer<typeof draftBody>): DraftInput {
-  if (body.editor === 'blocks') return { editor: 'blocks', subject: body.subject, design: body.design, schema: body.variables };
   if (body.editor === 'visual') return { editor: 'visual', subject: body.subject, html: body.html, design: body.design, schema: body.variables };
   return { editor: 'html', subject: body.subject, html: body.html, text: body.text, schema: body.variables };
 }
 
 function toCreateContent(body: z.infer<typeof createBody>) {
-  if (body.editor === 'blocks') return { design: body.design, content: { subject: body.subject, schema: body.variables } };
   if (body.editor === 'visual') return { design: body.design, content: { subject: body.subject, html: body.html, schema: body.variables } };
   return { content: { subject: body.subject, html: body.html, text: body.text, schema: body.variables } };
 }
@@ -145,7 +153,6 @@ export function adminTemplatesRoutes(useCases: {
   renderTemplate: RenderTemplate;
   queries: TemplateQueries;
   presets: TemplatePresetQueries;
-  editorOptions: TemplateEditorOptions;
 }): HttpRoutes {
   return (app) => {
     const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
@@ -159,6 +166,7 @@ export function adminTemplatesRoutes(useCases: {
 
     app.post('/apps/:appId/templates', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
+      rejectBlocks(request.body);
       const body = parseInput(createBody, request.body);
       const created = await useCases.createTemplate.execute(
         {
@@ -179,11 +187,8 @@ export function adminTemplatesRoutes(useCases: {
       return useCases.presets.list({ category, locale });
     });
 
-    // Kiểu soạn nào đang mở cho người tạo (cờ bộ soạn trực quan — ADR-0036). Không thuộc app nào.
-    app.get('/template-editor-options', { config: access('catalog.read') }, async () => useCases.editorOptions.execute());
-
-    // "Dùng mẫu": template MỚI của app, nháp v1 kiểu blocks chép từ mẫu — quyền như lệnh tạo.
-    app.post('/apps/:appId/templates/from-preset', { config: access('app.manage') }, async (request, reply) => {
+    // "Dùng mẫu": template MỚI của app, nháp v1 kiểu visual (HTML biên dịch ở trình duyệt) — quyền như lệnh tạo.
+    app.post('/apps/:appId/templates/from-preset', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
       const { appId } = parseInput(appParams, request.params);
       const body = parseInput(fromPresetBody, request.body);
       const created = await useCases.createTemplateFromPreset.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
@@ -232,6 +237,7 @@ export function adminTemplatesRoutes(useCases: {
 
     app.put('/apps/:appId/templates/:templateId/draft', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
       const params = ids(parseInput(templateParams, request.params));
+      rejectBlocks(request.body);
       const body = parseInput(draftBody, request.body);
       return useCases.saveDraft.execute({ ...params, draft: toDraft(body) }, ctx(request));
     });

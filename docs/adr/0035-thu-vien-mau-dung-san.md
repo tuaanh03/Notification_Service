@@ -1,6 +1,8 @@
 # ADR-0035 — Template: thư viện mẫu dựng sẵn, viết trong code, chép một lần
 
-**Trạng thái:** chấp nhận — 2026-10-19 (đợt 3 của ADR-0033). Mở rộng ADR-0020, dựa trên ADR-0034.
+**Trạng thái:** chấp nhận — 2026-10-19 (đợt 3 của ADR-0033). Mở rộng ADR-0020, dựa trên ADR-0034. **Sửa bởi ADR-0037
+(2026-10-20):** "Dùng mẫu" tạo template kiểu `visual` — thư viện trả thêm `mjml`, console biên dịch ở trình duyệt
+rồi gửi `html` + `design` lên `from-preset`; `html` của thư viện chỉ còn làm ảnh thu nhỏ.
 
 ## 1. Bối cảnh
 

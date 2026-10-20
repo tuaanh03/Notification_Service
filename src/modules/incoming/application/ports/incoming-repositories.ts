@@ -1,4 +1,4 @@
-import type { AppId, IncomingHookId } from '../../../../shared/kernel/index.ts';
+import type { AppId, IncomingHookId, TemplateId } from '../../../../shared/kernel/index.ts';
 import type { IncomingCall } from '../../domain/entities/incoming-call.ts';
 import type { IncomingHook } from '../../domain/entities/incoming-hook.ts';
 
@@ -10,6 +10,8 @@ export interface IncomingHookRepository {
   listByApp(appId: AppId): Promise<IncomingHook[]>;
   update(hook: IncomingHook): Promise<void>;
   delete(id: IncomingHookId): Promise<void>;
+  /** Số hook (mọi app) đang trỏ tới template này — lệnh dọn template của admin-cli (ADR-0037). */
+  countByTemplate(templateId: TemplateId): Promise<number>;
 }
 
 export interface IncomingCallRepository {

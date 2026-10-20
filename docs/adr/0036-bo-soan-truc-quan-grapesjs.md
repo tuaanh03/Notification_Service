@@ -1,7 +1,8 @@
 # ADR-0036 — Template: bộ soạn trực quan GrapesJS + MJML, trình duyệt sinh HTML, backend kiểm
 
 **Trạng thái:** chấp nhận — 2026-10-19 (đợt UX-2). Mở rộng ADR-0020, ADR-0034; thay ADR-0034 §2.2 RIÊNG cho
-kiểu `visual`.
+kiểu `visual`. **ADR-0037 (2026-10-20) bỏ §2.7** (cờ `templates.visual_editor_enabled` — kiểu `visual` luôn bật) và
+làm xong §5 phần mẫu dựng sẵn / trình kéo-thả.
 
 ## 1. Bối cảnh
 

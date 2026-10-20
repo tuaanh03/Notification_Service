@@ -191,6 +191,12 @@ export class DrizzleTemplateRepository implements TemplateRepository {
     if (result.affectedRows === 0) throw new ConcurrentTransitionError('TemplateVersion', version.id, expectedStatus);
   }
 
+  async deleteWithVersions(templateId: TemplateIdType): Promise<void> {
+    const tx = this.transactions.require('TemplateRepository.deleteWithVersions');
+    await tx.delete(templateVersions).where(eq(templateVersions.templateId, templateId));
+    await tx.delete(templates).where(eq(templates.templateId, templateId));
+  }
+
   private async withNameConflict(template: Template, write: () => Promise<unknown>): Promise<void> {
     try {
       await write();

@@ -8,6 +8,7 @@ import {
   type TemplateId,
 } from '../../../../shared/kernel/index.ts';
 import { TemplateVersion } from '../../domain/entities/template-version.ts';
+import { assertEditorSupported } from '../../domain/rules/email-design.ts';
 import { toTemplateDetailDto, type TemplateDetailDto } from '../dto.ts';
 import { TEMPLATE_AGGREGATE, TEMPLATE_EVENTS } from '../events.ts';
 import type { TemplateRepository } from '../ports/index.ts';
@@ -15,7 +16,8 @@ import { lockTemplate, nextVersionNumber } from './lock-template.ts';
 
 /**
  * Tạo nháp mới chép nội dung của một version có sẵn — "Sửa bản đang xuất bản" và "Quay về bản cũ"
- * đều là việc này. Bản cũ giữ nguyên (lịch sử gửi trỏ tới nó); đã có nháp thì 409 `DRAFT_EXISTS`.
+ * đều là việc này. Bản cũ giữ nguyên (lịch sử gửi trỏ tới nó); đã có nháp thì 409 `DRAFT_EXISTS`; bản kiểu
+ * `blocks` -> 422 `EDITOR_NOT_SUPPORTED`.
  */
 export class DraftFromVersion {
   private readonly deps: { uow: UnitOfWork; outbox: EventOutbox; clock: Clock; templates: TemplateRepository };
@@ -39,6 +41,8 @@ export class DraftFromVersion {
       }
       const source = versions.find((v) => v.version === input.version);
       if (!source) throw new NotFoundError('template version', String(input.version));
+      // Bản cũ kiểu kéo-thả đọc / gửi vẫn được, nhưng không chép ra nháp mới (ADR-0037).
+      assertEditorSupported(source.editor);
 
       const draft = new TemplateVersion({
         id: TemplateVersionId.create(),
