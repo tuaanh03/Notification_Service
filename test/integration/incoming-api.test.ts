@@ -432,8 +432,11 @@ describe('lấy lại URL bất cứ lúc nào', () => {
 describe('Cài đặt hệ thống', () => {
   it('GET đủ danh mục + mặc định; PUT ngoài khoảng / khoá lạ -> 422, không ghi gì', async () => {
     const list = (await admin('GET', '/system-settings')).body['settings'] as Json[];
-    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'incoming.max_hooks_per_app', 'api.public_base_url', 'apps.max_active_api_keys', 'webhooks.max_endpoints_per_app']);
+    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'incoming.max_hooks_per_app', 'api.public_base_url', 'apps.max_active_api_keys', 'webhooks.max_endpoints_per_app', 'templates.html_check_enabled']);
     expect(list[0]).toMatchObject({ value: 10, default: 10, min: 1, max: 1440, customized: false });
+    expect(list.at(-1)).toMatchObject({ kind: 'bool', value: true, default: true, min: null, max: null, customized: false });
+    const notBool = await admin('PUT', '/system-settings', { values: { 'templates.html_check_enabled': 'no' } });
+    expect([notBool.status, codeOf(notBool.body)]).toEqual([422, 'SETTING_INVALID_BOOLEAN']);
     // Cờ bộ soạn trực quan đã gỡ (ADR-0037): khoá cũ là khoá lạ.
     const removed = await admin('PUT', '/system-settings', { values: { 'templates.visual_editor_enabled': true } });
     expect([removed.status, codeOf(removed.body)]).toEqual([422, 'SETTING_UNKNOWN']);

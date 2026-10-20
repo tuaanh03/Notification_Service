@@ -21,20 +21,23 @@ import {
   DrizzleTemplateRepository,
   OpenAiCompatibleTemplateWriter,
   RedisAiComposeRateLimiter,
+  SettingsTemplateFeatures,
 } from '../../modules/templates/infrastructure/adapters/index.ts';
 import { FixedWindowRateLimiter } from '../../shared/rate-limit/index.ts';
 import { adminTemplatesRoutes } from '../../modules/templates/interface/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
+import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
 
 /**
- * Ghép module templates: admin soạn / xuất bản (ADR-0020). Hỏi apps qua adapter. Trả thêm hai use case công khai
+ * Ghép module templates: admin soạn / xuất bản (ADR-0020). Hỏi apps và settings (công tắc bộ kiểm HTML lúc xuất bản —
+ * ADR-0038) qua adapter. Trả thêm hai use case công khai
  * cho notifications: `renderTemplate` (đổ biến lúc nhận gửi) và `templateQueries` (nhãn theo lô);
  * `scanHtmlTemplates` chỉ cho admin-cli.
  */
 export function templatesModule(
   container: Container,
-  dependencies: { appQueries: AppQueries; aiWriter?: TemplateAiWriter | undefined },
+  dependencies: { appQueries: AppQueries; systemSettings: SystemSettingsQueries; aiWriter?: TemplateAiWriter | undefined },
 ): {
   definition: ModuleDefinition;
   renderTemplate: RenderTemplate;
@@ -74,7 +77,7 @@ export function templatesModule(
           duplicateTemplate: new DuplicateTemplate(deps),
           saveDraft: new SaveDraft(deps),
           draftFromVersion: new DraftFromVersion(deps),
-          publishVersion: new PublishVersion(deps),
+          publishVersion: new PublishVersion({ ...deps, features: new SettingsTemplateFeatures(dependencies) }),
           archiveTemplate: new ArchiveTemplate(deps),
           composeTemplateDraft,
           renderTemplate,

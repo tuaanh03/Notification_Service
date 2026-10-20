@@ -104,6 +104,41 @@ describe('TemplateVersion — nháp lỏng, xuất bản chặt', () => {
   });
 });
 
+describe('TemplateVersion — bộ kiểm HTML lúc xuất bản kiểu html (ADR-0038)', () => {
+  const dirty = '<p onclick="x()">{{ payload.vm_name }}</p><script>alert(1)</script>';
+
+  it('bật: HTML không an toàn -> 422 cùng mã kiểu visual (path html), không xuất bản; HTML sạch qua', () => {
+    const v = draft({ html: dirty });
+    expect(() => v.publish(at, 'admin-1', { checkHtml: true })).toThrow(
+      expect.objectContaining({
+        code: 'VALIDATION',
+        issues: [
+          expect.objectContaining({ code: 'HTML_ATTRIBUTE_NOT_ALLOWED', path: 'html' }),
+          expect.objectContaining({ code: 'HTML_TAG_NOT_ALLOWED', path: 'html' }),
+        ],
+      }),
+    );
+    expect(v.status).toBe('draft');
+    expect(v.html).toBe(dirty); // không tự sửa
+    const clean = draft();
+    clean.publish(at, 'admin-1', { checkHtml: true });
+    expect(clean.status).toBe('published');
+  });
+
+  it('tắt (hoặc không truyền): như trước — chỉ luật nội dung', () => {
+    expect(codes(draft({ html: dirty }).validate())).toEqual([]);
+    const v = draft({ html: dirty });
+    v.publish(at, 'admin-1', { checkHtml: false });
+    expect(v.status).toBe('published');
+  });
+
+  it('kiểu visual không kiểm lại lúc xuất bản (đã kiểm lúc lưu); HTML rỗng chỉ báo HTML_REQUIRED', () => {
+    const visual = draft({ editor: 'visual', design: { format: 'grapesjs-mjml', version: 1, project: {}, mjml: '' }, html: dirty });
+    expect(codes(visual.validate({ checkHtml: true }))).toEqual([]);
+    expect(codes(draft({ html: ' ' }).validate({ checkHtml: true }))).toEqual(['HTML_REQUIRED']);
+  });
+});
+
 describe('Template', () => {
   const template = () =>
     new Template({ id: TemplateId.create(), appId: AppId.create(), name: '  Cảnh báo VM  ', channel: 'email', createdAt: at });

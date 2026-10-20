@@ -10,6 +10,7 @@ import {
   type TemplateVersionStatus,
   type TimestampInput,
 } from '../../../../shared/kernel/index.ts';
+import { checkEmailHtml } from '../rules/email-html.ts';
 import { validateBody, validateLinks, validateSchema, validateSupportedVariables } from '../rules/template-variables.ts';
 import type { VisualDesign } from '../types/visual-design.ts';
 import type { VariableSpec } from '../types/template-variable.ts';
@@ -119,11 +120,17 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
     }
   }
 
-  /** Trả về danh sách lỗi; rỗng = publish được. AI sinh ra cũng đi qua đúng cửa này. */
-  validate(): Issue[] {
+  /**
+   * Trả về danh sách lỗi; rỗng = publish được. AI sinh ra cũng đi qua đúng cửa này.
+   *
+   * `checkHtml` (ADR-0038): kiểu `html` chạy thêm bộ kiểm an toàn `checkEmailHtml` — cùng mã lỗi kiểu `visual` trả lúc
+   * lưu (`HTML_TAG_NOT_ALLOWED`…, `path = html`). Chỉ từ chối, không sửa HTML. Kiểu `visual` đã kiểm lúc lưu nên bỏ qua.
+   */
+  validate(options: { checkHtml?: boolean | undefined } = {}): Issue[] {
     const issues: Issue[] = [];
     if (!this.subject.trim()) issues.push(issue('SUBJECT_REQUIRED', 'subject must not be empty', 'subject'));
     if (!this.html.trim()) issues.push(issue('HTML_REQUIRED', 'html must not be empty', 'html'));
+    else if (options.checkHtml && this.editor === 'html') issues.push(...checkEmailHtml(this.html));
     const all = [
       ...issues,
       ...validateSchema(this.schema),
@@ -143,7 +150,8 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
     });
   }
 
-  publish(at: Date, by: string): void {
+  /** `checkHtml`: bật bộ kiểm HTML cho kiểu `html` (cài đặt `templates.html_check_enabled` — ADR-0038). */
+  publish(at: Date, by: string, options: { checkHtml?: boolean | undefined } = {}): void {
     if (this.status === 'published') return;
     if (this.status === 'superseded') {
       throw ValidationError.of(
@@ -151,7 +159,7 @@ export class TemplateVersion extends BaseEntity<TemplateVersionId> {
         'version is superseded, create a new version instead of republishing',
       );
     }
-    const issues = this.validate();
+    const issues = this.validate(options);
     if (issues.length) throw new ValidationError(issues);
     this.status = 'published';
     this.publishedAt = at;

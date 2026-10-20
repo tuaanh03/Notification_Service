@@ -162,6 +162,7 @@ describe('nháp -> xuất bản -> phiên bản mới', () => {
     expect(res.status).toBe(422);
     expect(codesOf(res.body).sort()).toEqual(
       [
+        'HTML_URL_NOT_ALLOWED', // bộ kiểm HTML lúc xuất bản (ADR-0038, mặc định bật)
         'LINK_SCHEME_NOT_ALLOWED',
         'UNSUBSCRIBE_LINK_NOT_ALLOWED',
         'USER_VARIABLE_NOT_SUPPORTED',
@@ -481,6 +482,49 @@ describe('Nhờ AI soạn — POST .../ai-compose', () => {
     expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
     expect(statuses[10]).toBe(429);
     expect((await compose(id, { instruction: 'x', mode: 'new' }, (await signInAdmin(application, api.url)).token)).status).toBe(200);
+  });
+});
+
+describe('bộ kiểm HTML lúc xuất bản kiểu html (ADR-0038)', () => {
+  const setCheck = (value: boolean | null) => admin('PUT', '/system-settings', { values: { 'templates.html_check_enabled': value } });
+  const dirtyHtml = '<p onclick="x()">Máy ảo {{ payload.vm_name }}</p><script>alert(1)</script>';
+  const latest = (body: Json) => (body['versions'] as Json[])[0]!;
+
+  afterAll(async () => {
+    await setCheck(null);
+  });
+
+  it('mặc định bật: HTML sạch xuất bản được; HTML bẩn -> 422 từng mã (như visual), nháp vẫn lưu được và không bị sửa', async () => {
+    const clean = await createTemplate('Kiểm HTML sạch', validDraft);
+    expect((await admin('POST', `${base()}/${clean}/publish`)).status).toBe(200);
+
+    const id = await createTemplate('Kiểm HTML bẩn', validDraft);
+    const saved = await admin('PUT', `${base()}/${id}/draft`, { ...validDraft, html: dirtyHtml });
+    expect(saved.status).toBe(200);
+    const res = await admin('POST', `${base()}/${id}/publish`);
+    expect(res.status).toBe(422);
+    expect(codesOf(res.body)).toEqual(['HTML_ATTRIBUTE_NOT_ALLOWED', 'HTML_TAG_NOT_ALLOWED']);
+    expect(((res.body['issues'] ?? []) as Json[]).every((i) => i['path'] === 'html')).toBe(true);
+    const after = (await admin('GET', `${base()}/${id}`)).body;
+    expect(after).toMatchObject({ publishedVersion: null, draftVersion: 1 });
+    expect(latest(after)['html']).toBe(dirtyHtml);
+  });
+
+  it('tắt công tắc: HTML bẩn xuất bản được như trước; bật lại thì bản đã xuất bản vẫn gửi, chỉ bản MỚI bị chặn', async () => {
+    const id = await createTemplate('Kiểm HTML tắt', { ...validDraft, html: dirtyHtml });
+    expect((await setCheck(false)).status).toBe(200);
+    expect((await admin('POST', `${base()}/${id}/publish`)).status).toBe(200);
+
+    expect((await setCheck(true)).status).toBe(200);
+    // Bản đã xuất bản không bị đụng: vẫn là bản đang dùng, đổ biến / gửi như cũ.
+    const rendered = await admin('POST', `${base()}/${id}/render`, { payload: { vm_name: 'vm-01' } });
+    expect(rendered.status).toBe(200);
+    expect(rendered.body['html']).toContain('<script>');
+    // Nháp mới chép từ bản đó thì bị chặn khi xuất bản; v1 vẫn published.
+    expect((await admin('POST', `${base()}/${id}/draft/from/1`)).status).toBe(201);
+    const blocked = await admin('POST', `${base()}/${id}/publish`);
+    expect(blocked.status).toBe(422);
+    expect((await admin('GET', `${base()}/${id}`)).body).toMatchObject({ publishedVersion: 1, draftVersion: 2 });
   });
 });
 

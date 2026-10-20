@@ -2,7 +2,7 @@ import { audited, type CommandContext, type EventOutbox, type UnitOfWork } from 
 import { ConflictError, type AppId, type Clock, type TemplateId } from '../../../../shared/kernel/index.ts';
 import { toTemplateDetailDto, type TemplateDetailDto } from '../dto.ts';
 import { TEMPLATE_AGGREGATE, TEMPLATE_EVENTS } from '../events.ts';
-import type { TemplateRepository } from '../ports/index.ts';
+import type { TemplateFeatures, TemplateRepository } from '../ports/index.ts';
 import { lockTemplate } from './lock-template.ts';
 
 /**
@@ -10,16 +10,21 @@ import { lockTemplate } from './lock-template.ts';
  * `superseded`, nháp thành bản chính thức — cùng một transaction. Từ lần gửi kế tiếp, app dùng bản mới.
  *
  * Hai admin cùng bấm: người sau chờ khoá, đọc lại thì nháp đã thành published -> 409 `NO_DRAFT`.
+ *
+ * Kiểu `html`: khi công tắc `templates.html_check_enabled` bật (mặc định), chạy thêm bộ kiểm HTML an toàn — lỗi là
+ * 422 như kiểu `visual` lúc lưu (ADR-0038). Chỉ nháp ĐANG xuất bản bị kiểm; bản đã xuất bản không bị đụng tới.
  */
 export class PublishVersion {
-  private readonly deps: { uow: UnitOfWork; outbox: EventOutbox; clock: Clock; templates: TemplateRepository };
+  private readonly deps: { uow: UnitOfWork; outbox: EventOutbox; clock: Clock; templates: TemplateRepository; features: TemplateFeatures };
 
   constructor(deps: PublishVersion['deps']) {
     this.deps = deps;
   }
 
   async execute(input: { appId: AppId; templateId: TemplateId }, ctx: CommandContext): Promise<TemplateDetailDto> {
-    const { uow, outbox, clock, templates } = this.deps;
+    const { uow, outbox, clock, templates, features } = this.deps;
+    // Đọc công tắc ngoài transaction (đệm 30 giây) — không giữ khoá dòng template trong lúc hỏi settings.
+    const checkHtml = await features.htmlCheckEnabled();
     return uow.run(async () => {
       const template = await lockTemplate(templates, input.appId, input.templateId);
       template.assertActive();
@@ -29,7 +34,7 @@ export class PublishVersion {
       const current = versions.find((v) => v.status === 'published') ?? null;
 
       const now = clock.now();
-      draft.publish(now, ctx.actor.id); // kiểm tra TRƯỚC khi đụng bản đang xuất bản
+      draft.publish(now, ctx.actor.id, { checkHtml }); // kiểm tra TRƯỚC khi đụng bản đang xuất bản
       if (current) {
         // Hạ bản cũ trước: unique `uq_template_versions_one_published` không cho hai bản published cùng lúc.
         current.supersede(now);

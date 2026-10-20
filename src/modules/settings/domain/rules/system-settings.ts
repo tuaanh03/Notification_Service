@@ -18,11 +18,17 @@ export const SYSTEM_SETTINGS = {
   'apps.max_active_api_keys': { kind: 'int', default: 20, min: 1, max: 100 },
   /** Số URL nhận outgoing webhook tối đa mỗi app — mỗi URL là thêm một lần gọi cho mỗi thư. */
   'webhooks.max_endpoints_per_app': { kind: 'int', default: 10, min: 1, max: 50 },
+  /**
+   * Bộ kiểm HTML an toàn (`checkEmailHtml`, ADR-0036) chạy cả khi XUẤT BẢN template kiểu `html` (ADR-0038). Công tắc
+   * an toàn: tắt = xuất bản kiểu `html` như trước (chỉ luật nội dung). Kiểu `visual` luôn kiểm lúc lưu, không theo cờ này.
+   */
+  'templates.html_check_enabled': { kind: 'bool', default: true },
 } as const satisfies Record<string, SettingSpec>;
 
 type SettingSpec =
   | { kind: 'int'; default: number; min: number; max: number }
-  | { kind: 'url'; default: string | null };
+  | { kind: 'url'; default: string | null }
+  | { kind: 'bool'; default: boolean };
 
 export type SystemSettingKey = keyof typeof SYSTEM_SETTINGS;
 export const SYSTEM_SETTING_KEYS = Object.keys(SYSTEM_SETTINGS) as SystemSettingKey[];
@@ -35,6 +41,7 @@ export interface SystemSettingsValues {
   'api.public_base_url': string | null;
   'apps.max_active_api_keys': number;
   'webhooks.max_endpoints_per_app': number;
+  'templates.html_check_enabled': boolean;
 }
 
 export const isSystemSettingKey = (key: string): key is SystemSettingKey => Object.hasOwn(SYSTEM_SETTINGS, key);
@@ -56,15 +63,20 @@ export function effectiveSettings(stored: ReadonlyMap<string, unknown>): SystemS
     'api.public_base_url': pick('api.public_base_url'),
     'apps.max_active_api_keys': pick('apps.max_active_api_keys'),
     'webhooks.max_endpoints_per_app': pick('webhooks.max_endpoints_per_app'),
+    'templates.html_check_enabled': pick('templates.html_check_enabled'),
   };
 }
 
 /**
  * Kiểm + chuẩn hoá MỘT giá trị. Sai -> ValidationError có mã ổn định:
- *   SETTING_OUT_OF_RANGE (số ngoài khoảng / không nguyên) · SETTING_INVALID_URL.
+ *   SETTING_OUT_OF_RANGE (số ngoài khoảng / không nguyên) · SETTING_INVALID_URL · SETTING_INVALID_BOOLEAN.
  */
-export function normalizeSetting(key: SystemSettingKey, value: unknown): number | string | null {
+export function normalizeSetting(key: SystemSettingKey, value: unknown): number | string | boolean | null {
   const spec: SettingSpec = SYSTEM_SETTINGS[key];
+  if (spec.kind === 'bool') {
+    if (typeof value !== 'boolean') throw ValidationError.of('SETTING_INVALID_BOOLEAN', `${key} must be true or false`, key);
+    return value;
+  }
   if (spec.kind === 'int') {
     if (typeof value !== 'number' || !Number.isInteger(value) || value < spec.min || value > spec.max) {
       throw ValidationError.of('SETTING_OUT_OF_RANGE', `${key} must be an integer between ${spec.min} and ${spec.max}`, key);

@@ -2,7 +2,8 @@
 
 **Trạng thái:** chấp nhận — 2026-10-19 (đợt UX-2). Mở rộng ADR-0020, ADR-0034; thay ADR-0034 §2.2 RIÊNG cho
 kiểu `visual`. **ADR-0037 (2026-10-20) bỏ §2.7** (cờ `templates.visual_editor_enabled` — kiểu `visual` luôn bật) và
-làm xong §5 phần mẫu dựng sẵn / trình kéo-thả.
+làm xong §5 phần mẫu dựng sẵn / trình kéo-thả. **ADR-0038 (2026-10-20) làm §2.9**: kiểu `html` chạy bộ kiểm
+lúc xuất bản, sau công tắc `templates.html_check_enabled` (mặc định bật).
 
 ## 1. Bối cảnh
 

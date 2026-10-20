@@ -226,7 +226,10 @@ describe('Cài đặt hệ thống', () => {
       'incoming.max_hooks_per_app': 20,
       'apps.max_active_api_keys': 20,
       'webhooks.max_endpoints_per_app': 10,
+      'templates.html_check_enabled': true,
     });
+    expect(effectiveSettings(new Map([['templates.html_check_enabled', false]]))['templates.html_check_enabled']).toBe(false);
+    expect(effectiveSettings(new Map([['templates.html_check_enabled', 'no']]))['templates.html_check_enabled']).toBe(true);
     expect(effectiveSettings(new Map([['incoming.dedupe_window_minutes', 99999]]))['incoming.dedupe_window_minutes']).toBe(10);
     // Khoá đã gỡ khỏi danh mục (cờ bộ soạn trực quan — ADR-0037) còn dòng cũ trong DB thì bị bỏ qua.
     expect(effectiveSettings(new Map([['templates.visual_editor_enabled', true]]))).toEqual(effectiveSettings(new Map()));
@@ -240,7 +243,10 @@ describe('Cài đặt hệ thống', () => {
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'http://ews-api.example.com'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('api.public_base_url', 'https://a.com/?x=1'))).toBe('SETTING_INVALID_URL');
     expect(codeOf(() => normalizeSetting('apps.max_active_api_keys', 101))).toBe('SETTING_OUT_OF_RANGE');
-    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(6);
+    expect(normalizeSetting('templates.html_check_enabled', false)).toBe(false);
+    expect(codeOf(() => normalizeSetting('templates.html_check_enabled', 'false'))).toBe('SETTING_INVALID_BOOLEAN');
+    expect(codeOf(() => normalizeSetting('templates.html_check_enabled', 0))).toBe('SETTING_INVALID_BOOLEAN');
+    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(7);
   });
 });
 

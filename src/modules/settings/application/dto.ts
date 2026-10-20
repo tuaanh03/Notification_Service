@@ -1,10 +1,10 @@
 /** Một cài đặt trên màn Cài đặt hệ thống. `value` = giá trị hiệu lực (đã gộp mặc định). */
 export interface SystemSettingDto {
   key: string;
-  /** int | url */
+  /** int | url | bool */
   kind: string;
-  value: number | string | null;
-  default: number | string | null;
+  value: number | string | boolean | null;
+  default: number | string | boolean | null;
   min: number | null;
   max: number | null;
   /** false = đang dùng mặc định (chưa ai chỉnh). */
