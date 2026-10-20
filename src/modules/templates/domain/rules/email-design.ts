@@ -105,10 +105,19 @@ export type DraftInput =
   | { editor: 'visual'; subject: string; html: string; design: VisualDesign; schema: readonly VariableSpec[] };
 
 /**
+ * Tiêu đề thư là một dòng chữ thường: dấu cách không ngắt (U+00A0 — ô `contenteditable` của trình duyệt chèn
+ * quanh chip biến) đổi thành dấu cách thường. Chỉ đổi đúng ký tự đó, không gộp / cắt dấu cách người soạn gõ.
+ */
+export function normalizeSubject(subject: string): string {
+  return subject.replace(/\u00a0/g, ' ');
+}
+
+/**
  * Đổi nội dung nháp thành `TemplateContent`; kiểu `blocks` kiểm giới hạn rồi sinh `html` + `text`; kiểu
  * `visual` kiểm an toàn HTML + cỡ dự án, chuẩn hoá biến rồi sinh `text` (ADR-0036).
  */
-export function draftContent(input: DraftInput): TemplateContent {
+export function draftContent(raw: DraftInput): TemplateContent {
+  const input = { ...raw, subject: normalizeSubject(raw.subject) };
   if (input.editor === 'html') {
     return { editor: 'html', design: null, subject: input.subject, html: input.html, text: input.text, schema: input.schema };
   }

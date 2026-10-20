@@ -172,6 +172,32 @@ function conditionalBody(comment: string): string {
 interface Attribute {
   name: string;
   value: string | null;
+  /** Có `{{ … }}` trong giá trị mà không đúng dạng biến (`{{ path }}` / `{{ path | default: "…" }}`). */
+  badLiquid?: boolean;
+}
+
+/**
+ * Biến trong thuộc tính: chỉ đúng hai dạng của `template-variables.ts`, giá trị mặc định không có `<` / `>`.
+ * Dạng này được coi là KHỐI KÍN khi đọc thuộc tính: `"` bên trong không kết thúc giá trị
+ * (`style="color:{{ payload.c | default: "#F87171" }};"` — kiểu viết thật của người soạn HTML).
+ */
+const ATTRIBUTE_LIQUID_RE = /^\{\{\s*[A-Za-z_][\w.]*\s*(?:\|\s*default:\s*(?:"[^"<>{}]*"|'[^'<>{}]*'))?\s*\}\}$/;
+
+/** Vị trí nháy đóng của giá trị thuộc tính bắt đầu ở `open`, bỏ qua các vùng `{{ … }}`. -1 = không đóng. */
+function closingQuote(html: string, open: number, quote: string, liquid: string[]): number {
+  let j = open + 1;
+  while (j < html.length) {
+    if (html.startsWith('{{', j)) {
+      const end = html.indexOf('}}', j + 2);
+      if (end === -1) return -1;
+      liquid.push(html.slice(j, end + 2));
+      j = end + 2;
+      continue;
+    }
+    if (html[j] === quote) return j;
+    j++;
+  }
+  return -1;
 }
 
 /** Đọc `<tag a="1" b='2' c=3 d>` từ vị trí `<`. Trả null nếu không đọc nổi (thiếu `>`, nháy không đóng). */
@@ -202,9 +228,11 @@ function parseTag(html: string, start: number): { name: string; attributes: Attr
     while (i < html.length && /\s/.test(html[i] ?? '')) i++;
     const quote = html[i];
     if (quote === '"' || quote === "'") {
-      const close = html.indexOf(quote, i + 1);
+      const liquid: string[] = [];
+      const close = closingQuote(html, i, quote, liquid);
       if (close === -1) return null;
-      attributes.push({ name: attrName, value: html.slice(i + 1, close) });
+      const badLiquid = liquid.some((token) => !ATTRIBUTE_LIQUID_RE.test(decodeEntities(token)));
+      attributes.push({ name: attrName, value: html.slice(i + 1, close), ...(badLiquid ? { badLiquid } : {}) });
       i = close + 1;
     } else {
       const raw = /^[^\s"'=<>`]+/.exec(html.slice(i))?.[0];
@@ -227,6 +255,10 @@ function checkAttribute(tag: string, attr: Attribute, report: Report): void {
   }
   if (!ALLOWED_ATTRIBUTES.has(name) && !/^(data|aria)-[a-z0-9_.:-]+$/.test(name)) {
     report('HTML_ATTRIBUTE_NOT_ALLOWED', `attribute ${name} is not allowed on <${tag}>`);
+    return;
+  }
+  if (attr.badLiquid) {
+    report('HTML_MALFORMED', `attribute ${name} has a {{ … }} that is not a variable: use {{ payload.x }} or {{ payload.x | default: "…" }}`);
     return;
   }
   const value = decodeEntities(attr.value ?? '');

@@ -91,9 +91,24 @@ Ràng buộc giữ nguyên: worker, `/v1`, `RenderTemplate`, incoming webhook kh
   grapesjs-mjml -> thêm vào danh sách cho phép kèm test bằng HTML thật (`test/unit/fixtures/`).
 - Kiểu `blocks` và 12 mẫu dựng sẵn không đổi trong đợt này.
 
-## 4. Chưa làm
+## 4. Bổ sung UX-3 (2026-10-19)
 
-Bảng trái / phải tự dựng theo Cosmic, hộp "Chèn biến" đầy đủ, lỗi chỉ đúng khối (UX-3) · chuyển `blocks` ->
-`visual` một chiều khi mở + mẫu dựng sẵn ra MJML (`designToMjml`, UX-4) · xoá trình kéo-thả tự viết (sau
-UX-4) · bật bộ kiểm cho kiểu `html` (chờ kết quả `scan-template-html`) · AI cho kiểu `visual` · tải ảnh lên
-(người dùng đã bỏ) · chip trong ô tiêu đề thư.
+1. **Biến trong thuộc tính là khối kín.** `checkEmailHtml` đọc giá trị thuộc tính có nháy, gặp `{{` thì nhảy tới
+   `}}` rồi mới tìm nháy đóng — `"` bên trong `{{ }}` KHÔNG kết thúc thuộc tính. Đây là kiểu viết thật của người
+   soạn HTML: `style="background-color:{{ payload.accent | default: "#F87171" }};"`. Đổi lại, `{{ … }}` trong
+   thuộc tính phải ĐÚNG dạng biến (`{{ path }}` hoặc `{{ path | default: "…" }}` / `'…'`, giá trị mặc định không
+   có `<` `>` `{` `}`; `&quot;` giải mã trước khi so) — sai dạng là `HTML_MALFORMED`. Vì vậy không giấu được
+   `onerror=` / `<script>` trong `{{ }}` của thuộc tính; `{{ }}` trong CHỮ vẫn được quét như HTML (giấu thẻ trong
+   giá trị mặc định vẫn bị `HTML_TAG_NOT_ALLOWED` / `HTML_ATTRIBUTE_NOT_ALLOWED`). Áp cho mọi kiểu đang dùng bộ kiểm
+   (`visual`; lệnh chạy thử `scan-template-html` cho kiểu `html`).
+2. Console (không đổi hợp đồng backend): bảng trái / phải tự dựng (Khối · Bố cục · Cài đặt thư; thuộc tính theo
+   loại khối, "Nâng cao" mới có px / mã màu), chip có nhãn (mô tả biến, không có thì tên tự sinh), hộp "Chèn biến"
+   khai biến mới vào bảng biến (mô tả = tên dễ đọc, giá trị mẫu = ví dụ), chip trong ô tiêu đề, lỗi từng khối
+   kiểm phía trình duyệt (chỉ để báo sớm — backend vẫn là cổng chặn). "Cài đặt thư" lưu trong JSON dự án
+   (`project.ewsSettings`) — backend không đọc, chỉ kiểm cỡ như mọi phần của `project`.
+
+## 5. Chưa làm
+
+Chuyển `blocks` -> `visual` một chiều khi mở + mẫu dựng sẵn ra MJML (`designToMjml`, UX-4) · xoá trình kéo-thả tự
+viết (sau UX-4) · bật bộ kiểm cho kiểu `html` (chờ kết quả `scan-template-html`) · AI cho kiểu `visual` · tải ảnh
+lên (người dùng đã bỏ) · bảng thao tác riêng cho điện thoại (bản phác DienThoai) · hàng đã lưu (saved rows).

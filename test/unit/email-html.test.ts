@@ -7,7 +7,7 @@ import {
   normalizeLiquid,
 } from '../../src/modules/templates/domain/rules/email-html.ts';
 import { parseVariables } from '../../src/modules/templates/domain/rules/template-variables.ts';
-import { draftContent, emptyDesign } from '../../src/modules/templates/domain/rules/email-design.ts';
+import { draftContent, emptyDesign, normalizeSubject } from '../../src/modules/templates/domain/rules/email-design.ts';
 import { TemplateVersion } from '../../src/modules/templates/domain/entities/template-version.ts';
 import { emptyVisualDesign, type VisualDesign } from '../../src/modules/templates/domain/types/visual-design.ts';
 import { TemplateId, TemplateVersionId } from '../../src/shared/kernel/index.ts';
@@ -40,6 +40,35 @@ describe('checkEmailHtml — HTML do bộ soạn trực quan sinh phải ĐẬU'
         '<!--[if mso]><v:roundrect arcsize="10%" strokecolor="#000000" fillcolor="#2563eb" href="https://x.vn"><w:anchorlock/></v:roundrect><![endif]-->',
     );
     expect(checkEmailHtml(html)).toEqual([]);
+  });
+});
+
+describe('checkEmailHtml — biến Liquid trong thuộc tính (UX-3)', () => {
+  it('nháy kép bên trong {{ }} không kết thúc thuộc tính — kiểu viết thật của người soạn HTML', () => {
+    const html = wrap(
+      '<td style="background-color:{{ payload.accent | default: "#F87171" }};">x</td>' +
+        '<p style="display:{{ payload.show_note | default: "none" }};">ghi chú</p>' +
+        `<a href="{{ payload.url | default: 'https://x.vn' }}" title="{{ payload.name }}">Xem</a>` +
+        '<a href="{{ payload.detail_url | default: &quot;https://x.vn&quot; }}">Xem</a>',
+    );
+    expect(checkEmailHtml(html)).toEqual([]);
+  });
+
+  it.each([
+    // giấu thuộc tính / thẻ trong {{ }} của thuộc tính
+    ['<img src="https://x.vn/a.png" title="{{ payload.a | default: "x" onerror="alert(1)" }}">', 'HTML_MALFORMED'],
+    ['<p title="{{ payload.a | default: "<script>alert(1)</script>" }}">x</p>', 'HTML_MALFORMED'],
+    ['<p style="color:{{ x }}{{ y }}" onclick="a()">x</p>', 'HTML_ATTRIBUTE_NOT_ALLOWED'],
+    ['<p style="{{ payload.css }}" onmouseover="a()">x</p>', 'HTML_ATTRIBUTE_NOT_ALLOWED'],
+    ['<p title="{{ payload.a }}" onerror="alert(1)">x</p>', 'HTML_ATTRIBUTE_NOT_ALLOWED'],
+    ['<p title="{{ payload.a | upcase }}">x</p>', 'HTML_MALFORMED'],
+    ['<p title="{{ payload.a">x</p>', 'HTML_MALFORMED'],
+    // ngoài thuộc tính: {{ }} trong chữ vẫn bị quét như HTML
+    ['<p>{{ payload.a | default: "<script>alert(1)</script>" }}</p>', 'HTML_TAG_NOT_ALLOWED'],
+    ['<p>{{ payload.a | default: "<img src=x onerror=alert(1)>" }}</p>', 'HTML_ATTRIBUTE_NOT_ALLOWED'],
+    ['<div style="background:url({{ payload.img }})">x</div>', 'IMAGE_URL_NOT_ALLOWED'],
+  ])('%s -> %s', (body, code) => {
+    expect(codes(wrap(body))).toContain(code);
   });
 });
 
@@ -192,5 +221,19 @@ describe('draftContent — kiểu visual (ADR-0036)', () => {
     const blocks = draftContent({ editor: 'blocks', subject: 'x', design: emptyDesign(), schema: [] });
     expect(() => v.edit(blocks, at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
     expect(() => v.convertToHtml(at)).toThrow(expect.objectContaining({ code: 'EDITOR_MISMATCH' }));
+  });
+});
+
+describe('normalizeSubject — tiêu đề lưu nháp (mọi kiểu soạn)', () => {
+  it('U+00A0 quanh chip -> dấu cách thường; dấu cách người gõ giữ nguyên', () => {
+    const raw = 'Báo cáo{{ payload.ky_bao_cao }}X cho\u00a0{{ user.external_id }}\u00a0tháng  này!';
+    expect(normalizeSubject(raw)).toBe('Báo cáo{{ payload.ky_bao_cao }}X cho {{ user.external_id }} tháng  này!');
+  });
+
+  it('draftContent chuẩn hoá tiêu đề cả kiểu html, blocks, visual', () => {
+    const subject = 'A\u00a0B';
+    expect(draftContent({ editor: 'html', subject, html: '', text: '', schema: [] }).subject).toBe('A B');
+    expect(draftContent({ editor: 'blocks', subject, design: emptyDesign(), schema: [] }).subject).toBe('A B');
+    expect(draftContent({ editor: 'visual', subject, html: '<p>x</p>', design: emptyVisualDesign(), schema: [] }).subject).toBe('A B');
   });
 });
