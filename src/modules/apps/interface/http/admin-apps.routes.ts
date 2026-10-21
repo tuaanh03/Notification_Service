@@ -21,7 +21,9 @@ import type {
   RevokeAppSecret,
   SetOpenTracking,
   SetPacing,
+  SetHourlyCeiling,
   SetPacingCeiling,
+  SetRecipientLimit,
   SetSendWindow,
   SimpleAppTransition,
   TransitionApp,
@@ -83,6 +85,8 @@ const sendWindowBody = z
 // Khoảng 1–1000 kiểm ở entity (PACING_INVALID) — ở đây chỉ chặn kiểu.
 const pacingBody = z.object({ perMinute: z.number().int().nullable(), mandatoryBypass: z.boolean() }).strict();
 const pacingCeilingBody = z.object({ maxPerMinute: z.number().int().nullable() }).strict();
+const hourlyCeilingBody = z.object({ maxPerHour: z.number().int().nullable(), mandatoryBypass: z.boolean() }).strict();
+const recipientLimitBody = z.object({ perDay: z.number().int().nullable(), mandatoryBypass: z.boolean() }).strict();
 const ruleBody = z.object({ kind: z.enum(NETWORK_RULE_KINDS), value: z.string().trim().min(1).max(255) }).strict();
 
 export interface AdminAppsUseCases {
@@ -97,6 +101,8 @@ export interface AdminAppsUseCases {
   setSendWindow: SetSendWindow;
   setPacing: SetPacing;
   setPacingCeiling: SetPacingCeiling;
+  setHourlyCeiling: SetHourlyCeiling;
+  setRecipientLimit: SetRecipientLimit;
   queries: AppQueries;
 }
 
@@ -191,6 +197,19 @@ export function adminAppsRoutes(useCases: AdminAppsUseCases): HttpRoutes {
       const { appId } = parseInput(appParams, request.params);
       const body = parseInput(pacingCeilingBody, request.body);
       return useCases.setPacingCeiling.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
+    });
+
+    // Giới hạn gửi GĐ 3 (ADR-0032): trần mỗi giờ — chỉ Super Admin; giới hạn mỗi người / ngày — người quản lý app.
+    app.put('/apps/:appId/hourly-ceiling', { config: access('platform.manage') }, async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      const body = parseInput(hourlyCeilingBody, request.body);
+      return useCases.setHourlyCeiling.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
+    });
+
+    app.put('/apps/:appId/recipient-limit', { config: access('app.manage') }, async (request) => {
+      const { appId } = parseInput(appParams, request.params);
+      const body = parseInput(recipientLimitBody, request.body);
+      return useCases.setRecipientLimit.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
     });
 
     app.get('/apps/:appId/network-rules', { config: access('platform.manage') }, async (request) => {

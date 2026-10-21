@@ -34,6 +34,22 @@ export interface SendPolicy {
   mandatoryBypassPacing: boolean;
   /** Trần do Super Admin đặt, áp cho mọi thư. null = không trần riêng. */
   maxPerMinute: number | null;
+  /** GĐ 3 (ADR-0032): trần thư mỗi giờ (Super Admin). null = không trần. */
+  maxPerHour: number | null;
+  mandatoryBypassHourly: boolean;
+  /** GĐ 3: mỗi người nhận tối đa N thư / ngày (Admin App). null = không giới hạn. */
+  recipientDailyLimit: number | null;
+  mandatoryBypassRecipientLimit: boolean;
+}
+
+/**
+ * Hạn mức GĐ 3 (ADR-0032) đếm chung mọi process. `false` = vượt mức, KHÔNG lấy lượt nào (lấy được thì đã trừ).
+ *   - `takeHourly`: lúc NHẬN thư — `count` thư của app trong giờ hiện tại;
+ *   - `takeRecipientDay`: lúc GỬI — một thư cho một người trong ngày (giờ Việt Nam).
+ */
+export interface SendQuota {
+  takeHourly(appId: AppId, count: number, limit: number, now: Date): Promise<boolean>;
+  takeRecipientDay(appId: AppId, userId: UserId, limit: number, now: Date): Promise<boolean>;
 }
 
 /** -> apps: giới hạn gửi của app. */

@@ -12,6 +12,7 @@ import type { Notification } from '../../domain/entities/notification.ts';
 import { NotificationRecipient } from '../../domain/entities/notification-recipient.ts';
 import { addCounters } from '../../domain/rules/counters.ts';
 import { emailGate } from '../../domain/rules/email-gate.ts';
+import { recipientLimitFor } from '../../domain/rules/send-limits.ts';
 import { openPixelPath, withOpenPixel } from '../../domain/rules/open-pixel.ts';
 import type { Counters } from '../../domain/types/counters.ts';
 import { EMAIL_SENDER_ACTOR, NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS, OUTCOME_UNKNOWN } from '../events.ts';
@@ -23,6 +24,8 @@ import type {
   OpenTrackingConfig,
   OpenTrackingSigner,
   RecipientRepository,
+  SendPolicyLookup,
+  SendQuota,
   TopicConsentLookup,
 } from '../ports/index.ts';
 
@@ -49,6 +52,7 @@ const COUNTER_OF: Record<ExclusionReason, Partial<Counters>> = {
   suppressed: { skipped: 1 },
   excluded: { skipped: 1 },
   duplicate: { skipped: 1 },
+  recipient_limit: { skipped: 1 },
 };
 
 /**
@@ -78,10 +82,29 @@ export class DeliverEmailNotification {
     sender: EmailSender;
     tracking: OpenTrackingConfig;
     signer: OpenTrackingSigner;
+    /** Giới hạn mỗi người nhận mỗi ngày (ADR-0032 GĐ 3). */
+    policies: SendPolicyLookup;
+    quota: SendQuota;
   };
 
   constructor(deps: DeliverEmailNotification['deps']) {
     this.deps = deps;
+  }
+
+  /**
+   * Lượt trong ngày (giờ Việt Nam) của người nhận này ở app này. Hết lượt -> chặn với lý do `recipient_limit`.
+   * Tính lúc GỬI (không lúc nhận): thư hẹn giờ / dàn đều đếm vào đúng ngày nó đi. Lấy lượt rồi mà gửi lỗi vẫn tính —
+   * giới hạn để bảo vệ người nhận, không để đếm thư thành công.
+   */
+  private async recipientQuota(
+    notification: Notification,
+    userId: NonNullable<Notification['targetUserId']>,
+    topic: { mandatory: boolean },
+  ): Promise<{ allowed: true } | { allowed: false; reason: ExclusionReason }> {
+    const limit = recipientLimitFor(await this.deps.policies.forApp(notification.appId), topic);
+    if (limit === null) return { allowed: true };
+    const ok = await this.deps.quota.takeRecipientDay(notification.appId, userId, limit, this.deps.clock.now());
+    return ok ? { allowed: true } : { allowed: false, reason: 'recipient_limit' };
   }
 
   async execute(id: NotificationId): Promise<DeliveryOutcome> {
@@ -125,11 +148,13 @@ export class DeliverEmailNotification {
     if (!topic) throw ValidationError.of('TOPIC_NOT_FOUND', `topic of notification ${id} no longer exists`);
     trace.topic = topic.key;
     const email = await emails.find(notification.appId, userId);
-    const gate = emailGate({
+    const consent = emailGate({
       subscription: email,
       topic,
       preference: await topics.preference(userId, topic.topicId),
     });
+    // Giới hạn mỗi người / ngày (GĐ 3) chỉ đếm thư QUA được cổng consent — thư bị chặn không ăn vào lượt của người đó.
+    const gate = consent.allowed ? await this.recipientQuota(notification, userId, topic) : consent;
     const recipientProps = {
       notificationId: notification.id,
       userId,

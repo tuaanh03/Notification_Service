@@ -136,7 +136,11 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
     /** Domain công khai khi app bật đếm "đã mở" (ADR-0031); vắng = app tắt. */
     trackingBaseUrl?: string | null;
     signerConfigured?: boolean;
+    /** Giới hạn mỗi người / ngày của app (ADR-0032 GĐ 3) + bộ đếm còn lượt hay không. */
+    recipientDailyLimit?: number | null;
+    quotaLeft?: boolean;
   }) {
+    const quotaCalls: number[] = [];
     const lines: Array<{ msg: string; meta: Record<string, unknown> }> = [];
     const sentHtml: string[] = [];
     const capture: Logger = { ...silent, info: (msg, meta) => void lines.push({ msg, meta: meta ?? {} }), child: () => capture };
@@ -190,8 +194,28 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         sign: (id) => `sig-${id}`,
         verify: () => true,
       },
+      policies: {
+        forApp: async () => ({
+          window: null,
+          mandatoryBypassWindow: true,
+          perMinute: null,
+          mandatoryBypassPacing: true,
+          maxPerMinute: null,
+          maxPerHour: null,
+          mandatoryBypassHourly: false,
+          recipientDailyLimit: options.recipientDailyLimit ?? null,
+          mandatoryBypassRecipientLimit: true,
+        }),
+      },
+      quota: {
+        takeHourly: async () => true,
+        takeRecipientDay: async (_app, _user, limit) => {
+          quotaCalls.push(limit);
+          return options.quotaLeft ?? true;
+        },
+      },
     });
-    return { deliver, lines, sentHtml };
+    return { deliver, lines, sentHtml, quotaCalls };
   }
 
   function queued() {
@@ -218,6 +242,13 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
     ['gửi được', { notification: queued(), email: reachable }, 'sent', { provider_result: 'accepted', exclusion_reason: null }],
     ['provider từ chối', { notification: queued(), email: reachable, sendKind: 'rejected' as const }, 'failed', { provider_result: 'rejected', exclusion_reason: null }],
     ['gate chặn — chưa có email', { notification: queued(), email: null }, 'no_recipient', { provider_result: null, exclusion_reason: 'no_channel' }],
+    [
+      'hết lượt mỗi người / ngày (ADR-0032 GĐ 3)',
+      { notification: queued(), email: reachable, recipientDailyLimit: 3, quotaLeft: false },
+      'no_recipient',
+      { provider_result: null, exclusion_reason: 'recipient_limit' },
+    ],
+    ['còn lượt mỗi người / ngày', { notification: queued(), email: reachable, recipientDailyLimit: 3, quotaLeft: true }, 'sent', { provider_result: 'accepted', exclusion_reason: null }],
   ])('%s -> outcome %s, đủ trường, KHÔNG có dữ liệu cá nhân', async (_name, options, outcome, extra) => {
     const { deliver, lines } = harness(options);
     expect(await deliver.execute(options.notification.id)).toBe(outcome);
@@ -234,6 +265,16 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
     expect(line?.meta['duration_ms']).toBeGreaterThan(0);
     // Địa chỉ / tiêu đề / nội dung không được rơi vào log dù ở bất kỳ trường nào.
     expect(JSON.stringify(line?.meta)).not.toContain('company.com');
+  });
+
+  it('giới hạn mỗi người chỉ đếm thư QUA được cổng consent — thư bị chặn không ăn lượt', async () => {
+    const blocked = harness({ notification: queued(), email: null, recipientDailyLimit: 3 });
+    await blocked.deliver.execute(blocked.lines.length === 0 ? (queued().id) : queued().id);
+    expect(blocked.quotaCalls).toHaveLength(0);
+    const ok = harness({ notification: queued(), email: reachable, recipientDailyLimit: 3 });
+    const n = queued();
+    await ok.deliver.execute(n.id);
+    expect(ok.quotaCalls).toEqual([3]);
   });
 
   it('notification không còn queued -> vẫn ghi một dòng, app_id và topic để trống', async () => {

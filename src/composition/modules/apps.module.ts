@@ -10,13 +10,16 @@ import {
   GrantAppRole,
   IssueAppSecret,
   ListOrgAppRoles,
+  DeleteOrgWithoutApps,
   RemoveMemberFromOrg,
   RevokeAppRole,
   RemoveNetworkRule,
   RevokeAppSecret,
   SetOpenTracking,
   SetPacing,
+  SetHourlyCeiling,
   SetPacingCeiling,
+  SetRecipientLimit,
   SetSendWindow,
   TransitionApp,
 } from '../../modules/apps/application/index.ts';
@@ -29,6 +32,7 @@ import {
   SettingsAppLimits,
   TenancyMembershipLookup,
   TenancyOrganizationLookup,
+  TenancyOrgDeletion,
   TenancyOrgMemberRemoval,
 } from '../../modules/apps/infrastructure/adapters/index.ts';
 import {
@@ -40,7 +44,7 @@ import {
   v1AppsRoutes,
 } from '../../modules/apps/interface/index.ts';
 import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
-import type { FindOrganization, FindOrgMemberships, RemoveOrgMember } from '../../modules/tenancy/application/index.ts';
+import type { DeleteOrganization, FindOrganization, FindOrgMemberships, RemoveOrgMember } from '../../modules/tenancy/application/index.ts';
 import type { AdminAuthorizer, ApiKeyAuthenticator } from '../../shared/http/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
@@ -56,6 +60,7 @@ export function appsModule(
     findOrganization: FindOrganization;
     findOrgMemberships: FindOrgMemberships;
     removeOrgMember: RemoveOrgMember;
+    deleteOrganization: DeleteOrganization;
     systemSettings: SystemSettingsQueries;
   },
 ): {
@@ -105,6 +110,8 @@ export function appsModule(
             setSendWindow: new SetSendWindow({ uow, outbox, clock, apps }),
             setPacing: new SetPacing({ uow, outbox, clock, apps }),
             setPacingCeiling: new SetPacingCeiling({ uow, outbox, clock, apps }),
+            setHourlyCeiling: new SetHourlyCeiling({ uow, outbox, clock, apps }),
+            setRecipientLimit: new SetRecipientLimit({ uow, outbox, clock, apps }),
             queries,
           }),
           adminMeRoutes({ getAdminProfile: new GetAdminProfile({ organizations, memberships }) }),
@@ -119,6 +126,7 @@ export function appsModule(
             }),
             grantAppRole,
             revokeAppRole: new RevokeAppRole({ uow, outbox, clock, apps, roles }),
+            deleteOrg: new DeleteOrgWithoutApps({ apps, orgs: new TenancyOrgDeletion({ deleteOrganization: dependencies.deleteOrganization }) }),
           }),
         ],
         v1: [v1AppsRoutes({ queries })],

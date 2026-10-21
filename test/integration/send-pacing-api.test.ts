@@ -178,3 +178,55 @@ describe('Dàn đều (ADR-0032 GĐ 2)', () => {
     });
   });
 });
+
+describe('Giới hạn gửi GĐ 3 (ADR-0032)', () => {
+  it('trần mỗi giờ: chỉ Super Admin đặt; vượt -> 429 APP_HOURLY_LIMIT + Retry-After, không nhận thư; tin bắt buộc vượt khi được bật', async () => {
+    const app = await newApp('hourly');
+    now = vn('2026-10-16T10:45:00');
+    expect((await admin('PUT', `/apps/${app.appId}/hourly-ceiling`, { maxPerHour: 0, mandatoryBypass: false })).status).toBe(422);
+    expect((await admin('PUT', `/apps/${app.appId}/hourly-ceiling`, { maxPerHour: 2, mandatoryBypass: false })).body).toMatchObject({
+      maxSendPerHour: 2,
+      mandatoryBypassHourly: false,
+    });
+    expect((await app.send('u1', 'promo')).status).toBe(202);
+    expect((await app.send('u2', 'promo')).status).toBe(202);
+    const over = await app.send('u3', 'promo');
+    expect(over.status).toBe(429);
+    expect(JSON.stringify(over.body)).toContain('APP_HOURLY_LIMIT');
+    expect(over.headers.get('retry-after')).toBe(String(15 * 60));
+    // Phát cả chủ đề (5 người) không vừa phần còn lại -> từ chối cả lô.
+    expect((await app.publish('promo', 'hourly-pub')).status).toBe(429);
+    expect((await app.send('u3', 'incident')).status).toBe(429);
+    await admin('PUT', `/apps/${app.appId}/hourly-ceiling`, { maxPerHour: 2, mandatoryBypass: true });
+    expect((await app.send('u3', 'incident')).status).toBe(202);
+    // Sang giờ mới -> có lượt lại.
+    now = vn('2026-10-16T11:00:01');
+    expect((await app.send('u3', 'promo')).status).toBe(202);
+  });
+
+  it('mỗi người / ngày: thư vượt mức -> no_recipient lý do recipient_limit; người khác không ảnh hưởng; ngày mới (giờ VN) có lượt lại', async () => {
+    const app = await newApp('per-recipient');
+    await deliver(); // xả thư còn tồn của các test trước
+    mail.reset();
+    const set = await admin('PUT', `/apps/${app.appId}/recipient-limit`, { perDay: 2, mandatoryBypass: true });
+    expect(set.body).toMatchObject({ recipientDailyLimit: 2, mandatoryBypassRecipientLimit: true });
+    now = vn('2026-10-16T23:50:00');
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) ids.push((await app.send('u1', 'promo')).body['id'] as string);
+    await app.send('u2', 'promo');
+    // Tin bắt buộc không tính vào giới hạn (mandatoryBypass).
+    const urgent = (await app.send('u1', 'incident')).body['id'] as string;
+    await deliver();
+    expect(mail.delivered.map((m) => m.to).sort()).toEqual(['u1@company.com', 'u1@company.com', 'u1@company.com', 'u2@company.com']);
+    const third = (await app.v1('GET', `/notifications/${ids[2]}`)).body;
+    expect(third).toMatchObject({ status: 'no_recipient' });
+    expect(JSON.stringify(third)).toContain('recipient_limit');
+    expect((await app.v1('GET', `/notifications/${urgent}`)).body).toMatchObject({ status: 'sent' });
+
+    mail.reset();
+    now = vn('2026-10-17T00:05:00');
+    await app.send('u1', 'promo');
+    await deliver();
+    expect(mail.delivered).toHaveLength(1);
+  });
+});

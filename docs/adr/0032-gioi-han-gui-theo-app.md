@@ -1,7 +1,7 @@
 # ADR-0032 — Giới hạn gửi theo app: khung giờ, dàn đều, giới hạn mỗi người
 
 **Trạng thái:** chấp nhận — 2026-10-17. GĐ 1 (khung giờ gửi + ngoại lệ tin bắt buộc) xong · GĐ 2 (dàn đều +
-trần tốc độ của Super Admin) xong · GĐ 3 (giới hạn mỗi người / trần mỗi app mỗi giờ) chưa làm.
+trần tốc độ của Super Admin) xong · GĐ 3 (giới hạn mỗi người / trần mỗi app mỗi giờ) xong 2026-10-22.
 
 ## Bối cảnh
 
@@ -71,9 +71,22 @@ vẫn chặn tốc độ.
    chút, không bao giờ vượt mức. App có dàn đều (hoặc có trần) thì nhận thư cần Redis — Redis chết là 5xx; app
    không đặt gì thì không chạm Redis như trước.
 
+## GĐ 3 — trần mỗi giờ + giới hạn mỗi người nhận mỗi ngày (2026-10-22)
+
+1. **Cấu hình** (migration 0030): `apps.max_send_per_hour` + `apps.mandatory_bypass_hourly` (mặc định false) — Super
+   Admin, `PUT /admin/apps/:appId/hourly-ceiling` `{ maxPerHour | null, mandatoryBypass }` (`platform.manage`, audit
+   `AppHourlyCeilingChanged`, 1–100000, `HOURLY_LIMIT_INVALID`); `apps.recipient_daily_limit` +
+   `apps.mandatory_bypass_recipient_limit` (mặc định true) — người quản lý app, `PUT …/recipient-limit`
+   `{ perDay | null, mandatoryBypass }` (`app.manage`, audit `AppRecipientLimitChanged`, 1–1000, `RECIPIENT_LIMIT_INVALID`).
+2. **Trần mỗi giờ kiểm lúc NHẬN** (`planSendTimes`, trước khung giờ / dàn đều): cộng `count` thư vào khung giờ tròn trên
+   Redis (`WindowQuota`, Lua: vượt thì hoàn lại) — không vừa -> `429 APP_HOURLY_LIMIT`, `Retry-After` tới đầu giờ sau,
+   KHÔNG nhận thư nào (phát vào topic không nhận một phần). Tin bắt buộc vượt trần chỉ khi Super Admin bật.
+3. **Giới hạn mỗi người kiểm lúc GỬI** (worker, sau cổng consent — thư bị chặn không ăn lượt): ngày theo giờ Việt Nam
+   (UTC+7). Hết lượt -> `no_recipient` + `exclusion_reason = recipient_limit` (giá trị ENUM mới). Bỏ qua, không dời sang
+   hôm sau (cảnh báo tới muộn một ngày là vô nghĩa). Lấy lượt rồi mà provider lỗi vẫn tính — giới hạn bảo vệ người nhận.
+4. Hạn mức đếm trên Redis (`quota:hour:*`, `quota:rcpt:*`, tự hết hạn). Đổi con số áp từ lần đếm kế tiếp.
+
 ## Chưa làm (GĐ sau)
 
 - Đổi mức dàn đều không xếp lại thư đã giữ lượt (giống đổi khung giờ).
-- GĐ 3 — giới hạn mỗi người / ngày (thư vượt -> bỏ qua có lý do), trần thư mỗi app / giờ (vượt -> 429),
-  ngoại lệ "tin bắt buộc vượt trần" do Super Admin bật.
 - Huỷ thư đang chờ khung giờ.

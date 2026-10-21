@@ -27,6 +27,7 @@ import {
   DrizzlePublicationRepository,
   DrizzleRecipientRepository,
   HmacOpenTrackingSigner,
+  RedisSendQuota,
   RedisSendSlotReserver,
   SubscriptionsEmailLookup,
   TemplatesLabels,
@@ -47,7 +48,7 @@ import type { FindUserEmail } from '../../modules/subscriptions/application/inde
 import type { RenderTemplate, TemplateQueries } from '../../modules/templates/application/index.ts';
 import type { ConsentQueries } from '../../modules/topics/application/index.ts';
 import { STREAMS } from '../../shared/streams/index.ts';
-import { MinuteSlotAllocator } from '../../shared/rate-limit/index.ts';
+import { MinuteSlotAllocator, WindowQuota } from '../../shared/rate-limit/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
 
@@ -88,6 +89,8 @@ export function notificationsModule(
   const policies = new AppsSendPolicyLookup(dependencies);
   // Dàn đều (ADR-0032 GĐ 2): lượt gửi mỗi phút của từng app, đếm chung mọi process trên Redis.
   const slots = new RedisSendSlotReserver({ allocator: new MinuteSlotAllocator({ redis: container.infra.redis.client }), clock });
+  // Hạn mức GĐ 3 (ADR-0032): trần mỗi giờ lúc nhận (api) + mỗi người / ngày lúc gửi (worker) — cùng một Redis.
+  const quota = new RedisSendQuota({ quota: new WindowQuota({ redis: container.infra.redis.client, keyPrefix: 'quota' }) });
   const accept = new AcceptEmailNotification({
     uow,
     outbox,
@@ -100,6 +103,7 @@ export function notificationsModule(
     templates,
     policies,
     slots,
+    quota,
   });
   const signer = new HmacOpenTrackingSigner({ signingKey: container.env.WEBHOOK_SIGNING_KEY });
   const tracking = new AppsOpenTrackingConfig(dependencies);
@@ -116,6 +120,7 @@ export function notificationsModule(
     templates,
     policies,
     slots,
+    quota,
   });
 
   return {
@@ -162,6 +167,8 @@ export function notificationsModule(
               sender: new DeliveryEmailSender(dependencies),
               tracking,
               signer,
+              policies,
+              quota,
             }),
           }),
         },

@@ -123,6 +123,8 @@ export const EXCLUSION_REASONS = [
   'opted_out_optional',
   'excluded',
   'opted_out',
+  /** Vượt giới hạn mỗi người nhận mỗi ngày của app (ADR-0032 GĐ 3) — bỏ qua, không dời sang hôm sau. */
+  'recipient_limit',
 ] as const;
 export type ExclusionReason = (typeof EXCLUSION_REASONS)[number];
 

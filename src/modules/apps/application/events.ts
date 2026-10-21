@@ -18,6 +18,8 @@ export const APP_EVENTS = {
   sendWindowChanged: 'AppSendWindowChanged',
   pacingChanged: 'AppPacingChanged',
   pacingCeilingChanged: 'AppPacingCeilingChanged',
+  hourlyCeilingChanged: 'AppHourlyCeilingChanged',
+  recipientLimitChanged: 'AppRecipientLimitChanged',
   roleGranted: 'AdminAppRoleGranted',
   roleRevoked: 'AdminAppRoleRevoked',
 } as const;

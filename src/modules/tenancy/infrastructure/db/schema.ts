@@ -18,6 +18,11 @@ export const organizations = mysqlTable(
       .notNull()
       .references(() => accounts.accountId),
     name: varchar('name', { length: 200 }).notNull(),
+    /**
+     * Xoá MỀM (2C): org đã xoá không hiện ở đâu nữa (mọi truy vấn của repository bỏ qua), nhưng dòng còn đó vì app đã
+     * thu hồi, audit… vẫn trỏ tới. NULL = còn hoạt động.
+     */
+    deletedAt: ts('deleted_at'),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

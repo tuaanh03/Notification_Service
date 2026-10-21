@@ -43,6 +43,14 @@ export interface AppProps extends TimestampInput {
   mandatoryBypassPacing?: boolean | undefined;
   /** Trần tốc độ do Super Admin đặt, áp cho mọi thư. null = không trần riêng. */
   maxSendPerMinute?: number | null | undefined;
+  /** Trần thư mỗi giờ (ADR-0032 GĐ 3) — Super Admin. null = không trần. */
+  maxSendPerHour?: number | null | undefined;
+  /** Tin bắt buộc được vượt trần mỗi giờ. Mặc định false. */
+  mandatoryBypassHourly?: boolean | undefined;
+  /** Mỗi người nhận tối đa N thư / ngày (ADR-0032 GĐ 3) — Admin App. null = không giới hạn. */
+  recipientDailyLimit?: number | null | undefined;
+  /** Tin bắt buộc không tính vào giới hạn mỗi người. Mặc định true. */
+  mandatoryBypassRecipientLimit?: boolean | undefined;
 }
 
 /** Khoảng hợp lệ của mọi con số thư / phút (dàn đều và trần). */
@@ -85,6 +93,10 @@ export class App extends BaseEntity<AppId> {
   sendPerMinute: number | null;
   mandatoryBypassPacing: boolean;
   maxSendPerMinute: number | null;
+  maxSendPerHour: number | null;
+  mandatoryBypassHourly: boolean;
+  recipientDailyLimit: number | null;
+  mandatoryBypassRecipientLimit: boolean;
 
   constructor(props: AppProps) {
     super(props.id, props);
@@ -115,6 +127,10 @@ export class App extends BaseEntity<AppId> {
     this.sendPerMinute = props.sendPerMinute ?? null;
     this.mandatoryBypassPacing = props.mandatoryBypassPacing ?? true;
     this.maxSendPerMinute = props.maxSendPerMinute ?? null;
+    this.maxSendPerHour = props.maxSendPerHour ?? null;
+    this.mandatoryBypassHourly = props.mandatoryBypassHourly ?? false;
+    this.recipientDailyLimit = props.recipientDailyLimit ?? null;
+    this.mandatoryBypassRecipientLimit = props.mandatoryBypassRecipientLimit ?? true;
   }
 
   /**
@@ -213,6 +229,29 @@ export class App extends BaseEntity<AppId> {
     return true;
   }
 
+  /**
+   * Trần thư mỗi giờ (ADR-0032 GĐ 3) — chỉ Super Admin. `mandatoryBypass` = tin bắt buộc được vượt trần (Super Admin
+   * quyết, không phải Admin App — nếu không, đánh dấu mọi chủ đề là bắt buộc là né được). Trả false nếu không đổi gì.
+   */
+  setHourlyCeiling(maxPerHour: number | null, mandatoryBypass: boolean, at: Date): boolean {
+    if (maxPerHour !== null) assertRange(maxPerHour, HOURLY_MIN, HOURLY_MAX, 'HOURLY_LIMIT_INVALID', 'maxPerHour');
+    if (this.maxSendPerHour === maxPerHour && this.mandatoryBypassHourly === mandatoryBypass) return false;
+    this.maxSendPerHour = maxPerHour;
+    this.mandatoryBypassHourly = mandatoryBypass;
+    this.touch(at);
+    return true;
+  }
+
+  /** Giới hạn mỗi người nhận mỗi ngày (ADR-0032 GĐ 3) — người quản lý app. Trả false nếu không đổi gì. */
+  setRecipientLimit(perDay: number | null, mandatoryBypass: boolean, at: Date): boolean {
+    if (perDay !== null) assertRange(perDay, RECIPIENT_DAILY_MIN, RECIPIENT_DAILY_MAX, 'RECIPIENT_LIMIT_INVALID', 'perDay');
+    if (this.recipientDailyLimit === perDay && this.mandatoryBypassRecipientLimit === mandatoryBypass) return false;
+    this.recipientDailyLimit = perDay;
+    this.mandatoryBypassRecipientLimit = mandatoryBypass;
+    this.touch(at);
+    return true;
+  }
+
   /** App đã thu hồi là trạng thái kết thúc: không cấp thêm credential nào nữa. */
   assertAcceptsNewSecret(): void {
     if (this.status === 'revoked') {
@@ -248,6 +287,18 @@ export class App extends BaseEntity<AppId> {
 function sameWindow(a: SendWindow | null, b: SendWindow | null): boolean {
   if (a === null || b === null) return a === b;
   return a.start === b.start && a.end === b.end && a.days.join() === b.days.join();
+}
+
+/** Khoảng cho phép của giới hạn GĐ 3 (ADR-0032). */
+export const HOURLY_MIN = 1;
+export const HOURLY_MAX = 100_000;
+export const RECIPIENT_DAILY_MIN = 1;
+export const RECIPIENT_DAILY_MAX = 1000;
+
+function assertRange(value: number, min: number, max: number, code: string, path: string): void {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw ValidationError.of(code, `${path} must be an integer from ${min} to ${max}`, path);
+  }
 }
 
 function assertPerMinute(value: number, path: string): void {

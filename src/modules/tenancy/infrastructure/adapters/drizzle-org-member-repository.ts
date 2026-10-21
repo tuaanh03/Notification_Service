@@ -55,6 +55,10 @@ export class DrizzleOrgMemberRepository implements OrgMemberRepository {
       .onDuplicateKeyUpdate({ set: { role: member.role, updatedAt: member.updatedAt } });
   }
 
+  async removeAll(orgId: OrgIdType): Promise<void> {
+    await this.transactions.executor().delete(orgMembers).where(eq(orgMembers.orgId, orgId));
+  }
+
   async remove(orgId: OrgIdType, adminId: AdminIdType): Promise<void> {
     await this.transactions
       .executor()

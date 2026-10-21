@@ -11,3 +11,4 @@ export * from './transition-app.ts';
 export * from './grant-app-role.ts';
 export * from './revoke-app-role.ts';
 export * from './remove-member-from-org.ts';
+export * from './delete-org-without-apps.ts';

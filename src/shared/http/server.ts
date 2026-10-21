@@ -4,6 +4,7 @@ import type { Logger } from '../observability/logger.ts';
 import { adminCaller, bearerToken, type AdminAuthenticator, type AdminAuthorizer, type ApiKeyAuthenticator, type RouteTarget } from './auth.ts';
 import { PROBLEM_CONTENT_TYPE, problem, toProblem } from './problem.ts';
 import { redactUrl } from './redact.ts';
+import { RateLimitedError } from '../kernel/errors.ts';
 
 /** Một phụ thuộc mà `/health/ready` phải kiểm (MySQL, Redis...). Ném lỗi = chưa sẵn sàng. */
 export interface ReadinessCheck {
@@ -122,6 +123,9 @@ export async function buildHttpServer(options: {
         error: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
       });
+    }
+    if (err instanceof RateLimitedError && err.retryAfterSeconds !== undefined) {
+      reply.header('retry-after', String(Math.max(1, Math.ceil(err.retryAfterSeconds))));
     }
     return reply.status(body.status).type(PROBLEM_CONTENT_TYPE).send(body);
   });

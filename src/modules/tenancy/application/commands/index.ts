@@ -14,3 +14,4 @@ export * from './sync-tenant-directory.ts';
 export * from './set-member-listed.ts';
 export * from './login-throttle.ts';
 export * from './unlock-login.ts';
+export * from './manage-organization.ts';

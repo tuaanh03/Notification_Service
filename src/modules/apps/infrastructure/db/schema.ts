@@ -56,6 +56,14 @@ export const apps = mysqlTable(
     mandatoryBypassPacing: boolean('mandatory_bypass_pacing').notNull().default(true),
     /** Trần tốc độ của app do Super Admin đặt — áp cho MỌI thư của app. NULL = không trần riêng. */
     maxSendPerMinute: int('max_send_per_minute'),
+    /** Trần thư mỗi GIỜ của app (ADR-0032 GĐ 3) — Super Admin đặt; vượt -> 429 lúc nhận. NULL = không trần. */
+    maxSendPerHour: int('max_send_per_hour'),
+    /** Tin bắt buộc được vượt trần mỗi giờ — Super Admin bật. Mặc định TẮT (trần bảo vệ hộp noreply chung). */
+    mandatoryBypassHourly: boolean('mandatory_bypass_hourly').notNull().default(false),
+    /** Mỗi người nhận tối đa N thư / ngày của app (ADR-0032 GĐ 3) — Admin App đặt; vượt -> bỏ qua có lý do. NULL = không giới hạn. */
+    recipientDailyLimit: int('recipient_daily_limit'),
+    /** Tin bắt buộc không tính vào giới hạn mỗi người. Mặc định bật. */
+    mandatoryBypassRecipientLimit: boolean('mandatory_bypass_recipient_limit').notNull().default(true),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

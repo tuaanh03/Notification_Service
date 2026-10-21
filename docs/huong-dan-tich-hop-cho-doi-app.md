@@ -691,13 +691,17 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | 404 | `NOT_FOUND` | đọc người, preferences, ngắt email, đọc thư, đọc lần phát | Không có (hoặc thuộc app khác). |
 | 400 | `MALFORMED_JSON` | mọi `/v1` | Body không phải JSON hợp lệ. |
 | 413 | `PAYLOAD_TOO_LARGE` | mọi `/v1` | Request quá lớn (gửi thư, phát: 512 KB; còn lại: 64 KB). |
+| 429 | `APP_HOURLY_LIMIT` | gửi, phát | App chạm trần thư mỗi giờ do EWS đặt (ADR-0032 GĐ 3). **Không thư nào được nhận** (phát cả chủ đề cũng không nhận một phần). Chờ theo header `Retry-After` (giây, tới đầu giờ sau) rồi gửi lại, giữ nguyên `idempotencyKey`. |
 | 500 | `INTERNAL` | mọi `/v1` | Lỗi phía EWS. |
 
 **Thử lại khi nào:**
 
-* `4xx`: **không** thử lại nguyên xi — gọi lại vẫn sai như thế. Sửa rồi mới gọi.
+* `4xx` (trừ `429`): **không** thử lại nguyên xi — gọi lại vẫn sai như thế. Sửa rồi mới gọi.
+* `429`: chờ đúng `Retry-After` rồi gửi lại, **giữ nguyên `idempotencyKey`**.
 * `5xx` và hết thời gian chờ: thử lại có giãn cách, **giữ nguyên `idempotencyKey`**.
-* MVP **chưa trả `429`** — chưa có hạn mức theo app (mục 9).
+
+**Giới hạn mỗi người nhận mỗi ngày** (người quản lý app đặt trên console): thư vượt mức VẪN được nhận (`202`) nhưng
+không gửi — kết cục `no_recipient`, `exclusionReason: "recipient_limit"`. Không dời sang hôm sau.
 
 ---
 
@@ -711,7 +715,6 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | Hẹn giờ, huỷ, dừng, gửi lại | Gọi lúc nào thì xếp hàng lúc đó. Thư đã nhận không huỷ được. |
 | Xử lý thư dội về | Chính sách "nghỉ việc → ngắt email" (mục 7) là lớp bảo vệ duy nhất. |
 | Link "Quản lý thông báo" trong thư | Màn cài đặt của app (bước 4) là cửa duy nhất. |
-| Hạn mức theo app (`429`) | Hạn mức lưu theo app chưa được đối chiếu. |
 | Webhook báo "lần phát đã xong" / "đã vào hộp thư" / "đã mở" | Đếm sự kiện theo `publicationId` hoặc gọi `GET /v1/publications/:id`; Microsoft không báo hai thứ sau. |
 | Kênh khác email | Chỉ email. |
 

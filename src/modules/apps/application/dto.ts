@@ -28,6 +28,14 @@ export interface AppDto {
   mandatoryBypassPacing: boolean;
   /** Trần tốc độ do Super Admin đặt. null = không trần riêng. */
   maxSendPerMinute: number | null;
+  /** Trần thư mỗi giờ do Super Admin đặt (ADR-0032 GĐ 3). null = không trần. */
+  maxSendPerHour: number | null;
+  /** Tin bắt buộc được vượt trần mỗi giờ. */
+  mandatoryBypassHourly: boolean;
+  /** Mỗi người nhận tối đa N thư / ngày (ADR-0032 GĐ 3). null = không giới hạn. */
+  recipientDailyLimit: number | null;
+  /** Tin bắt buộc không tính vào giới hạn mỗi người. */
+  mandatoryBypassRecipientLimit: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,6 +92,10 @@ export const toAppDto = (a: App): AppDto => ({
   sendPerMinute: a.sendPerMinute,
   mandatoryBypassPacing: a.mandatoryBypassPacing,
   maxSendPerMinute: a.maxSendPerMinute,
+  maxSendPerHour: a.maxSendPerHour,
+  mandatoryBypassHourly: a.mandatoryBypassHourly,
+  recipientDailyLimit: a.recipientDailyLimit,
+  mandatoryBypassRecipientLimit: a.mandatoryBypassRecipientLimit,
   createdAt: a.createdAt.toISOString(),
   updatedAt: a.updatedAt.toISOString(),
 });

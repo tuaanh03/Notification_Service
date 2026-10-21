@@ -21,6 +21,7 @@ import type {
   RecipientLookup,
   RenderedEmailTemplate,
   SendPolicyLookup,
+  SendQuota,
   SendSlotReserver,
   TemplateLabels,
   TemplateRenderer,
@@ -65,6 +66,7 @@ export class PublishToTopic {
     templates: TemplateLabels;
     policies: SendPolicyLookup;
     slots: SendSlotReserver;
+    quota: SendQuota;
   };
 
   constructor(deps: PublishToTopic['deps']) {

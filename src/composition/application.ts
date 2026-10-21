@@ -62,6 +62,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     findOrganization: tenancy.findOrganization,
     findOrgMemberships: tenancy.findOrgMemberships,
     removeOrgMember: tenancy.removeOrgMember,
+    deleteOrganization: tenancy.deleteOrganization,
     systemSettings: settings.systemSettings,
   });
   const subscriptions = subscriptionsModule(container);

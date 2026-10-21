@@ -7,3 +7,4 @@ export * from './drizzle-admin-app-role-repository.ts';
 export * from './tenancy-membership-lookup.ts';
 export * from './tenancy-org-member-removal.ts';
 export * from './settings-app-limits.ts';
+export * from './tenancy-org-deletion.ts';

@@ -5,6 +5,7 @@ import {
   CreateAdmin,
   CreateOrganization,
   CreateOwnOrganization,
+  DeleteOrganization,
   DescribeAdmins,
   DUMMY_PASSWORD,
   FindOrganization,
@@ -15,6 +16,8 @@ import {
   RemoveOrgMember,
   ListAccounts,
   ListLoginLocks,
+  RenameOrganization,
+  TransferOrgOwnership,
   LoginAdmin,
   LoginThrottle,
   LoginAdminWithMicrosoft,
@@ -106,6 +109,8 @@ export function tenancyModule(
   adminOps: AdminOps;
   /** Cho module audit: email + tên người làm trên nhật ký chung. */
   describeAdmins: DescribeAdmins;
+  /** Cho module apps: xoá tổ chức sau khi apps chắc org không còn app (2C). */
+  deleteOrganization: DeleteOrganization;
 } {
   const { uow, outbox, clock } = container.ports;
   const { transactions } = container.infra;
@@ -145,6 +150,7 @@ export function tenancyModule(
   return {
     findOrganization,
     describeAdmins: new DescribeAdmins({ admins }),
+    deleteOrganization: new DeleteOrganization({ uow, outbox, clock, organizations, members }),
     removeOrgMember: new RemoveOrgMember({ uow, outbox, organizations, members }),
     findOrgMemberships: new FindOrgMemberships({ members, admins }),
     adminAuthenticator: new SessionAdminAuthenticator({ authenticateAdminSession }),
@@ -194,6 +200,8 @@ export function tenancyModule(
             setOrgMember,
             listDirectoryPeople: new ListDirectoryPeople({ admins }),
             setMemberListed: new SetMemberListed({ uow, outbox, clock, admins }),
+            renameOrganization: new RenameOrganization({ uow, outbox, clock, organizations, members }),
+            transferOrgOwnership: new TransferOrgOwnership({ uow, outbox, clock, organizations, members }),
             syncTenantDirectory: new SyncTenantDirectory({
               uow,
               outbox,

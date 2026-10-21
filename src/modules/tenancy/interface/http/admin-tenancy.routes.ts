@@ -13,6 +13,8 @@ import type {
   SetMemberListed,
   SetOrgMember,
   SyncTenantDirectory,
+  RenameOrganization,
+  TransferOrgOwnership,
 } from '../../application/index.ts';
 import { MAX_DIRECTORY_PAGE, MAX_MEMBER_LISTED_BATCH } from '../../application/index.ts';
 
@@ -30,6 +32,7 @@ const directoryQuery = z.object({
 const memberListedBody = z
   .object({ adminIds: z.array(z.string().uuid()).min(1).max(MAX_MEMBER_LISTED_BATCH), listed: z.boolean() })
   .strict();
+const transferBody = z.object({ adminId: z.string().uuid() }).strict();
 const memberBody = z.object({ email: z.string().trim().min(3).max(320), role: z.enum(ORG_ROLES) }).strict();
 
 /**
@@ -47,6 +50,8 @@ export function adminTenancyRoutes(useCases: {
   listDirectoryPeople: ListDirectoryPeople;
   setMemberListed: SetMemberListed;
   syncTenantDirectory: SyncTenantDirectory;
+  renameOrganization: RenameOrganization;
+  transferOrgOwnership: TransferOrgOwnership;
 }): HttpRoutes {
   return (app) => {
     const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
@@ -125,6 +130,28 @@ export function adminTenancyRoutes(useCases: {
         },
         ctx(request),
       );
+    });
+
+    // Quản lý tổ chức (2C) — chỉ Owner / Super Admin (lệnh tự kiểm `OWNER_REQUIRED`). Xoá tổ chức ở module apps (đếm app).
+    app.patch('/organizations/:orgId', { config: access('org.manage') }, async (request) => {
+      const { orgId } = parseInput(orgParams, request.params);
+      const body = parseInput(nameBody, request.body);
+      const caller = adminAccess(request);
+      return useCases.renameOrganization.execute(
+        { orgId: OrgId.parse(orgId), name: body.name, actorIsOwner: caller.isSuperAdmin || caller.orgRoles.get(orgId) === 'owner' },
+        ctx(request),
+      );
+    });
+
+    app.post('/organizations/:orgId/transfer-owner', { config: access('org.manage') }, async (request, reply) => {
+      const { orgId } = parseInput(orgParams, request.params);
+      const body = parseInput(transferBody, request.body);
+      const caller = adminAccess(request);
+      await useCases.transferOrgOwnership.execute(
+        { orgId: OrgId.parse(orgId), adminId: AdminId.parse(body.adminId), actorIsOwner: caller.isSuperAdmin || caller.orgRoles.get(orgId) === 'owner' },
+        ctx(request),
+      );
+      return reply.status(204).send();
     });
 
     app.get('/organizations/:orgId', { config: access('org.read') }, async (request) => {

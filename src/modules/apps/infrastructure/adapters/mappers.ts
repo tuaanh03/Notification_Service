@@ -45,6 +45,10 @@ export function toApp(row: AppRow): App {
     sendPerMinute: row.sendPerMinute,
     mandatoryBypassPacing: row.mandatoryBypassPacing,
     maxSendPerMinute: row.maxSendPerMinute,
+    maxSendPerHour: row.maxSendPerHour,
+    mandatoryBypassHourly: row.mandatoryBypassHourly,
+    recipientDailyLimit: row.recipientDailyLimit,
+    mandatoryBypassRecipientLimit: row.mandatoryBypassRecipientLimit,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -71,6 +75,10 @@ export function fromApp(app: App): typeof apps.$inferInsert {
     sendPerMinute: app.sendPerMinute,
     mandatoryBypassPacing: app.mandatoryBypassPacing,
     maxSendPerMinute: app.maxSendPerMinute,
+    maxSendPerHour: app.maxSendPerHour,
+    mandatoryBypassHourly: app.mandatoryBypassHourly,
+    recipientDailyLimit: app.recipientDailyLimit,
+    mandatoryBypassRecipientLimit: app.mandatoryBypassRecipientLimit,
     createdAt: app.createdAt,
     updatedAt: app.updatedAt,
   };

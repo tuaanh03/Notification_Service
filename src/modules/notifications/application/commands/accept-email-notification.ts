@@ -16,6 +16,7 @@ import type {
   RecipientLookup,
   RecipientRepository,
   SendPolicyLookup,
+  SendQuota,
   SendSlotReserver,
   TemplateLabel,
   TemplateLabels,
@@ -58,6 +59,7 @@ export class AcceptEmailNotification {
     templates: TemplateLabels;
     policies: SendPolicyLookup;
     slots: SendSlotReserver;
+    quota: SendQuota;
   };
 
   constructor(deps: AcceptEmailNotification['deps']) {

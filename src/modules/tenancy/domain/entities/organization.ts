@@ -27,4 +27,15 @@ export class Organization extends BaseEntity<OrgId> {
     this.accountId = props.accountId;
     this.name = name;
   }
+
+  /** Đổi tên (2C). Trả false nếu không đổi gì. */
+  rename(name: string, at: Date): boolean {
+    const next = name.trim();
+    if (!next) throw ValidationError.of('ORG_NAME_REQUIRED', 'organization name must not be empty', 'name');
+    if (next.length > 200) throw ValidationError.of('ORG_NAME_TOO_LONG', 'organization name must be at most 200 characters', 'name');
+    if (next === this.name) return false;
+    this.name = next;
+    this.touch(at);
+    return true;
+  }
 }

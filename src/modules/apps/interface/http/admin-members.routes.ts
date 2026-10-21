@@ -2,12 +2,13 @@ import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
 import { access, adminAccess, adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import { AdminId, AppId, APP_ROLES, OrgId } from '../../../../shared/kernel/index.ts';
-import type { GrantAppRole, ListOrgAppRoles, RemoveMemberFromOrg, RevokeAppRole } from '../../application/index.ts';
+import type { DeleteOrgWithoutApps, GrantAppRole, ListOrgAppRoles, RemoveMemberFromOrg, RevokeAppRole } from '../../application/index.ts';
 
 const orgParams = z.object({ orgId: z.string().uuid() });
 const memberParams = z.object({ orgId: z.string().uuid(), adminId: z.string().uuid() });
 const appParams = z.object({ appId: z.string().uuid() });
 const appRoleParams = z.object({ appId: z.string().uuid(), adminId: z.string().uuid() });
+const deleteOrgBody = z.object({ confirmName: z.string().max(200) }).strict();
 const grantBody = z.object({ email: z.string().trim().min(3).max(320), role: z.enum(APP_ROLES) }).strict();
 
 /**
@@ -19,6 +20,7 @@ export function adminMembersRoutes(useCases: {
   removeMemberFromOrg: RemoveMemberFromOrg;
   grantAppRole: GrantAppRole;
   revokeAppRole: RevokeAppRole;
+  deleteOrg: DeleteOrgWithoutApps;
 }): HttpRoutes {
   return (app) => {
     const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
@@ -40,6 +42,18 @@ export function adminMembersRoutes(useCases: {
           adminId: AdminId.parse(adminId),
           actorIsOwner: caller.isSuperAdmin || caller.orgRoles.get(orgId) === 'owner',
         },
+        ctx(request),
+      );
+      return reply.status(204).send();
+    });
+
+    // Xoá tổ chức (2C): Owner / Super Admin, gõ lại tên, không còn app đang dùng được. Ở module apps vì phải đếm app.
+    app.delete('/organizations/:orgId', { config: access('org.manage') }, async (request, reply) => {
+      const { orgId } = parseInput(orgParams, request.params);
+      const body = parseInput(deleteOrgBody, request.body);
+      const caller = adminAccess(request);
+      await useCases.deleteOrg.execute(
+        { orgId: OrgId.parse(orgId), confirmName: body.confirmName, actorIsOwner: caller.isSuperAdmin || caller.orgRoles.get(orgId) === 'owner' },
         ctx(request),
       );
       return reply.status(204).send();

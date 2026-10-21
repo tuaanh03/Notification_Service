@@ -233,9 +233,10 @@ trong `issues[0].code` (ngoài cùng chỉ là `VALIDATION`):
 | 422 | `INVALID_FIELD` | Sai kiểu, thừa trường, mã người nhận có ký tự lạ — `path` chỉ trường nào |
 | 409 | `EMAIL_TAKEN` | Email đã thuộc người khác trong app |
 | 404 | `NOT_FOUND` | Không có người / lá thư / lần phát này |
+| 429 | `APP_HOURLY_LIMIT` | App chạm trần thư mỗi giờ — chờ `Retry-After` rồi gửi lại (giữ `idempotencyKey`) |
 
-**Thử lại khi nào:** `4xx` — sửa rồi mới gọi, gọi lại nguyên xi vẫn sai. `5xx` hoặc hết thời gian
-chờ — thử lại có giãn cách, **giữ nguyên `idempotencyKey`**.
+**Thử lại khi nào:** `4xx` (trừ `429`) — sửa rồi mới gọi, gọi lại nguyên xi vẫn sai. `429` — chờ `Retry-After`.
+`5xx` hoặc hết thời gian chờ — thử lại có giãn cách, **giữ nguyên `idempotencyKey`**.
 
 ---
 

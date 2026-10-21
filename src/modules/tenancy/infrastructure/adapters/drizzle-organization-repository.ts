@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { lockParentRow, type TransactionContext } from '../../../../shared/db/index.ts';
 import { AccountId, OrgId, type OrgId as OrgIdType } from '../../../../shared/kernel/index.ts';
 import type { OrganizationRepository } from '../../application/ports/index.ts';
@@ -17,16 +17,19 @@ export class DrizzleOrganizationRepository implements OrganizationRepository {
       .executor()
       .select()
       .from(organizations)
-      .where(eq(organizations.orgId, id));
+      .where(and(eq(organizations.orgId, id), isNull(organizations.deletedAt)));
     return row ? toEntity(row) : null;
   }
 
   async list(ids?: readonly OrgIdType[]): Promise<Organization[]> {
     if (ids !== undefined && ids.length === 0) return [];
-    const query = this.transactions.executor().select().from(organizations);
-    const rows = await (ids === undefined ? query : query.where(inArray(organizations.orgId, [...ids]))).orderBy(
-      asc(organizations.name),
-    );
+    const live = isNull(organizations.deletedAt);
+    const rows = await this.transactions
+      .executor()
+      .select()
+      .from(organizations)
+      .where(ids === undefined ? live : and(live, inArray(organizations.orgId, [...ids])))
+      .orderBy(asc(organizations.name));
     return rows.map(toEntity);
   }
 
@@ -38,6 +41,14 @@ export class DrizzleOrganizationRepository implements OrganizationRepository {
       createdAt: org.createdAt,
       updatedAt: org.updatedAt,
     });
+  }
+
+  async rename(org: Organization): Promise<void> {
+    await this.transactions.executor().update(organizations).set({ name: org.name, updatedAt: org.updatedAt }).where(eq(organizations.orgId, org.id));
+  }
+
+  async markDeleted(id: OrgIdType, at: Date): Promise<void> {
+    await this.transactions.executor().update(organizations).set({ deletedAt: at, updatedAt: at }).where(eq(organizations.orgId, id));
   }
 
   lockForUpdate(id: OrgIdType): Promise<boolean> {

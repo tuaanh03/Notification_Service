@@ -179,6 +179,10 @@ export class AppsSendPolicyLookup implements SendPolicyLookup {
       perMinute: app.sendPerMinute,
       mandatoryBypassPacing: app.mandatoryBypassPacing,
       maxPerMinute: app.maxSendPerMinute,
+      maxPerHour: app.maxSendPerHour,
+      mandatoryBypassHourly: app.mandatoryBypassHourly,
+      recipientDailyLimit: app.recipientDailyLimit,
+      mandatoryBypassRecipientLimit: app.mandatoryBypassRecipientLimit,
     };
   }
 }

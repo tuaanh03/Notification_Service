@@ -80,3 +80,68 @@ export class SetPacingCeiling {
     });
   }
 }
+
+/**
+ * Trần thư mỗi giờ của một app (ADR-0032 GĐ 3) — chỉ Super Admin (`platform.manage`). Vượt -> app nhận 429
+ * `APP_HOURLY_LIMIT` lúc gửi. `mandatoryBypass` = tin bắt buộc được vượt trần.
+ */
+export class SetHourlyCeiling {
+  private readonly deps: { uow: UnitOfWork; outbox: EventOutbox; clock: Clock; apps: AppRepository };
+
+  constructor(deps: SetHourlyCeiling['deps']) {
+    this.deps = deps;
+  }
+
+  async execute(input: { appId: AppId; maxPerHour: number | null; mandatoryBypass: boolean }, ctx: CommandContext): Promise<AppDto> {
+    const { uow, outbox, clock, apps } = this.deps;
+    return uow.run(async () => {
+      const app = await requireApp(apps, input.appId);
+      const before = { maxSendPerHour: app.maxSendPerHour, mandatoryBypassHourly: app.mandatoryBypassHourly };
+      if (!app.setHourlyCeiling(input.maxPerHour, input.mandatoryBypass, clock.now())) return toAppDto(app);
+      await apps.update(app, app.status);
+      await outbox.append([
+        {
+          aggregateType: APP_AGGREGATE,
+          aggregateId: app.id,
+          eventType: APP_EVENTS.hourlyCeilingChanged,
+          payload: audited(ctx, { before, after: { maxSendPerHour: app.maxSendPerHour, mandatoryBypassHourly: app.mandatoryBypassHourly } }),
+        },
+      ]);
+      return toAppDto(app);
+    });
+  }
+}
+
+/**
+ * Giới hạn mỗi người nhận mỗi ngày của một app (ADR-0032 GĐ 3) — người quản lý app (`app.manage`). Thư vượt mức bị bỏ
+ * qua lúc gửi (`no_recipient`, lý do `recipient_limit`), không dời sang hôm sau.
+ */
+export class SetRecipientLimit {
+  private readonly deps: { uow: UnitOfWork; outbox: EventOutbox; clock: Clock; apps: AppRepository };
+
+  constructor(deps: SetRecipientLimit['deps']) {
+    this.deps = deps;
+  }
+
+  async execute(input: { appId: AppId; perDay: number | null; mandatoryBypass: boolean }, ctx: CommandContext): Promise<AppDto> {
+    const { uow, outbox, clock, apps } = this.deps;
+    return uow.run(async () => {
+      const app = await requireApp(apps, input.appId);
+      const before = { recipientDailyLimit: app.recipientDailyLimit, mandatoryBypassRecipientLimit: app.mandatoryBypassRecipientLimit };
+      if (!app.setRecipientLimit(input.perDay, input.mandatoryBypass, clock.now())) return toAppDto(app);
+      await apps.update(app, app.status);
+      await outbox.append([
+        {
+          aggregateType: APP_AGGREGATE,
+          aggregateId: app.id,
+          eventType: APP_EVENTS.recipientLimitChanged,
+          payload: audited(ctx, {
+            before,
+            after: { recipientDailyLimit: app.recipientDailyLimit, mandatoryBypassRecipientLimit: app.mandatoryBypassRecipientLimit },
+          }),
+        },
+      ]);
+      return toAppDto(app);
+    });
+  }
+}

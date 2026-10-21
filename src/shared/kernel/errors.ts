@@ -106,8 +106,12 @@ export class UpstreamError extends DomainError {
 
 /** Vượt giới hạn số lần trong một khoảng thời gian. HTTP 429. */
 export class RateLimitedError extends DomainError {
-  constructor(code: string, message: string) {
+  /** Bao lâu nữa thử lại được — error handler HTTP đặt thành header `Retry-After`. `undefined` = không biết. */
+  readonly retryAfterSeconds: number | undefined;
+
+  constructor(code: string, message: string, retryAfterSeconds?: number | undefined) {
     super(code, message);
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 

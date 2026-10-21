@@ -13,4 +13,6 @@ export interface OrgMemberRepository {
   save(member: OrgMember): Promise<void>;
   /** Gỡ khỏi org. Gọi SAU khi đã khoá dòng org. */
   remove(orgId: OrgId, adminId: AdminId): Promise<void>;
+  /** Gỡ mọi thành viên (xoá tổ chức — 2C). Gọi SAU khi đã khoá dòng org. */
+  removeAll(orgId: OrgId): Promise<void>;
 }
