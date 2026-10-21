@@ -21,7 +21,7 @@ export const APPROVAL_REQUEST: TemplatePreset = {
       schema: variables(
         ['requester', 'Trần Thị Bình', 'Người gửi yêu cầu'],
         ['request_title', 'Đề nghị mua thiết bị', 'Tên yêu cầu'],
-        ['approve_url', 'https://work.example.com/requests/88', 'Link trang duyệt (https://)'],
+        ['approve_url', 'https://work.example.com/requests/88', 'Link duyệt'],
       ),
     },
     en: {
@@ -37,9 +37,9 @@ export const APPROVAL_REQUEST: TemplatePreset = {
         row(divider(), note('The request stays pending until you approve or reject it.')),
       ),
       schema: variables(
-        ['requester', 'Binh Tran', 'Who sent the request'],
+        ['requester', 'Binh Tran', 'Requester'],
         ['request_title', 'Equipment purchase request', 'Request title'],
-        ['approve_url', 'https://work.example.com/requests/88', 'Link to the review page (https://)'],
+        ['approve_url', 'https://work.example.com/requests/88', 'Review link'],
       ),
     },
   },
@@ -61,8 +61,8 @@ export const APPROVAL_RESULT: TemplatePreset = {
       ),
       schema: variables(
         ['request_title', 'Đề nghị mua thiết bị', 'Tên yêu cầu'],
-        ['result', 'Đã duyệt', 'Kết quả (đã duyệt / từ chối)'],
-        ['note', 'Vui lòng gửi hoá đơn sau khi mua.', 'Ghi chú của người duyệt'],
+        ['result', 'Đã duyệt', 'Kết quả duyệt'],
+        ['note', 'Vui lòng gửi hoá đơn sau khi mua.', 'Ghi chú người duyệt'],
       ),
     },
     en: {
@@ -76,8 +76,8 @@ export const APPROVAL_RESULT: TemplatePreset = {
       ),
       schema: variables(
         ['request_title', 'Equipment purchase request', 'Request title'],
-        ['result', 'Approved', 'Result (approved / rejected)'],
-        ['note', 'Please send the invoice after purchase.', 'Note from the approver'],
+        ['result', 'Approved', 'Review result'],
+        ['note', 'Please send the invoice after purchase.', 'Approver note'],
       ),
     },
   },

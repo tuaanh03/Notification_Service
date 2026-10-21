@@ -21,7 +21,7 @@ export const TASK_DUE_REMINDER: TemplatePreset = {
       schema: variables(
         ['task_name', 'Duyệt báo cáo quý 3', 'Tên công việc'],
         ['due_at', '17:00 ngày 20/10/2026', 'Hạn hoàn thành'],
-        ['task_url', 'https://work.example.com/tasks/42', 'Link mở công việc (https://)'],
+        ['task_url', 'https://work.example.com/tasks/42', 'Link công việc'],
       ),
     },
     en: {
@@ -39,7 +39,7 @@ export const TASK_DUE_REMINDER: TemplatePreset = {
       schema: variables(
         ['task_name', 'Review Q3 report', 'Task name'],
         ['due_at', 'Oct 20, 2026 17:00', 'Due date'],
-        ['task_url', 'https://work.example.com/tasks/42', 'Link to the task (https://)'],
+        ['task_url', 'https://work.example.com/tasks/42', 'Task link'],
       ),
     },
   },
@@ -65,7 +65,7 @@ export const MEETING_REMINDER: TemplatePreset = {
         ['meeting_title', 'Họp giao ban tuần', 'Tên cuộc họp'],
         ['start_at', '09:00 ngày 21/10/2026', 'Thời gian bắt đầu'],
         ['location', 'Phòng họp tầng 3', 'Địa điểm'],
-        ['join_url', 'https://meet.example.com/abc-123', 'Link tham gia trực tuyến (https://)'],
+        ['join_url', 'https://meet.example.com/abc-123', 'Link tham gia'],
       ),
     },
     en: {
@@ -83,7 +83,7 @@ export const MEETING_REMINDER: TemplatePreset = {
         ['meeting_title', 'Weekly team meeting', 'Meeting title'],
         ['start_at', 'Oct 21, 2026 09:00', 'Start time'],
         ['location', 'Meeting room, 3rd floor', 'Location'],
-        ['join_url', 'https://meet.example.com/abc-123', 'Online join link (https://)'],
+        ['join_url', 'https://meet.example.com/abc-123', 'Join link'],
       ),
     },
   },

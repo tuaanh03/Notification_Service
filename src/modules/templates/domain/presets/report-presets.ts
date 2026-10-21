@@ -26,9 +26,9 @@ export const PERIODIC_REPORT: TemplatePreset = {
       ),
       schema: variables(
         ['period', 'tháng 10/2026', 'Kỳ báo cáo'],
-        ['metric_1', '1.250', 'Số liệu thứ nhất (tổng số)'],
-        ['metric_2', '1.180', 'Số liệu thứ hai (hoàn thành)'],
-        ['report_url', 'https://reports.example.com/2026-10', 'Link báo cáo đầy đủ (https://)'],
+        ['metric_1', '1.250', 'Tổng số'],
+        ['metric_2', '1.180', 'Hoàn thành'],
+        ['report_url', 'https://reports.example.com/2026-10', 'Link báo cáo'],
       ),
     },
     en: {
@@ -42,9 +42,9 @@ export const PERIODIC_REPORT: TemplatePreset = {
       ),
       schema: variables(
         ['period', 'October 2026', 'Reporting period'],
-        ['metric_1', '1,250', 'First number (total)'],
-        ['metric_2', '1,180', 'Second number (completed)'],
-        ['report_url', 'https://reports.example.com/2026-10', 'Link to the full report (https://)'],
+        ['metric_1', '1,250', 'Total'],
+        ['metric_2', '1,180', 'Completed'],
+        ['report_url', 'https://reports.example.com/2026-10', 'Report link'],
       ),
     },
   },

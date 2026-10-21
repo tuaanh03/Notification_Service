@@ -22,7 +22,7 @@ export const WELCOME: TemplatePreset = {
       schema: variables(
         ['user_name', 'Nguyễn Văn An', 'Tên người dùng'],
         ['app_name', 'Cổng nội bộ', 'Tên ứng dụng'],
-        ['start_url', 'https://portal.example.com/start', 'Link trang bắt đầu (https://)'],
+        ['start_url', 'https://portal.example.com/start', 'Link bắt đầu'],
       ),
     },
     en: {
@@ -41,7 +41,7 @@ export const WELCOME: TemplatePreset = {
       schema: variables(
         ['user_name', 'Alex Nguyen', 'User name'],
         ['app_name', 'Internal Portal', 'App name'],
-        ['start_url', 'https://portal.example.com/start', 'Link to the start page (https://)'],
+        ['start_url', 'https://portal.example.com/start', 'Start link'],
       ),
     },
   },
@@ -68,7 +68,7 @@ export const ACCOUNT_READY: TemplatePreset = {
       schema: variables(
         ['user_name', 'Nguyễn Văn An', 'Tên người dùng'],
         ['username', 'an.nguyen', 'Tên đăng nhập'],
-        ['login_url', 'https://portal.example.com/login', 'Link trang đăng nhập (https://)'],
+        ['login_url', 'https://portal.example.com/login', 'Link đăng nhập'],
       ),
     },
     en: {
@@ -87,7 +87,7 @@ export const ACCOUNT_READY: TemplatePreset = {
       schema: variables(
         ['user_name', 'Alex Nguyen', 'User name'],
         ['username', 'alex.nguyen', 'Username'],
-        ['login_url', 'https://portal.example.com/login', 'Link to the sign-in page (https://)'],
+        ['login_url', 'https://portal.example.com/login', 'Sign-in link'],
       ),
     },
   },

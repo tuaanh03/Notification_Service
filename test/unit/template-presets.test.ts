@@ -129,9 +129,11 @@ describe.each(cases.map((c) => [`${c.preset.id} (${c.locale})`, c] as const))('m
       expect([...used].sort()).toEqual(content.schema.map((s) => s.name).sort());
     }
     // Mọi biến đều có giá trị mẫu + mô tả để console xem trước và đội app biết phải gửi gì.
+    // Mô tả là "tên dễ đọc" trên chip của console (cắt "…" ở 22 ký tự) — mẫu giữ ≤ 20 để không bao giờ bị cắt.
     for (const spec of content.schema) {
       expect(spec.sample?.trim()).toBeTruthy();
       expect(spec.description?.trim()).toBeTruthy();
+      expect(spec.description?.length, `${spec.name}: "${spec.description}"`).toBeLessThanOrEqual(20);
     }
   });
 

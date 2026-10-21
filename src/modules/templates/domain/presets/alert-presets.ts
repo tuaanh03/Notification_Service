@@ -22,7 +22,7 @@ export const INCIDENT_ALERT: TemplatePreset = {
         ['incident_title', 'Mất kết nối cơ sở dữ liệu', 'Tên sự cố'],
         ['severity', 'Nghiêm trọng', 'Mức độ nghiêm trọng'],
         ['started_at', '19/10/2026 08:30', 'Thời điểm bắt đầu'],
-        ['detail_url', 'https://status.example.com/incidents/123', 'Link trang chi tiết sự cố (https://)'],
+        ['detail_url', 'https://status.example.com/incidents/123', 'Link chi tiết sự cố'],
       ),
     },
     en: {
@@ -40,8 +40,8 @@ export const INCIDENT_ALERT: TemplatePreset = {
       schema: variables(
         ['incident_title', 'Database connection lost', 'Incident title'],
         ['severity', 'Critical', 'Severity level'],
-        ['started_at', 'Oct 19, 2026 08:30', 'When the incident started'],
-        ['detail_url', 'https://status.example.com/incidents/123', 'Link to the incident page (https://)'],
+        ['started_at', 'Oct 19, 2026 08:30', 'Start time'],
+        ['detail_url', 'https://status.example.com/incidents/123', 'Incident link'],
       ),
     },
   },
@@ -66,8 +66,8 @@ export const INCIDENT_RESOLVED: TemplatePreset = {
       ),
       schema: variables(
         ['incident_title', 'Mất kết nối cơ sở dữ liệu', 'Tên sự cố'],
-        ['resolved_at', '19/10/2026 09:15', 'Thời điểm khắc phục xong'],
-        ['summary', 'Đã khởi động lại máy chủ cơ sở dữ liệu và kiểm tra dữ liệu.', 'Tóm tắt nguyên nhân và cách xử lý'],
+        ['resolved_at', '19/10/2026 09:15', 'Thời điểm khắc phục'],
+        ['summary', 'Đã khởi động lại máy chủ cơ sở dữ liệu và kiểm tra dữ liệu.', 'Tóm tắt sự cố'],
       ),
     },
     en: {
@@ -84,8 +84,8 @@ export const INCIDENT_RESOLVED: TemplatePreset = {
       ),
       schema: variables(
         ['incident_title', 'Database connection lost', 'Incident title'],
-        ['resolved_at', 'Oct 19, 2026 09:15', 'When the incident was resolved'],
-        ['summary', 'We restarted the database server and verified the data.', 'Short summary of the cause and the fix'],
+        ['resolved_at', 'Oct 19, 2026 09:15', 'Resolved at'],
+        ['summary', 'We restarted the database server and verified the data.', 'Incident summary'],
       ),
     },
   },

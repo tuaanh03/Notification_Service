@@ -24,10 +24,10 @@ export const NEW_DEVICE_SIGN_IN: TemplatePreset = {
       ),
       schema: variables(
         ['user_name', 'Nguyễn Văn An', 'Tên người dùng'],
-        ['device', 'Chrome trên Windows', 'Thiết bị / trình duyệt'],
+        ['device', 'Chrome trên Windows', 'Thiết bị đăng nhập'],
         ['location', 'Hà Nội, Việt Nam', 'Vị trí ước tính'],
         ['time', '19/10/2026 21:04', 'Thời điểm đăng nhập'],
-        ['review_url', 'https://account.example.com/security', 'Link trang kiểm tra hoạt động (https://)'],
+        ['review_url', 'https://account.example.com/security', 'Link kiểm tra'],
       ),
     },
     en: {
@@ -51,7 +51,7 @@ export const NEW_DEVICE_SIGN_IN: TemplatePreset = {
         ['device', 'Chrome on Windows', 'Device / browser'],
         ['location', 'Hanoi, Vietnam', 'Approximate location'],
         ['time', 'Oct 19, 2026 21:04', 'Sign-in time'],
-        ['review_url', 'https://account.example.com/security', 'Link to the activity page (https://)'],
+        ['review_url', 'https://account.example.com/security', 'Activity link'],
       ),
     },
   },
@@ -73,8 +73,8 @@ export const MAINTENANCE_NOTICE: TemplatePreset = {
       ),
       schema: variables(
         ['start_at', '25/10/2026 22:00', 'Thời điểm bắt đầu'],
-        ['end_at', '26/10/2026 02:00', 'Thời điểm kết thúc dự kiến'],
-        ['impact', 'Không truy cập được cổng thông tin trong thời gian bảo trì.', 'Dịch vụ nào bị ảnh hưởng'],
+        ['end_at', '26/10/2026 02:00', 'Dự kiến kết thúc'],
+        ['impact', 'Không truy cập được cổng thông tin trong thời gian bảo trì.', 'Dịch vụ ảnh hưởng'],
       ),
     },
     en: {
@@ -89,7 +89,7 @@ export const MAINTENANCE_NOTICE: TemplatePreset = {
       schema: variables(
         ['start_at', 'Oct 25, 2026 22:00', 'Start time'],
         ['end_at', 'Oct 26, 2026 02:00', 'Expected end time'],
-        ['impact', 'The portal will be unavailable during maintenance.', 'Which services are affected'],
+        ['impact', 'The portal will be unavailable during maintenance.', 'Affected services'],
       ),
     },
   },
@@ -117,7 +117,7 @@ export const PASSWORD_RESET: TemplatePreset = {
       ),
       schema: variables(
         ['user_name', 'Nguyễn Văn An', 'Tên người dùng'],
-        ['reset_url', 'https://account.example.com/reset?token=abc', 'Link đặt lại mật khẩu (https://)'],
+        ['reset_url', 'https://account.example.com/reset?token=abc', 'Link đổi mật khẩu'],
         ['expires_in', '30 phút', 'Thời hạn của link'],
       ),
     },
@@ -138,8 +138,8 @@ export const PASSWORD_RESET: TemplatePreset = {
       ),
       schema: variables(
         ['user_name', 'Alex Nguyen', 'User name'],
-        ['reset_url', 'https://account.example.com/reset?token=abc', 'Password reset link (https://)'],
-        ['expires_in', '30 minutes', 'How long the link is valid'],
+        ['reset_url', 'https://account.example.com/reset?token=abc', 'Reset link'],
+        ['expires_in', '30 minutes', 'Link valid for'],
       ),
     },
   },
