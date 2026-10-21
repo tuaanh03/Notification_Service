@@ -13,7 +13,9 @@ import {
   ListOrgMembers,
   RemoveOrgMember,
   ListAccounts,
+  ListLoginLocks,
   LoginAdmin,
+  LoginThrottle,
   LoginAdminWithMicrosoft,
   LogoutAdmin,
   SetAdminPassword,
@@ -21,6 +23,7 @@ import {
   StartMicrosoftLogin,
   SetMemberListed,
   SyncTenantDirectory,
+  UnlockLogin,
   type MicrosoftIdentity,
   type TenantDirectory,
 } from '../../modules/tenancy/application/index.ts';
@@ -35,10 +38,13 @@ import {
   EntraIdMicrosoftIdentity,
   GraphTenantDirectory,
   RandomSessionTokenFactory,
+  RedisLoginAttemptStore,
   RedisLoginStateStore,
   ScryptPasswordHasher,
+  SettingsLoginThrottlePolicy,
 } from '../../modules/tenancy/infrastructure/adapters/index.ts';
-import { adminTenancyRoutes, authRoutes, SessionAdminAuthenticator } from '../../modules/tenancy/interface/index.ts';
+import { adminTenancyRoutes, authRoutes, loginSecurityRoutes, SessionAdminAuthenticator } from '../../modules/tenancy/interface/index.ts';
+import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
 
@@ -71,6 +77,8 @@ export interface AdminOps {
   setAdminPassword: SetAdminPassword;
   /** Thêm người vào org / đổi vai (ADR-0022). Màn Thành viên dùng chung qua `PUT …/members` (ADR-0026). */
   setOrgMember: SetOrgMember;
+  /** Mở khoá đăng nhập (ADR-0039) — lối dự phòng khi chính Super Admin bị khoá. */
+  unlockLogin: UnlockLogin;
 }
 
 /**
@@ -82,7 +90,11 @@ export interface AdminOps {
  */
 export function tenancyModule(
   container: Container,
-  dependencies: { microsoftIdentity?: MicrosoftIdentity | undefined; tenantDirectory?: TenantDirectory | undefined } = {},
+  dependencies: {
+    systemSettings: SystemSettingsQueries;
+    microsoftIdentity?: MicrosoftIdentity | undefined;
+    tenantDirectory?: TenantDirectory | undefined;
+  },
 ): {
   definition: ModuleDefinition;
   findOrganization: FindOrganization;
@@ -113,6 +125,19 @@ export function tenancyModule(
   const sessionDeps = { uow, outbox, clock, sessions, tokens, sessionTtlMs: SESSION_TTL_MS };
   const microsoftIdentity = dependencies.microsoftIdentity ?? selectMicrosoftIdentity(container);
   const setOrgMember = new SetOrgMember({ uow, outbox, clock, organizations, admins, members });
+  // Bộ đếm đăng nhập sai (ADR-0039): Redis dùng chung mọi bản api, con số từ cài đặt hệ thống `auth.*`.
+  const attempts = new RedisLoginAttemptStore({ redis: container.infra.redis.client });
+  const throttle = new LoginThrottle({
+    uow,
+    outbox,
+    clock,
+    logger: container.ports.logger.child('login-throttle'),
+    admins,
+    sessions,
+    attempts,
+    policy: new SettingsLoginThrottlePolicy(dependencies),
+  });
+  const unlockLogin = new UnlockLogin({ uow, outbox, clock, admins, attempts });
 
   return {
     findOrganization,
@@ -126,6 +151,7 @@ export function tenancyModule(
       createAdmin: new CreateAdmin({ uow, outbox, clock, accounts, admins, passwords }),
       setAdminPassword: new SetAdminPassword({ uow, outbox, clock, admins, sessions, passwords }),
       setOrgMember,
+      unlockLogin,
     },
     definition: {
       name: 'tenancy',
@@ -143,14 +169,17 @@ export function tenancyModule(
               tokens,
               sessionTtlMs: SESSION_TTL_MS,
               dummyHash,
+              throttle,
             }),
             logoutAdmin: new LogoutAdmin({ uow, outbox, sessions, tokens }),
             authenticateAdminSession,
             startMicrosoftLogin: new StartMicrosoftLogin({ identity: microsoftIdentity }),
             loginAdminWithMicrosoft: new LoginAdminWithMicrosoft({ ...sessionDeps, identity: microsoftIdentity, admins, accounts }),
+            clientIpSecret: container.env.LOGIN_CLIENT_IP_SECRET ?? null,
           }),
         ],
         admin: [
+          loginSecurityRoutes({ listLoginLocks: new ListLoginLocks({ clock, admins, attempts }), unlockLogin }),
           adminTenancyRoutes({
             createAccount,
             createOrganization: new CreateOrganization({ uow, outbox, clock, accounts, organizations }),

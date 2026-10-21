@@ -227,6 +227,12 @@ describe('Cài đặt hệ thống', () => {
       'apps.max_active_api_keys': 20,
       'webhooks.max_endpoints_per_app': 10,
       'templates.html_check_enabled': true,
+      'auth.lockout_enabled': true,
+      'auth.max_failed_attempts': 5,
+      'auth.failure_window_minutes': 15,
+      'auth.lockout_minutes': 15,
+      'auth.ip_max_failed_attempts': 30,
+      'auth.permanent_lock_after': 0,
     });
     expect(effectiveSettings(new Map([['templates.html_check_enabled', false]]))['templates.html_check_enabled']).toBe(false);
     expect(effectiveSettings(new Map([['templates.html_check_enabled', 'no']]))['templates.html_check_enabled']).toBe(true);
@@ -246,7 +252,11 @@ describe('Cài đặt hệ thống', () => {
     expect(normalizeSetting('templates.html_check_enabled', false)).toBe(false);
     expect(codeOf(() => normalizeSetting('templates.html_check_enabled', 'false'))).toBe('SETTING_INVALID_BOOLEAN');
     expect(codeOf(() => normalizeSetting('templates.html_check_enabled', 0))).toBe('SETTING_INVALID_BOOLEAN');
-    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(7);
+    // Chặn đăng nhập sai (ADR-0039): 0 = không khoá hẳn là giá trị hợp lệ; ngưỡng dưới 3 lần thì khoá nhầm người gõ vội.
+    expect(normalizeSetting('auth.permanent_lock_after', 0)).toBe(0);
+    expect(codeOf(() => normalizeSetting('auth.max_failed_attempts', 2))).toBe('SETTING_OUT_OF_RANGE');
+    expect(codeOf(() => normalizeSetting('auth.ip_max_failed_attempts', 9))).toBe('SETTING_OUT_OF_RANGE');
+    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(13);
   });
 });
 

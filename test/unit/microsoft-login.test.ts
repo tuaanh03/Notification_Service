@@ -105,6 +105,13 @@ class FakeAdmins implements AdminRepository {
   async linkMicrosoft() {
     return this.linkedConcurrently === null;
   }
+  async findManyByEmails(emails: readonly string[]): Promise<Admin[]> {
+    return this.rows.filter((a) => emails.includes(a.email));
+  }
+  async listLocked(): Promise<Admin[]> {
+    return this.rows.filter((a) => a.isLocked);
+  }
+  async updateLock(): Promise<void> {}
   async countByAccount() {
     return this.rows.length;
   }
@@ -159,6 +166,14 @@ describe('LoginAdminWithMicrosoft', () => {
     expect(sessions.rows).toHaveLength(1);
     expect(outbox.events.map((e) => e.eventType)).toEqual(['AdminMicrosoftLinked', 'AdminSignedIn']);
     expect(outbox.events[1]?.payload).toMatchObject({ actor: { id: a.id }, after: { method: 'microsoft' } });
+  });
+
+  it('tài khoản bị KHOÁ HẲN (ADR-0039) -> 403 ADMIN_LOCKED, không tạo phiên', async () => {
+    const a = admin('an@company.com', 'oid-1');
+    a.lock(NOW);
+    const { sessions, run } = setup([a], { oid: 'oid-1', email: 'an@company.com' });
+    await expect(run()).rejects.toMatchObject({ code: 'ADMIN_LOCKED' });
+    expect(sessions.rows).toHaveLength(0);
   });
 
   it('đã gắn: tra theo oid — email trên M365 đổi rồi vẫn vào đúng tài khoản', async () => {

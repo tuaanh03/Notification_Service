@@ -54,6 +54,7 @@ export interface ApplicationOverrides {
 export function buildApplication(container: Container, overrides: ApplicationOverrides = {}): Application {
   const settings = settingsModule(container);
   const tenancy = tenancyModule(container, {
+    systemSettings: settings.systemSettings,
     microsoftIdentity: overrides.microsoftIdentity,
     tenantDirectory: overrides.tenantDirectory,
   });

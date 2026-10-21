@@ -77,6 +77,13 @@ class FakeAdmins implements AdminRepository {
     this.renamed.push(admin.id);
   }
   async updatePassword() {}
+  async findManyByEmails(emails: readonly string[]): Promise<Admin[]> {
+    return this.rows.filter((a) => emails.includes(a.email));
+  }
+  async listLocked(): Promise<Admin[]> {
+    return this.rows.filter((a) => a.isLocked);
+  }
+  async updateLock(): Promise<void> {}
   async countByAccount() {
     return this.rows.length;
   }

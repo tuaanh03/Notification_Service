@@ -15,11 +15,19 @@ import { Admin } from '../../src/modules/tenancy/domain/entities/admin.ts';
 import { AdminSession } from '../../src/modules/tenancy/domain/entities/admin-session.ts';
 import { assertPasswordAllowed } from '../../src/modules/tenancy/domain/rules/password-policy.ts';
 import { LoginAdmin } from '../../src/modules/tenancy/application/commands/login-admin.ts';
+import { LoginThrottle } from '../../src/modules/tenancy/application/commands/login-throttle.ts';
+import { UnlockLogin } from '../../src/modules/tenancy/application/commands/unlock-login.ts';
+import { ListLoginLocks } from '../../src/modules/tenancy/application/queries/list-login-locks.ts';
+import { loginThrottlePolicy, type LoginThrottlePolicy } from '../../src/modules/tenancy/domain/rules/login-throttle.ts';
+import type { Logger } from '../../src/shared/observability/logger.ts';
 import { LogoutAdmin } from '../../src/modules/tenancy/application/commands/logout-admin.ts';
 import { AuthenticateAdminSession } from '../../src/modules/tenancy/application/queries/authenticate-admin-session.ts';
 import type {
   AdminRepository,
   AdminSessionRepository,
+  LoginAttemptStore,
+  LoginFailureOutcome,
+  LoginLockEntry,
   PasswordHasher,
   SessionTokenFactory,
 } from '../../src/modules/tenancy/application/ports/index.ts';
@@ -78,6 +86,13 @@ class FakeAdmins implements AdminRepository {
   async linkMicrosoft(): Promise<boolean> {
     return true;
   }
+  async findManyByEmails(emails: readonly string[]): Promise<Admin[]> {
+    return this.rows.filter((a) => emails.includes(a.email));
+  }
+  async listLocked(): Promise<Admin[]> {
+    return this.rows.filter((a) => a.isLocked);
+  }
+  async updateLock(): Promise<void> {}
   async countByAccount(): Promise<number> {
     return this.rows.length;
   }
@@ -118,7 +133,86 @@ function adminWithPassword(password: string | null): Admin {
   });
 }
 
-function loginWith(admins: AdminRepository, sessions: AdminSessionRepository, outbox: EventOutbox): LoginAdmin {
+/**
+ * Bộ đếm giả trong bộ nhớ, cùng luật với script Lua của `RedisLoginAttemptStore` (khoá hết hạn theo `until`, không theo
+ * đồng hồ thật). Bản Redis có test tích hợp riêng.
+ */
+class FakeAttempts implements LoginAttemptStore {
+  readonly fails = new Map<string, number>();
+  readonly locks = new Map<string, { lockedAt: Date; until: Date }>();
+  readonly streaks = new Map<string, number>();
+  broken = false;
+
+  async lockedUntil(subject: string, ip: string | null, now: Date): Promise<Date | null> {
+    if (this.broken) throw new Error('redis down');
+    const all = [this.locks.get(`e:${subject}`), ip === null ? undefined : this.locks.get(`ip:${ip}`)];
+    const live = all.filter((l) => l !== undefined && l.until > now).map((l) => l!.until.getTime());
+    return live.length === 0 ? null : new Date(Math.max(...live));
+  }
+  async recordFailure(subject: string, ip: string | null, policy: LoginThrottlePolicy, now: Date): Promise<LoginFailureOutcome> {
+    if (this.broken) throw new Error('redis down');
+    const until = new Date(now.getTime() + policy.lockMs);
+    const bump = (key: string, limit: number): boolean => {
+      const n = (this.fails.get(key) ?? 0) + 1;
+      if (n < limit) {
+        this.fails.set(key, n);
+        return false;
+      }
+      this.fails.delete(key);
+      this.locks.set(key, { lockedAt: now, until });
+      return true;
+    };
+    const emailLocked = bump(`e:${subject}`, policy.maxFailures);
+    if (emailLocked) this.streaks.set(subject, (this.streaks.get(subject) ?? 0) + 1);
+    const ipLocked = ip !== null && bump(`ip:${ip}`, policy.ipMaxFailures);
+    return { emailLockedUntil: emailLocked ? until : null, streak: this.streaks.get(subject) ?? 0, ipLockedUntil: ipLocked ? until : null };
+  }
+  async clear(subject: string): Promise<void> {
+    this.fails.delete(`e:${subject}`);
+    this.streaks.delete(subject);
+  }
+  async list(now: Date): Promise<LoginLockEntry[]> {
+    return [...this.locks.entries()]
+      .filter(([, l]) => l.until > now)
+      .map(([key, l]) => ({ kind: key.startsWith('e:') ? 'email' : 'ip', subject: key.slice(key.indexOf(':') + 1), ...l }));
+  }
+  async unlock(kind: 'email' | 'ip', subject: string): Promise<boolean> {
+    const key = `${kind === 'email' ? 'e' : 'ip'}:${subject}`;
+    const had = this.locks.delete(key);
+    this.fails.delete(key);
+    if (kind === 'email') this.streaks.delete(subject);
+    return had;
+  }
+}
+
+const silentLogger: Logger = {
+  trace() {},
+  debug() {},
+  info() {},
+  warn() {},
+  error() {},
+  fatal() {},
+  child: () => silentLogger,
+};
+
+const POLICY = loginThrottlePolicy({ enabled: true, maxFailures: 3, windowMinutes: 15, lockMinutes: 15, ipMaxFailures: 10, permanentAfter: 0 });
+
+function throttleWith(
+  admins: AdminRepository,
+  sessions: AdminSessionRepository,
+  outbox: EventOutbox,
+  attempts: LoginAttemptStore = new FakeAttempts(),
+  policy: LoginThrottlePolicy = POLICY,
+): LoginThrottle {
+  return new LoginThrottle({ uow, outbox, clock, logger: silentLogger, admins, sessions, attempts, policy: { current: async () => policy } });
+}
+
+function loginWith(
+  admins: AdminRepository,
+  sessions: AdminSessionRepository,
+  outbox: EventOutbox,
+  throttle: LoginThrottle = throttleWith(admins, sessions, outbox),
+): LoginAdmin {
   return new LoginAdmin({
     uow,
     outbox,
@@ -129,6 +223,7 @@ function loginWith(admins: AdminRepository, sessions: AdminSessionRepository, ou
     tokens,
     sessionTtlMs: TTL,
     dummyHash: Promise.resolve('fake:không-ai-dùng'),
+    throttle,
   });
 }
 
@@ -246,6 +341,120 @@ describe('LoginAdmin', () => {
   });
 });
 
+describe('Chặn đăng nhập sai nhiều lần (ADR-0039)', () => {
+  const PASSWORD = 'mat-khau-that-dai';
+  function setup(policy: LoginThrottlePolicy = POLICY) {
+    const admin = adminWithPassword(PASSWORD);
+    const admins = new FakeAdmins([admin]);
+    const sessions = new FakeSessions();
+    const outbox = new FakeOutbox();
+    const attempts = new FakeAttempts();
+    const login = loginWith(admins, sessions, outbox, throttleWith(admins, sessions, outbox, attempts, policy));
+    const attempt = (password: string, email = 'admin@test.local', ip: string | null = '203.0.113.7') =>
+      codeOf(login.execute({ email, password, ip }, CTX));
+    return { admin, admins, sessions, outbox, attempts, attempt };
+  }
+
+  it('sai đủ ngưỡng -> khoá tạm: đúng mật khẩu cũng bị từ chối, CÙNG mã lỗi; audit LoginLocked', async () => {
+    const { attempt, outbox } = setup();
+    for (let i = 0; i < 3; i++) expect(await attempt('sai-mat-khau-roi')).toBe('INVALID_CREDENTIALS');
+    expect(await attempt(PASSWORD)).toBe('INVALID_CREDENTIALS');
+    const locked = outbox.events.filter((e) => e.eventType === 'LoginLocked');
+    expect(locked).toHaveLength(1);
+    expect(JSON.stringify(locked[0]!.payload)).toContain('admin@test.local');
+  });
+
+  it('dưới ngưỡng -> đúng mật khẩu vẫn vào, và bộ đếm của email được xoá', async () => {
+    const { attempt, attempts } = setup();
+    await attempt('sai-mat-khau-roi');
+    await attempt('sai-mat-khau-roi');
+    expect(await attempt(PASSWORD)).toBe('(không ném lỗi)');
+    expect(attempts.fails.get('e:admin@test.local')).toBeUndefined();
+  });
+
+  it('khoá theo IP: thử nhiều email từ một IP -> IP đó bị chặn, IP khác vẫn vào', async () => {
+    const { attempt } = setup({ ...POLICY, maxFailures: 20, ipMaxFailures: 10 });
+    for (let i = 0; i < 10; i++) await attempt('sai-mat-khau-roi', `nguoi${i}@test.local`);
+    expect(await attempt(PASSWORD, 'admin@test.local', '203.0.113.7')).toBe('INVALID_CREDENTIALS');
+    expect(await attempt(PASSWORD, 'admin@test.local', '198.51.100.1')).toBe('(không ném lỗi)');
+  });
+
+  it('không biết IP (null) -> chỉ đếm theo email, không gộp mọi người vào một bộ đếm', async () => {
+    const { attempt, attempts } = setup();
+    await attempt('sai-mat-khau-roi', 'khac@test.local', null);
+    expect([...attempts.fails.keys()]).toEqual(['e:khac@test.local']);
+  });
+
+  it('tắt chặn -> không đếm, không khoá', async () => {
+    const { attempt, attempts } = setup({ ...POLICY, enabled: false });
+    for (let i = 0; i < 5; i++) await attempt('sai-mat-khau-roi');
+    expect(await attempt(PASSWORD)).toBe('(không ném lỗi)');
+    expect(attempts.fails.size).toBe(0);
+  });
+
+  it('bộ đếm hỏng (Redis chết) -> vẫn đăng nhập được, không khoá cả hệ thống', async () => {
+    const { attempt, attempts } = setup();
+    attempts.broken = true;
+    expect(await attempt('sai-mat-khau-roi')).toBe('INVALID_CREDENTIALS');
+    expect(await attempt(PASSWORD)).toBe('(không ném lỗi)');
+  });
+
+  it('khoá tạm đủ N lần liên tiếp -> KHOÁ HẲN: đá mọi phiên, audit AdminLocked, hết khoá tạm vẫn không vào', async () => {
+    const { attempt, admin, attempts, sessions, outbox } = setup({ ...POLICY, permanentAfter: 2 });
+    sessions.rows.push(
+      new AdminSession({ id: AdminSessionId.create(), adminId: admin.id, tokenHash: 'h', expiresAt: new Date(NOW.getTime() + TTL), createdAt: NOW }),
+    );
+    for (let i = 0; i < 3; i++) await attempt('sai-mat-khau-roi');
+    await attempts.unlock('email', 'admin@test.local');
+    attempts.streaks.set('admin@test.local', 1); // giữ chuỗi như khoá tạm tự hết hạn (Redis giữ chuỗi 24 giờ)
+    for (let i = 0; i < 3; i++) await attempt('sai-mat-khau-roi');
+    expect(admin.isLocked).toBe(true);
+    expect(sessions.rows).toHaveLength(0);
+    expect(outbox.events.map((e) => e.eventType)).toContain('AdminLocked');
+    attempts.locks.clear();
+    expect(await attempt(PASSWORD)).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('permanentAfter = 0 (mặc định) -> không bao giờ khoá hẳn', async () => {
+    const { attempt, admin, attempts } = setup();
+    for (let round = 0; round < 4; round++) {
+      for (let i = 0; i < 3; i++) await attempt('sai-mat-khau-roi');
+      attempts.locks.clear();
+    }
+    expect(admin.isLocked).toBe(false);
+  });
+
+  it('email lạ bị khoá tạm -> không audit (không có tài khoản để gắn)', async () => {
+    const { attempt, outbox, attempts } = setup();
+    for (let i = 0; i < 3; i++) await attempt('sai-mat-khau-roi', 'khong-co@test.local');
+    expect(attempts.locks.has('e:khong-co@test.local')).toBe(true);
+    expect(outbox.events).toHaveLength(0);
+  });
+
+  it('Super Admin mở khoá: gỡ khoá tạm + khoá hẳn, audit LoginUnlocked; không còn gì để mở -> NOT_FOUND', async () => {
+    const { attempt, admin, admins, attempts, outbox } = setup();
+    for (let i = 0; i < 3; i++) await attempt('sai-mat-khau-roi');
+    admin.lock(NOW);
+    const unlock = new UnlockLogin({ uow, outbox, clock, admins, attempts });
+    const actor = { actor: { id: AdminId.create(), type: 'admin' as const }, source: 'admin_api' as const };
+    await unlock.execute({ kind: 'email', email: 'ADMIN@test.local' }, actor);
+    expect(admin.isLocked).toBe(false);
+    expect(await attempt(PASSWORD)).toBe('(không ném lỗi)');
+    expect(outbox.events.map((e) => e.eventType)).toContain('LoginUnlocked');
+    await expect(unlock.execute({ kind: 'ip', ip: '198.51.100.9' }, actor)).rejects.toThrow(/not found/);
+  });
+
+  it('danh sách khoá: khoá hẳn + khoá tạm, email đã khoá hẳn không hiện trùng dòng khoá tạm', async () => {
+    const { attempt, admin, admins, attempts } = setup({ ...POLICY, ipMaxFailures: 10 });
+    for (let i = 0; i < 3; i++) await attempt('sai-mat-khau-roi', 'khong-co@test.local');
+    for (let i = 0; i < 3; i++) await attempt('sai-mat-khau-roi');
+    admin.lock(NOW);
+    const locks = await new ListLoginLocks({ clock, admins, attempts }).execute();
+    expect(locks.map((l) => `${l.kind}:${l.subject}`).sort()).toEqual(['account:admin@test.local', 'email:khong-co@test.local']);
+    expect(locks.find((l) => l.kind === 'account')!.until).toBeNull();
+  });
+});
+
 describe('AuthenticateAdminSession', () => {
   function setup(session: AdminSession | null, admin: Admin | null) {
     const sessions = new FakeSessions();
@@ -279,6 +488,13 @@ describe('AuthenticateAdminSession', () => {
     expect(await codeOf(setup(live, admin).query.execute({ token: 'token-la' }))).toBe('INVALID_ADMIN_SESSION');
     expect(await codeOf(setup(dead, admin).query.execute({ token: 'token-het-han' }))).toBe('INVALID_ADMIN_SESSION');
     expect(await codeOf(setup(live, null).query.execute({ token: 'token-con-han' }))).toBe('INVALID_ADMIN_SESSION');
+  });
+
+  it('admin bị KHOÁ HẲN -> phiên còn hạn cũng hết hiệu lực (ADR-0039)', async () => {
+    const admin = adminWithPassword('mat-khau-that-dai');
+    admin.lock(NOW);
+    const { query } = setup(sessionFor(admin, 'token-con-han', new Date(NOW.getTime() + 1000)), admin);
+    expect(await codeOf(query.execute({ token: 'token-con-han' }))).toBe('INVALID_ADMIN_SESSION');
   });
 
   it('phiên hết hạn bị XOÁ ngay lúc đụng tới — bảng tự sạch dần', async () => {

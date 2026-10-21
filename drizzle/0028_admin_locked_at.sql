@@ -1,0 +1,1 @@
+ALTER TABLE `admins` ADD `locked_at` datetime(3);

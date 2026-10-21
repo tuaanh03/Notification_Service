@@ -34,6 +34,12 @@ export interface AdminRepository {
    * gắn trước (hai lần đăng nhập đầu tiên chạy song song) — application đọc lại rồi so.
    */
   linkMicrosoft(admin: Admin): Promise<boolean>;
+  /** Theo LÔ — màn "Theo dõi & Bảo mật" gắn tên vào các email đang bị khoá (ADR-0039). */
+  findManyByEmails(emails: readonly NormalizedEmail[]): Promise<Admin[]>;
+  /** Tài khoản đang bị KHOÁ HẲN (ADR-0039), khoá mới nhất trước. */
+  listLocked(): Promise<Admin[]>;
+  /** Chỉ ghi `locked_at` + `updated_at` (ADR-0039). */
+  updateLock(admin: Admin): Promise<void>;
   /** Chỉ ghi `display_name` + `updated_at` (ADR-0027). */
   updateDisplayName(admin: Admin): Promise<void>;
   /** Chỉ ghi `member_listed` + `updated_at`, cho cả lô (cùng giá trị, cùng mốc giờ). */

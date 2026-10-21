@@ -80,6 +80,11 @@ const EnvSchema = z.object({
    * Đổi khoá = secret của MỌI URL đổi theo — chỉ đổi khi bị lộ. Sinh bằng `openssl rand -base64 32`.
    */
   WEBHOOK_SIGNING_KEY: optional(z.string().min(32, 'must be at least 32 characters')),
+  /**
+   * Khoá chung với console để API tin header IP thật của trình duyệt lúc đăng nhập (ADR-0039) — console đặt CÙNG giá
+   * trị. Trống = không tin header nào: chặn đăng nhập sai vẫn chạy nhưng chỉ đếm theo email, không đếm theo IP.
+   */
+  LOGIN_CLIENT_IP_SECRET: optional(z.string().min(32, 'must be at least 32 characters')),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

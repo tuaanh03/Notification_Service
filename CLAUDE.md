@@ -31,6 +31,7 @@ docker compose exec api node dist/src/entrypoints/admin-cli/main.js create-admin
 docker compose exec api node dist/src/entrypoints/admin-cli/main.js set-member --org <orgId> --email nv@company.com --role owner   # ADR-0022
 docker compose exec api node dist/src/entrypoints/admin-cli/main.js grant-app-role --app <appId> --email nv@company.com --role app_admin
 docker compose exec api node dist/src/entrypoints/admin-cli/main.js scan-template-html   # CHẠY THỬ, chỉ đọc (ADR-0036)
+docker compose exec api node dist/src/entrypoints/admin-cli/main.js unlock-login --email ban@company.com   # mở khoá đăng nhập (ADR-0039)
 npx tsx test/unit/fixtures/compile-preset-html.ts ../ews-astrolink/node_modules/.pnpm/mjml-browser@4.18.0/node_modules/mjml-browser   # sinh lại HTML mẫu cho test (ADR-0037)
 npx tsx --env-file-if-exists=.env src/entrypoints/admin-cli/main.ts list-accounts   # bản chạy từ source
 docker compose up -d --scale worker=3   # thêm worker
@@ -60,13 +61,13 @@ Microsoft Graph + giới hạn tốc độ trên Redis — ADR-0018). Đang làm
 `templates` (ADR-0020) — xong cả 3 GĐ: admin soạn / xuất bản, app gửi bằng `templateId` + `payload`,
 màn Templates của console đã đấu API.
 
-Có trong repo: domain model 13 module · schema MySQL + 28 migration · hạ tầng dùng chung (config, db,
+Có trong repo: domain model 13 module · schema MySQL + 29 migration · hạ tầng dùng chung (config, db,
 streams, http, jobs) · 3 process `api` / `worker` / `scheduler` · luật kiến trúc thành test · Docker.
 **Ba module đã có lát cắt dọc đầy đủ** (application + infrastructure + interface):
 
 | Module | Có gì |
 | --- | --- |
-| `tenancy` | tạo account / organization (người dùng tự tạo org và thành Owner — ADR-0025); query `FindOrganization` cho module khác; đồng bộ danh bạ M365 thành tài khoản + danh sách người để thêm vào org (ADR-0027); màn Danh bạ của Super Admin (`/admin/directory/people`) tích ai hiện khi thêm thành viên — người mới từ đồng bộ mặc định ẩn, thêm người chưa tích -> 422 `ADMIN_NOT_LISTED` |
+| `tenancy` | tạo account / organization (người dùng tự tạo org và thành Owner — ADR-0025); chặn đăng nhập mật khẩu sai nhiều lần (`LoginThrottle` + `RedisLoginAttemptStore`, khoá hẳn `admins.locked_at`, `/admin/login-locks` — ADR-0039); query `FindOrganization` cho module khác; đồng bộ danh bạ M365 thành tài khoản + danh sách người để thêm vào org (ADR-0027); màn Danh bạ của Super Admin (`/admin/directory/people`) tích ai hiện khi thêm thành viên — người mới từ đồng bộ mặc định ẩn, thêm người chưa tích -> 422 `ADMIN_NOT_LISTED` |
 | `directory` | đồng bộ user theo `external_id` + email trong một transaction; `FindUserByExternalId` cho module khác; `GET /admin/apps/:appId/users` (danh sách người nhận, phân trang + tìm) và `GET /admin/apps/:appId/users/:externalId` (một người, khớp đủ mã — cùng `FindUserByExternalId.get` với `/v1`); `POST /admin/apps/:appId/users` — người quản lý app THÊM TAY một người (`app.manage`, `source = 'console'`, mã đã có -> 409 `USER_ALREADY_EXISTS`, KHÔNG ghi đè như `/v1`); `DELETE /admin/apps/:appId/users/:externalId` — XOÁ MỀM (`users.deleted_at`): ẩn khỏi tra cứu / danh sách / phát vào chủ đề / đếm email, GIỮ lịch sử gửi và email; `PUT /v1/users` hoặc thêm tay cùng mã -> khôi phục cùng `user_id` |
 | `subscriptions` | email của user (tạo / đổi / ngắt / bật lại theo luật plan §5), cờ L1 `optedOutOptional`; `FindUserEmail` cho module khác — chưa có route riêng |
 | `topics` | admin tạo / kích hoạt / đình chỉ topic; đặt / bỏ `mandatory` lúc tạo hoặc sau (`PUT …/topics/:key/mandatory`) — người quản lý app (`app.manage`), không qua `/v1` (bổ sung ADR-0022); `GET /v1/topics`; `GET/PUT /v1/users/:externalId/preferences` (L1 + L3, kiểm hết rồi mới ghi); `GET /admin/apps/:appId/users/:externalId/preferences` (chỉ đọc); `ConsentQueries` cho module khác |
@@ -132,6 +133,7 @@ vì ADR ghi đè tài liệu ở những chỗ khác nhau:
 | `0036` | **Bộ soạn trực quan GrapesJS + MJML**: kiểu `visual` (migration 0026, dùng lại cột `design`); trình duyệt sinh HTML, backend `checkEmailHtml` (danh sách cho phép, không `on*`, CSS không chạy được, link không scheme nguy hiểm, ảnh chỉ `https://`, giữ nhánh `[if mso]`) rồi TỪ CHỐI 422 — chỉ `normalizeLiquid` được sửa (`&quot;` trong `{{ }}` -> `'`); backend sinh `text`; không thêm gói đọc HTML (domain cấm package ngoài); ~~cờ `templates.visual_editor_enabled`~~ (bỏ ở ADR-0037); kiểu `html` bật kiểm lúc xuất bản ở ADR-0038 — `admin-cli scan-template-html` chạy thử; thay ADR-0034 §2.2 riêng cho `visual`. Bổ sung UX-3: `{{ … }}` trong thuộc tính là khối kín (nháy kép bên trong không kết thúc thuộc tính) nhưng phải đúng dạng biến, sai -> `HTML_MALFORMED` |
 | `0037` | **Ngừng kéo-thả, trực quan luôn bật, mẫu ra `visual`** (UX-4): ghi kiểu `blocks` -> 422 `EDITOR_NOT_SUPPORTED`, dòng cũ chỉ đọc; bỏ cờ + kiểu cài đặt `bool` + `GET /admin/template-editor-options`; `designToMjml` (domain); mẫu biên dịch ở TRÌNH DUYỆT (GrapesJS headless) rồi `from-preset` nhận `html` + `design`, backend kiểm như lưu nháp — test kiểm HTML thật của mjml-browser (`fixtures/preset-html.json`, khớp `sha256` MJML); `admin-cli purge-blocks-templates` (chạy thử / `--apply`, mỗi template một transaction, audit `TemplatePurged` — gỡ ở deploy 2); deploy 2: migration 0027 kiểm còn `blocks` thì FAIL (ràng buộc CHECK mang tên lời nhắn) rồi ENUM (`html`, `visual`) |
 | `0038` | **Kiểm HTML khi xuất bản kiểu `html`**: `publish` chạy `checkEmailHtml` cho kiểu `html` (422 cùng mã kiểu `visual`, chỉ từ chối, không sửa), nháp vẫn lưu được, bản đã xuất bản không đụng; công tắc cài đặt hệ thống `templates.html_check_enabled` (`bool`, mặc định BẬT, không migration) |
+| `0039` | **Chặn đăng nhập sai nhiều lần**: con số do Super Admin chỉnh (cài đặt hệ thống `auth.*`, console hiện ở mục riêng "Theo dõi & Bảo mật"); khoá TẠM ở Redis (script Lua, theo email + theo IP, tự hết hạn), khoá HẲN ở `admins.locked_at` (migration 0028, mặc định tắt — `auth.permanent_lock_after = 0`) chặn cả M365 (`ADMIN_LOCKED`) và xoá phiên; mọi trường hợp vẫn `401 INVALID_CREDENTIALS`; IP thật chỉ tin header `x-ews-client-ip` khi khoá `LOGIN_CLIENT_IP_SECRET` khớp, không bao giờ dùng `request.ip`; Redis lỗi -> cho qua + log; `GET /admin/login-locks`, `POST …/unlock`, `admin-cli unlock-login` |
 
 `Workflow Notification Service - Final.docx` là nghiên cứu OneSignal, không phải quyết định.
 

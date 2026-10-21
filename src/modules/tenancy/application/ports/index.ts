@@ -7,3 +7,4 @@ export * from './session-token-factory.ts';
 export * from './microsoft-identity.ts';
 export * from './org-member-repository.ts';
 export * from './tenant-directory.ts';
+export * from './login-attempt-store.ts';

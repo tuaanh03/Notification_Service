@@ -23,6 +23,24 @@ export const SYSTEM_SETTINGS = {
    * an toàn: tắt = xuất bản kiểu `html` như trước (chỉ luật nội dung). Kiểu `visual` luôn kiểm lúc lưu, không theo cờ này.
    */
   'templates.html_check_enabled': { kind: 'bool', default: true },
+  /**
+   * Chặn đăng nhập mật khẩu sai nhiều lần (ADR-0039) — console hiện ở mục riêng "Theo dõi & Bảo mật", không ở trang
+   * Cài đặt hệ thống. Tắt = không đếm, không khoá (khoá hẳn đã ghi trên tài khoản vẫn giữ).
+   */
+  'auth.lockout_enabled': { kind: 'bool', default: true },
+  /** Sai chừng này lần liên tiếp cho MỘT email trong `auth.failure_window_minutes` -> khoá tạm email đó. */
+  'auth.max_failed_attempts': { kind: 'int', default: 5, min: 3, max: 20 },
+  /** Khung đếm lần sai, tính từ lần sai đầu tiên. */
+  'auth.failure_window_minutes': { kind: 'int', default: 15, min: 1, max: 1440 },
+  /** Khoá tạm kéo dài chừng này phút rồi tự mở. */
+  'auth.lockout_minutes': { kind: 'int', default: 15, min: 1, max: 1440 },
+  /** Một IP sai chừng này lần (mọi email cộng lại) trong cùng khung -> khoá tạm IP đó: chặn thử một mật khẩu với nhiều email. */
+  'auth.ip_max_failed_attempts': { kind: 'int', default: 30, min: 10, max: 1000 },
+  /**
+   * Bị khoá tạm chừng này lần liên tiếp (trong 24 giờ, chưa đăng nhập đúng lần nào) -> KHOÁ HẲN tài khoản, chỉ Super Admin
+   * mở. 0 = không bao giờ khoá hẳn — mặc định, vì ai biết email cũng cố tình nhập sai để khoá được người khác.
+   */
+  'auth.permanent_lock_after': { kind: 'int', default: 0, min: 0, max: 10 },
 } as const satisfies Record<string, SettingSpec>;
 
 type SettingSpec =
@@ -42,6 +60,12 @@ export interface SystemSettingsValues {
   'apps.max_active_api_keys': number;
   'webhooks.max_endpoints_per_app': number;
   'templates.html_check_enabled': boolean;
+  'auth.lockout_enabled': boolean;
+  'auth.max_failed_attempts': number;
+  'auth.failure_window_minutes': number;
+  'auth.lockout_minutes': number;
+  'auth.ip_max_failed_attempts': number;
+  'auth.permanent_lock_after': number;
 }
 
 export const isSystemSettingKey = (key: string): key is SystemSettingKey => Object.hasOwn(SYSTEM_SETTINGS, key);
@@ -64,6 +88,12 @@ export function effectiveSettings(stored: ReadonlyMap<string, unknown>): SystemS
     'apps.max_active_api_keys': pick('apps.max_active_api_keys'),
     'webhooks.max_endpoints_per_app': pick('webhooks.max_endpoints_per_app'),
     'templates.html_check_enabled': pick('templates.html_check_enabled'),
+    'auth.lockout_enabled': pick('auth.lockout_enabled'),
+    'auth.max_failed_attempts': pick('auth.max_failed_attempts'),
+    'auth.failure_window_minutes': pick('auth.failure_window_minutes'),
+    'auth.lockout_minutes': pick('auth.lockout_minutes'),
+    'auth.ip_max_failed_attempts': pick('auth.ip_max_failed_attempts'),
+    'auth.permanent_lock_after': pick('auth.permanent_lock_after'),
   };
 }
 

@@ -12,3 +12,5 @@ export * from './set-org-member.ts';
 export * from './remove-org-member.ts';
 export * from './sync-tenant-directory.ts';
 export * from './set-member-listed.ts';
+export * from './login-throttle.ts';
+export * from './unlock-login.ts';

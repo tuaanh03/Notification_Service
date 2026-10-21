@@ -59,6 +59,11 @@ export const admins = mysqlTable(
      * chỉ người mới đến từ đồng bộ danh bạ được ghi `false` tường minh (chờ Super Admin tích).
      */
     memberListed: boolean('member_listed').notNull().default(true),
+    /**
+     * Lúc bị KHOÁ HẲN vì đăng nhập sai nhiều lần (ADR-0039) — NULL = không khoá. Khoá tạm nằm ở Redis, không ở đây;
+     * chỉ khoá hẳn cần sống qua lần Redis mất dữ liệu và chỉ Super Admin mở được.
+     */
+    lockedAt: ts('locked_at'),
     createdAt: tsNow('created_at'),
     updatedAt: tsNow('updated_at'),
   },

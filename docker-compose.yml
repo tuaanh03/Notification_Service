@@ -29,6 +29,8 @@ x-app-env: &app-env
   M365_REDIRECT_URI: ${M365_REDIRECT_URI:-}
   # Outgoing webhook (tuỳ chọn, ADR-0029) — trống = tắt.
   WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-}
+  # Khoá chung với console để tin IP thật lúc đăng nhập (tuỳ chọn, ADR-0039) — trống = chỉ đếm sai theo email.
+  LOGIN_CLIENT_IP_SECRET: ${LOGIN_CLIENT_IP_SECRET:-}
 
 # Cùng một image cho mọi process; `pull_policy: build` để compose dựng tại chỗ thay vì đi pull
 # một image không có trên registry.

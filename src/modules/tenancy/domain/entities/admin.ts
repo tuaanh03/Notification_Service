@@ -25,6 +25,8 @@ export interface AdminProps extends TimestampInput {
   displayName?: string | null | undefined;
   /** Có hiện trong hộp "Thêm thành viên" của org không. Thiếu = `true` (cùng mặc định với DB). */
   memberListed?: boolean | undefined;
+  /** Lúc bị KHOÁ HẲN vì đăng nhập sai nhiều lần (ADR-0039). `null` = không khoá. */
+  lockedAt?: Date | null | undefined;
 }
 
 /**
@@ -39,6 +41,7 @@ export class Admin extends BaseEntity<AdminId> {
   microsoftOid: string | null;
   displayName: string | null;
   memberListed: boolean;
+  lockedAt: Date | null;
 
   constructor(props: AdminProps) {
     super(props.id, props);
@@ -49,6 +52,28 @@ export class Admin extends BaseEntity<AdminId> {
     this.microsoftOid = props.microsoftOid ?? null;
     this.displayName = props.displayName ?? null;
     this.memberListed = props.memberListed ?? true;
+    this.lockedAt = props.lockedAt ?? null;
+  }
+
+  /** Khoá hẳn (ADR-0039): không vào được bằng mật khẩu lẫn Microsoft, phiên đang mở hết hiệu lực. */
+  get isLocked(): boolean {
+    return this.lockedAt !== null;
+  }
+
+  /** Trả `false` khi đã khoá sẵn — giữ mốc khoá đầu tiên. */
+  lock(at: Date): boolean {
+    if (this.lockedAt !== null) return false;
+    this.lockedAt = at;
+    this.touch(at);
+    return true;
+  }
+
+  /** Trả `false` khi không bị khoá. */
+  unlock(at: Date): boolean {
+    if (this.lockedAt === null) return false;
+    this.lockedAt = null;
+    this.touch(at);
+    return true;
   }
 
   /** Chưa đặt mật khẩu thì không có đường đăng nhập nào — đặt bằng CLI (`admin-cli`). */

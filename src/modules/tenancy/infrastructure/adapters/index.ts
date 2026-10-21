@@ -8,3 +8,5 @@ export * from './entra-id-microsoft-identity.ts';
 export * from './redis-login-state-store.ts';
 export * from './drizzle-org-member-repository.ts';
 export * from './graph-tenant-directory.ts';
+export * from './redis-login-attempt-store.ts';
+export * from './settings-login-throttle-policy.ts';

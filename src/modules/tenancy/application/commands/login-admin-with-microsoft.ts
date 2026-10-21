@@ -66,6 +66,9 @@ export class LoginAdminWithMicrosoft {
       });
     }
 
+    // Khoá hẳn (ADR-0039) chặn MỌI đường vào. Ở đây nói rõ lý do được: người này vừa chứng minh danh tính với Microsoft.
+    if (admin.isLocked) throw new PermissionDeniedError('ADMIN_LOCKED', 'this account is locked; ask a Super Admin to unlock it');
+
     // Chỉ để hiển thị — không audit, không chung transaction với việc cấp phiên.
     if (admin.rename(profile.name ?? null, clock.now())) await admins.updateDisplayName(admin);
     return issueAdminSession(this.deps, admin, 'microsoft', { ...ctx, actor: { id: admin.id, type: 'admin' } });

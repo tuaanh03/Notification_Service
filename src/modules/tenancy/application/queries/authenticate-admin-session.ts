@@ -36,7 +36,8 @@ export class AuthenticateAdminSession {
     }
 
     const admin = await admins.findById(session.adminId);
-    if (admin === null) throw invalid();
+    // Khoá hẳn đã xoá mọi phiên lúc khoá; kiểm thêm ở đây phòng phiên tạo đúng lúc khoá (ADR-0039).
+    if (admin === null || admin.isLocked) throw invalid();
     return { adminId: admin.id, role: admin.role, admin: toAdminDto(admin) };
   }
 }

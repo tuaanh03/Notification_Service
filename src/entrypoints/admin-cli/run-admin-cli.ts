@@ -19,6 +19,7 @@ const USAGE = `admin-cli — quản trị admin, chạy trong container
   create-admin   --email <email> --role super_admin|user [--account <id>] [--account-name <tên>]
                  [--login password|m365]
   reset-password --email <email>
+  unlock-login   --email <email>     mở khoá đăng nhập (khoá tạm + khoá hẳn) — khi chính Super Admin bị khoá (ADR-0039)
   set-member     --org <orgId> --email <email> --role owner|org_admin|member
   grant-app-role --app <appId> --email <email> --role app_admin|app_viewer
   list-accounts
@@ -179,6 +180,12 @@ export async function runAdminCli(env: Env, argv: readonly string[]): Promise<nu
         const password = await readValidPassword(app);
         const admin = await app.adminOps.setAdminPassword.execute({ email, password }, ctx);
         process.stdout.write(`đã đổi mật khẩu ${admin.email}; mọi phiên đang mở đã bị huỷ\n`);
+        return 0;
+      }
+      case 'unlock-login': {
+        const email = required(flags, 'email');
+        await app.adminOps.unlockLogin.execute({ kind: 'email', email }, ctx);
+        process.stdout.write(`đã mở khoá đăng nhập cho ${email}\n`);
         return 0;
       }
       case 'set-member': {

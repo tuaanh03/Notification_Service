@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, isNull, like, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, like, or, sql, type SQL } from 'drizzle-orm';
 import { isDuplicateKeyError, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AccountId,
@@ -39,6 +39,25 @@ export class DrizzleAdminRepository implements AdminRepository {
     if (ids.length === 0) return [];
     const rows = await this.transactions.executor().select().from(admins).where(inArray(admins.adminId, [...ids]));
     return rows.map(toEntity);
+  }
+
+  async findManyByEmails(emails: readonly NormalizedEmail[]): Promise<Admin[]> {
+    if (emails.length === 0) return [];
+    const rows = await this.transactions.executor().select().from(admins).where(inArray(admins.email, [...emails]));
+    return rows.map(toEntity);
+  }
+
+  async listLocked(): Promise<Admin[]> {
+    const rows = await this.transactions.executor().select().from(admins).where(isNotNull(admins.lockedAt)).orderBy(desc(admins.lockedAt));
+    return rows.map(toEntity);
+  }
+
+  async updateLock(admin: Admin): Promise<void> {
+    await this.transactions
+      .executor()
+      .update(admins)
+      .set({ lockedAt: admin.lockedAt, updatedAt: admin.updatedAt })
+      .where(eq(admins.adminId, admin.id));
   }
 
   async listByAccount(accountId: AccountIdType): Promise<Admin[]> {
@@ -86,6 +105,7 @@ export class DrizzleAdminRepository implements AdminRepository {
       microsoftOid: admin.microsoftOid,
       displayName: admin.displayName,
       memberListed: admin.memberListed,
+      lockedAt: admin.lockedAt,
       createdAt: admin.createdAt,
       updatedAt: admin.updatedAt,
     });
@@ -147,6 +167,7 @@ function toEntity(row: typeof admins.$inferSelect): Admin {
     microsoftOid: row.microsoftOid,
     displayName: row.displayName,
     memberListed: row.memberListed,
+    lockedAt: row.lockedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

@@ -3,6 +3,7 @@ import type { CommandContext } from '../../../../shared/application/index.ts';
 import { bearerToken, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import type { LoginAdmin, LoginAdminWithMicrosoft, LogoutAdmin, StartMicrosoftLogin } from '../../application/commands/index.ts';
 import type { AuthenticateAdminSession } from '../../application/queries/index.ts';
+import { trustedClientIp } from './client-ip.ts';
 
 const loginBody = z
   .object({
@@ -37,13 +38,16 @@ export function authRoutes(useCases: {
   authenticateAdminSession: AuthenticateAdminSession;
   startMicrosoftLogin: StartMicrosoftLogin;
   loginAdminWithMicrosoft: LoginAdminWithMicrosoft;
+  /** Khoá chung với console để tin header IP thật (ADR-0039). `null` = chưa cấu hình -> chỉ đếm sai theo email. */
+  clientIpSecret: string | null;
 }): HttpRoutes {
   return (app) => {
     app.post('/auth/login', async (request, reply) => {
       const body = parseInput(loginBody, request.body);
       // Chưa biết là ai lúc bắt đầu -> actor tạm là chính địa chỉ email đang thử.
       const ctx: CommandContext = { actor: { id: body.email, type: 'admin' }, source: 'admin_api' };
-      const result = await useCases.loginAdmin.execute(body, ctx);
+      const ip = trustedClientIp(request.headers, useCases.clientIpSecret);
+      const result = await useCases.loginAdmin.execute({ ...body, ip }, ctx);
       // Token chỉ sống trong response này -> no-store để không proxy nào giữ lại.
       return reply.header('cache-control', 'no-store').send(result);
     });
