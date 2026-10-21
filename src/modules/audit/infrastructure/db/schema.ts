@@ -25,5 +25,8 @@ export const auditLog = mysqlTable(
   (t) => [
     index('idx_audit_log_target').on(t.targetType, t.targetId, t.at),
     index('idx_audit_log_actor').on(t.actor, t.at),
+    // Nhật ký chung của Super Admin (`GET /admin/audit/events`): mới nhất trước, lọc theo loại sự kiện.
+    index('idx_audit_log_at').on(t.at),
+    index('idx_audit_log_action_at').on(t.action, t.at),
   ],
 );

@@ -101,7 +101,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     publishToTopic: notifications.publishToTopic,
     systemSettings: settings.systemSettings,
   });
-  const audit = auditModule(container);
+  const audit = auditModule(container, { describeAdmins: tenancy.describeAdmins });
 
   return {
     modules: [

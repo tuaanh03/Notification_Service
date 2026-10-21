@@ -5,6 +5,7 @@ import {
   CreateAdmin,
   CreateOrganization,
   CreateOwnOrganization,
+  DescribeAdmins,
   DUMMY_PASSWORD,
   FindOrganization,
   FindOrgMemberships,
@@ -103,6 +104,8 @@ export function tenancyModule(
   removeOrgMember: RemoveOrgMember;
   adminAuthenticator: SessionAdminAuthenticator;
   adminOps: AdminOps;
+  /** Cho module audit: email + tên người làm trên nhật ký chung. */
+  describeAdmins: DescribeAdmins;
 } {
   const { uow, outbox, clock } = container.ports;
   const { transactions } = container.infra;
@@ -141,6 +144,7 @@ export function tenancyModule(
 
   return {
     findOrganization,
+    describeAdmins: new DescribeAdmins({ admins }),
     removeOrgMember: new RemoveOrgMember({ uow, outbox, organizations, members }),
     findOrgMemberships: new FindOrgMemberships({ members, admins }),
     adminAuthenticator: new SessionAdminAuthenticator({ authenticateAdminSession }),

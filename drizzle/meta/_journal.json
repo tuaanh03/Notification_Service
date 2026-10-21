@@ -204,6 +204,13 @@
       "when": 1792593720732,
       "tag": "0028_admin_locked_at",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1792597911596,
+      "tag": "0029_audit_log_time_index",
+      "breakpoints": true
     }
   ]
 }
