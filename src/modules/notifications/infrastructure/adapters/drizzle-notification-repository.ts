@@ -87,13 +87,12 @@ export class DrizzleNotificationRepository implements NotificationRepository {
   }
 
   async listByApp(appId: AppIdType, filter: NotificationFilter, page: { limit: number; offset: number }): Promise<NotificationPage> {
-    const conditions: SQL[] = [eq(notifications.appId, appId)];
-    if (filter.status) conditions.push(eq(notifications.status, filter.status));
-    if (filter.topicId) conditions.push(eq(notifications.topicId, filter.topicId));
-    if (filter.targetUserId) conditions.push(eq(notifications.targetUserId, filter.targetUserId));
-    const where = and(...conditions);
+    const scope: SQL[] = [eq(notifications.appId, appId)];
+    if (filter.topicId) scope.push(eq(notifications.topicId, filter.topicId));
+    if (filter.targetUserId) scope.push(eq(notifications.targetUserId, filter.targetUserId));
+    const where = filter.status ? and(...scope, eq(notifications.status, filter.status)) : and(...scope);
     const executor = this.transactions.executor();
-    const [rows, [totals]] = await Promise.all([
+    const [rows, [totals], byStatus] = await Promise.all([
       executor
         .select()
         .from(notifications)
@@ -103,8 +102,17 @@ export class DrizzleNotificationRepository implements NotificationRepository {
         .limit(page.limit)
         .offset(page.offset),
       executor.select({ value: count() }).from(notifications).where(where),
+      executor
+        .select({ status: notifications.status, value: count() })
+        .from(notifications)
+        .where(and(...scope))
+        .groupBy(notifications.status),
     ]);
-    return { rows: rows.map(toNotification), total: totals?.value ?? 0 };
+    return {
+      rows: rows.map(toNotification),
+      total: totals?.value ?? 0,
+      statusCounts: Object.fromEntries(byStatus.map((s) => [s.status, s.value])),
+    };
   }
 
   async saveTransition(n: Notification): Promise<void> {

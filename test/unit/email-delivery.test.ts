@@ -157,7 +157,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         findById: async () => options.notification,
         findByIdempotencyKey: async () => null,
         saveTransition: async () => undefined,
-        listByApp: async () => ({ rows: [], total: 0 }),
+        listByApp: async () => ({ rows: [], total: 0, statusCounts: {} }),
         listStuckSending: async () => [],
         listDueScheduled: async () => [],
         listByPublication: async () => [],

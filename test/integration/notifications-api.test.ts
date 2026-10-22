@@ -340,6 +340,22 @@ describe('GET /admin/apps/:appId/notifications', () => {
     expect((await admin('GET', `/apps/${shop.appId}/notifications?status=bogus`)).status).toBe(422);
   });
 
+  it('statusCounts: đếm theo trạng thái cùng bộ lọc người nhận, KHÔNG bị lọc trạng thái thu hẹp', async () => {
+    await user('h_count', 'h.count@company.com');
+    await user('h_count_off', 'h.count.off@company.com');
+    await v1('PUT', '/users/h_count_off/preferences', { topics: { order_updates: false } });
+    await send('h_count', { idempotencyKey: 'count-1' });
+    await send('h_count', { idempotencyKey: 'count-2' });
+    await send('h_count_off', { idempotencyKey: 'count-3' });
+    await deliver();
+
+    const sentOnly = await history('externalId=h_count&status=sent');
+    expect(sentOnly['total']).toBe(2);
+    expect(sentOnly['statusCounts']).toEqual({ sent: 2 });
+    expect((await history('externalId=h_count_off&status=sent'))['statusCounts']).toEqual({ no_recipient: 1 });
+    expect((await history('externalId=nobody_here'))['statusCounts']).toEqual({});
+  });
+
   it('mới nhất trước; phân trang không lặp dòng', async () => {
     await user('h_page', 'h.page@company.com');
     const sent: string[] = [];

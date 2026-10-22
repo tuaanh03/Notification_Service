@@ -1,3 +1,4 @@
+import type { NotificationStatus } from '../../../shared/kernel/index.ts';
 import type { Notification } from '../domain/entities/notification.ts';
 import type { NotificationRecipient } from '../domain/entities/notification-recipient.ts';
 import type { Publication } from '../domain/entities/publication.ts';
@@ -149,6 +150,8 @@ export interface NotificationPageDto {
   total: number;
   limit: number;
   offset: number;
+  /** Số thư theo trạng thái — cùng bộ lọc chủ đề / người nhận, bỏ lọc trạng thái (tab đếm trên console). */
+  statusCounts: Partial<Record<NotificationStatus, number>>;
 }
 
 export function toNotificationSummaryDto(

@@ -43,7 +43,7 @@ export class ListNotifications {
     externalId?: string | undefined;
   }): Promise<NotificationPageDto> {
     const limit = Math.min(input.limit, MAX_NOTIFICATION_PAGE);
-    const empty: NotificationPageDto = { rows: [], total: 0, limit, offset: input.offset };
+    const empty: NotificationPageDto = { rows: [], total: 0, limit, offset: input.offset, statusCounts: {} };
     const topics = await this.deps.topics.topicsByApp(input.appId);
 
     let topicId: TopicId | undefined;
@@ -83,6 +83,7 @@ export class ListNotifications {
       total: page.total,
       limit,
       offset: input.offset,
+      statusCounts: page.statusCounts,
     };
   }
 }

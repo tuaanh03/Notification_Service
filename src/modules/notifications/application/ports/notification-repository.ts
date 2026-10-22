@@ -14,6 +14,11 @@ export interface NotificationFilter {
 export interface NotificationPage {
   rows: Notification[];
   total: number;
+  /**
+   * Số thư theo từng trạng thái, cùng bộ lọc chủ đề / người nhận nhưng BỎ lọc trạng thái — cho tab
+   * "Tất cả · Đã gửi · Lỗi…" trên console. Trạng thái không có thư nào thì không có khoá.
+   */
+  statusCounts: Partial<Record<NotificationStatus, number>>;
 }
 
 export interface NotificationRepository {

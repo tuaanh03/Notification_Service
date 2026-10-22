@@ -34,9 +34,21 @@ export class AuditQueries {
     this.actors = deps.actors;
   }
 
-  /** Lịch sử của một đối tượng (`<AuditTrail>` ở mọi trang chi tiết), mới nhất trước. */
-  async listByTarget(targetType: string, targetId: string, limit = 100): Promise<AuditEntryDto[]> {
-    return (await this.auditLog.listByTarget(targetType, targetId, limit)).map(toAuditEntryDto);
+  /**
+   * Lịch sử của một đối tượng (`<AuditTrail>` ở mọi trang chi tiết), mới nhất trước — kèm email / tên người làm
+   * (tra theo lô như `search`) để console hiện "ai đã làm" thay cho UUID.
+   */
+  async listByTarget(
+    targetType: string,
+    targetId: string,
+    limit = 100,
+  ): Promise<Array<AuditEntryDto & Pick<AuditEventDto, 'actorEmail' | 'actorName'>>> {
+    const entries = await this.auditLog.listByTarget(targetType, targetId, limit);
+    const people = this.actors ? await this.actors.describe(entries.map((e) => e.actor)) : new Map();
+    return entries.map((e) => {
+      const who = people.get(e.actor);
+      return { ...toAuditEntryDto(e), actorEmail: who?.email ?? null, actorName: who?.displayName ?? null };
+    });
   }
 
   /** Nhật ký chung (Super Admin): lọc + phân trang bằng con trỏ; tên người làm tra theo LÔ, một truy vấn mỗi trang. */

@@ -109,6 +109,14 @@ describe('GET /admin/audit/events', () => {
     expect((await events('actor=admin-cli'))['total']).toBe(1);
   });
 
+  it('GET /admin/audit (lịch sử một đối tượng) cũng gắn email người làm; id không phải tài khoản thì null', async () => {
+    const res = await http('GET', `/admin/audit?targetType=Admin&targetId=${adminId}`, { token });
+    expect(res.status).toBe(200);
+    const items = res.body as unknown as Json[];
+    expect(items.find((i) => i['action'] === 'LoginLocked')).toMatchObject({ actor: adminId, actorEmail: 'root@test.local' });
+    expect(items.find((i) => i['actor'] === 'admin-cli')).toMatchObject({ actorEmail: null, actorName: null });
+  });
+
   it('tham số sai -> 422; người không phải Super Admin -> 403', async () => {
     expect((await http('GET', '/admin/audit/events?from=hom-qua', { token })).status).toBe(422);
     expect((await http('GET', '/admin/audit/events?limit=999', { token })).status).toBe(422);
