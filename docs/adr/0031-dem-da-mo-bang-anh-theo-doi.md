@@ -63,3 +63,21 @@ nên chưa cần đếm bấm link.
 - Đếm bấm link (đổi link qua EWS rồi chuyển tiếp, lọc lượt bấm của bộ quét bảo mật), `notification.clicked`.
 - Trường "đã mở" trong `GET /v1/notifications/:id` — app dùng webhook `notification.opened`.
 - Giới hạn tốc độ riêng cho `/t/o/*` (chữ ký sai không chạm DB; chữ ký đúng chỉ một UPDATE theo PK).
+
+## Bổ sung 2026-10-23 — số liệu theo template (UX-24) và hai thứ KHÔNG làm
+
+**Làm:** tab "Hiệu quả" của template đọc đúng dữ liệu ADR này đã có — `GET /admin/apps/:appId/templates/:id/stats`
+(người nhận theo trạng thái, lý do bỏ qua, lượt mở, chuỗi theo ngày giờ Việt Nam, lọc version),
+`…/stats/recipients` (tab đã chuyển đi / đã mở / chưa mở / lỗi / bỏ qua) và `GET /admin/apps/:appId/template-stats`
+(hai cột ở danh sách template). Khoảng chỉ 7 / 30 / 90 ngày. Chỉ mục `idx_notifications_template_created`
+(migration 0031). "Đã chuyển đi" = Graph đã nhận, không gọi là "delivered".
+
+**Không làm — đã kiểm tenant thật ngày 2026-10-23:**
+- **Thư trả về (bounce):** cần đọc NDR ở hộp noreply = quyền `Mail.Read`. App Graph hiện KHÔNG có quyền này, và
+  app đó dùng chung với đăng nhập M365 — thêm `Mail.Read` không giới hạn = đọc được mọi hộp thư. Bỏ cho tới khi
+  có app riêng với `Mail.Read` giới hạn đúng hộp noreply (RBAC for Applications). Màn hình không hiện ô "bị trả lại";
+  mã `BounceEvent` / `counters.bounced` để nguyên.
+- **"Delivered" thật:** message trace cần `ExchangeMessageTrace.Read.All` — đọc nhật ký thư của cả tenant. Bỏ.
+- **Đếm bấm link:** đổi link qua `api.public_base_url`, mà tên miền này chạy qua DDNS về IP động của văn phòng;
+  mạng văn phòng mất là MỌI link trong thư đã gửi hỏng (khác ảnh theo dõi: mất chỉ đếm thiếu). Bỏ cho tới khi có
+  địa chỉ công khai ổn định. (Tenant là Business Basic, không có Defender Safe Links — không phải lý do.)

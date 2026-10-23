@@ -128,6 +128,8 @@ export const notifications = mysqlTable(
     // GET /v1/publications/:id đọc mọi thư con của một lần phát.
     index('idx_notifications_publication').on(t.publicationId),
     index('idx_notifications_app_created').on(t.appId, t.createdAt),
+    /** Số liệu template (UX-24): `template_version_id IN (...)` + khoảng `created_at`. */
+    index('idx_notifications_template_created').on(t.templateVersionId, t.createdAt),
     // MySQL không có partial index -> index thường, query phải kèm status='scheduled'.
     index('idx_notifications_scheduled').on(t.status, t.scheduledAt),
     // Job fail-stuck-sending (mỗi phút): WHERE status='sending' AND sending_at < ?. Bảng không bao giờ

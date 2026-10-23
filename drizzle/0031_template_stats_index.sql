@@ -1,0 +1,1 @@
+CREATE INDEX `idx_notifications_template_created` ON `notifications` (`template_version_id`,`created_at`);

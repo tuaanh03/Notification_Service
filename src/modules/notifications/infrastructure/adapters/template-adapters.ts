@@ -5,6 +5,8 @@ import type {
   TemplateLabel,
   TemplateLabels,
   TemplateRenderer,
+  TemplateVersionLookup,
+  TemplateVersionMark,
 } from '../../application/ports/index.ts';
 
 /** notifications -> templates (use case công khai `RenderTemplate`). */
@@ -22,6 +24,19 @@ export class TemplatesRenderer implements TemplateRenderer {
     externalId: string;
   }): Promise<RenderedEmailTemplate> {
     return this.renderTemplate.execute(input);
+  }
+}
+
+/** notifications -> templates (query công khai): version của một template cho số liệu (UX-24). */
+export class TemplatesVersionLookup implements TemplateVersionLookup {
+  private readonly queries: TemplateQueries;
+
+  constructor(deps: { templateQueries: TemplateQueries }) {
+    this.queries = deps.templateQueries;
+  }
+
+  versionsOf(appId: AppId, templateId: TemplateId): Promise<TemplateVersionMark[] | null> {
+    return this.queries.versionMarks(appId, templateId);
   }
 }
 

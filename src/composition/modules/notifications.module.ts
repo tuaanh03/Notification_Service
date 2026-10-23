@@ -11,6 +11,9 @@ import {
   GetPublication,
   ListNotifications,
   GetOpenTracking,
+  GetTemplateStats,
+  ListTemplateRecipients,
+  ListTemplateSendStats,
   PromoteScheduled,
   PublishToTopic,
   RecordEmailOpen,
@@ -31,6 +34,8 @@ import {
   RedisSendSlotReserver,
   SubscriptionsEmailLookup,
   TemplatesLabels,
+  TemplatesVersionLookup,
+  DrizzleTemplateStats,
   TemplatesRenderer,
   TopicsConsentLookup,
 } from '../../modules/notifications/infrastructure/adapters/index.ts';
@@ -85,6 +90,8 @@ export function notificationsModule(
   const emails = new SubscriptionsEmailLookup(dependencies);
   const templates = new TemplatesLabels(dependencies);
   const renderer = new TemplatesRenderer(dependencies);
+  const templateVersions = new TemplatesVersionLookup(dependencies);
+  const templateStats = new DrizzleTemplateStats({ transactions });
   const publications = new DrizzlePublicationRepository({ transactions });
   const policies = new AppsSendPolicyLookup(dependencies);
   // Dàn đều (ADR-0032 GĐ 2): lượt gửi mỗi phút của từng app, đếm chung mọi process trên Redis.
@@ -136,6 +143,9 @@ export function notificationsModule(
             overview: new GetAppOverview({ clock, stats: new DrizzleNotificationStats({ transactions }), users, emails, topics }),
             openTracking: new GetOpenTracking({ tracking, signer }),
             send: new SendFromConsole({ accept, publish: publishToTopic, apps: new AppsSendingLookup(dependencies) }),
+            templateStats: new GetTemplateStats({ clock, stats: templateStats, versions: templateVersions }),
+            templateRecipients: new ListTemplateRecipients({ clock, stats: templateStats, versions: templateVersions, users, topics }),
+            templateSendStats: new ListTemplateSendStats({ clock, stats: templateStats, templates }),
           }),
         ],
         v1: [

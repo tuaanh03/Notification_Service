@@ -218,6 +218,13 @@
       "when": 1792601983026,
       "tag": "0030_send_limits_org_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1792726989786,
+      "tag": "0031_template_stats_index",
+      "breakpoints": true
     }
   ]
 }

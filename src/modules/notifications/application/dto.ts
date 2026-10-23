@@ -1,4 +1,4 @@
-import type { NotificationStatus } from '../../../shared/kernel/index.ts';
+import type { ExclusionReason, NotificationStatus, RecipientStatus } from '../../../shared/kernel/index.ts';
 import type { Notification } from '../domain/entities/notification.ts';
 import type { NotificationRecipient } from '../domain/entities/notification-recipient.ts';
 import type { Publication } from '../domain/entities/publication.ts';
@@ -228,4 +228,57 @@ export function scheduledRange(
     scheduledAt: new Date(Math.min(...times)).toISOString(),
     lastScheduledAt: new Date(Math.max(...times)).toISOString(),
   };
+}
+
+/** Số liệu MỘT template (UX-24) — tab "Hiệu quả" của màn soạn. */
+export interface TemplateStatsDto {
+  window: { from: string; to: string; days: number };
+  /** Version đang lọc; null = cộng mọi version. */
+  version: number | null;
+  /** Mới nhất trước — để chọn lọc và đánh dấu ngày xuất bản trên biểu đồ. */
+  versions: { id: string; version: number; publishedAt: string | null }[];
+  /** Người nhận theo trạng thái. `failed` gồm cả `bounced`; `pending` = đang gửi. */
+  summary: {
+    total: number;
+    sent: number;
+    failed: number;
+    skipped: number;
+    pending: number;
+    skippedByReason: Partial<Record<ExclusionReason, number>>;
+  };
+  /** Ước lượng (ADR-0031): `tracked` = thư đã chuyển đi CÓ chèn ảnh; `total` = mọi lượt tải ảnh. */
+  opens: { tracked: number; opened: number; total: number };
+  /** Số đếm cho các tab người nhận. */
+  buckets: { sent: number; opened: number; unopened: number; failed: number; skipped: number };
+  /** Đủ `days` ngày (giờ Việt Nam), ngày không có thư = 0. `opened` theo ngày mở lần đầu. */
+  series: { date: string; sent: number; failed: number; skipped: number; opened: number }[];
+}
+
+export interface TemplateRecipientDto {
+  notificationId: string;
+  address: string;
+  externalId: string | null;
+  topicKey: string | null;
+  version: number | null;
+  status: RecipientStatus;
+  exclusionReason: ExclusionReason | null;
+  error: string | null;
+  createdAt: string;
+  sentAt: string | null;
+  openTracked: boolean;
+  firstOpenedAt: string | null;
+  openCount: number;
+}
+
+export interface TemplateRecipientPageDto {
+  rows: TemplateRecipientDto[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** Màn danh sách template: template chưa gửi trong khoảng thì vắng mặt. */
+export interface TemplateSendStatsListDto {
+  days: number;
+  rows: { templateId: string; sent: number; tracked: number; opened: number }[];
 }

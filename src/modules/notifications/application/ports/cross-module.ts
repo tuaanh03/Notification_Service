@@ -160,3 +160,15 @@ export interface TemplateLabel {
 export interface TemplateLabels {
   labelsOf(versionIds: readonly TemplateVersionId[]): Promise<Map<TemplateVersionId, TemplateLabel>>;
 }
+
+/** -> templates: các version của MỘT template (số liệu template — UX-24). */
+export interface TemplateVersionMark {
+  templateVersionId: TemplateVersionId;
+  version: number;
+  publishedAt: Date | null;
+}
+
+export interface TemplateVersionLookup {
+  /** Mới nhất trước. Template không có / của app khác -> null. */
+  versionsOf(appId: AppId, templateId: TemplateId): Promise<TemplateVersionMark[] | null>;
+}

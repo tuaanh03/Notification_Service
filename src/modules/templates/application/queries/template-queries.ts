@@ -55,6 +55,21 @@ export class TemplateQueries {
     };
   }
 
+  /**
+   * Cho module khác (số liệu template — UX-24): mọi version của template, mới nhất trước, chỉ số + ngày
+   * xuất bản (không kèm nội dung). Template của app khác -> null, như không tồn tại.
+   */
+  async versionMarks(
+    appId: AppId,
+    id: TemplateId,
+  ): Promise<{ templateVersionId: TemplateVersionId; version: number; publishedAt: Date | null }[] | null> {
+    const template = await this.templates.findById(appId, id);
+    if (!template) return null;
+    return (await this.templates.versionsOf(template.id))
+      .sort((a, b) => b.version - a.version)
+      .map((v) => ({ templateVersionId: v.id, version: v.version, publishedAt: v.publishedAt }));
+  }
+
   /** Cho module khác (lịch sử gửi): `template_version_id` -> tên + số version, MỘT truy vấn. */
   async labelsOf(versionIds: readonly TemplateVersionId[]): Promise<TemplateVersionLabel[]> {
     if (versionIds.length === 0) return [];
