@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildApplication,
-  consumerRegistry,
   createContainer,
   moduleJobs,
   type Application,
@@ -10,10 +9,10 @@ import {
 import { MockEmailProvider } from '../../src/modules/delivery/infrastructure/adapters/index.ts';
 import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
-import type { StreamConsumer } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin } from './support/http.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
+import { emailWorkers, type EmailWorkers } from './support/workers.ts';
 
 /**
  * Dàn đều (ADR-0032 GĐ 2): lúc nhận, mỗi thư giữ một lượt trong phút còn chỗ (đếm trên Redis thật) -> thư
@@ -31,7 +30,7 @@ let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
 let mail: MockEmailProvider;
-let worker: StreamConsumer;
+let worker: EmailWorkers;
 const USERS = ['u1', 'u2', 'u3', 'u4', 'u5'];
 
 beforeAll(async () => {
@@ -52,8 +51,7 @@ beforeAll(async () => {
   api = await startApi(c, application);
   ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
-  const r = consumerRegistry(application).find((x) => x.group === 'email-sender')!;
-  worker = c.infra.createConsumer({ ...r.options, stream: r.stream, group: r.group, consumer: 'w1', handler: r.handler, batchSize: 10 });
+  worker = emailWorkers(application, c, 'w1', 10);
   await worker.ensureGroup();
 });
 beforeEach(() => {

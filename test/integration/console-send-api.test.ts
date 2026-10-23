@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildApplication,
-  consumerRegistry,
   createContainer,
   type Application,
   type Container,
@@ -10,10 +9,10 @@ import {
 import { MockEmailProvider } from '../../src/modules/delivery/infrastructure/adapters/index.ts';
 import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
-import type { StreamConsumer } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
+import { emailWorkers, type EmailWorkers } from './support/workers.ts';
 
 /**
  * Màn Soạn thông báo của console: `POST /admin/apps/:appId/notifications` (người cụ thể) và
@@ -26,7 +25,7 @@ let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
 let mail: MockEmailProvider;
-let worker: StreamConsumer;
+let worker: EmailWorkers;
 let shop: { appId: string; apiKey: string };
 let templateId: string;
 
@@ -41,8 +40,7 @@ beforeAll(async () => {
   api = await startApi(c, application);
   ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
-  const r = consumerRegistry(application).find((x) => x.group === 'email-sender')!;
-  worker = c.infra.createConsumer({ ...r.options, stream: r.stream, group: r.group, consumer: 'w1', handler: r.handler, batchSize: 50 });
+  worker = emailWorkers(application, c, 'w1', 50);
   await worker.ensureGroup();
 
   shop = await provisionApp(api.url, ADMIN_TOKEN, 'shop');

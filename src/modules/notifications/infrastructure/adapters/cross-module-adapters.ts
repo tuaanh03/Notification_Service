@@ -6,6 +6,7 @@ import type { EmailSubscriptionDto, FindUserEmail } from '../../../subscriptions
 import type { ConsentQueries } from '../../../topics/application/index.ts';
 import {
   CHANNELS,
+  NotFoundError,
   SUBSCRIPTION_STATUSES,
   SUPPRESSED_REASONS,
   SubscriptionId,
@@ -18,11 +19,13 @@ import {
   type UserId as UserIdType,
 } from '../../../../shared/kernel/index.ts';
 import type {
+  AppLabelLookup,
   AppSendingLookup,
   EmailCounts,
   EmailDeliveryOutcome,
   EmailLookup,
   EmailSender,
+  IngressLimitsLookup,
   OpenTrackingConfig,
   RecipientLookup,
   SendPolicy,
@@ -123,8 +126,8 @@ export class DeliveryEmailSender implements EmailSender {
     this.rateLimiter = deps.sendRateLimiter;
   }
 
-  awaitCapacity(): Promise<void> {
-    return this.rateLimiter.acquire();
+  awaitCapacity(priority: boolean): Promise<void> {
+    return this.rateLimiter.acquire(priority ? 'priority' : 'normal');
   }
 
   send(email: { to: string; subject: string; html: string; text: string | null; notificationId: string }): Promise<EmailDeliveryOutcome> {
@@ -145,6 +148,39 @@ export class AppsOpenTrackingConfig implements OpenTrackingConfig {
   async forApp(appId: AppId): Promise<{ enabled: boolean; publicBaseUrl: string | null }> {
     const [app, settings] = await Promise.all([this.appQueries.get(appId), this.systemSettings.current()]);
     return { enabled: app.trackOpens, publicBaseUrl: settings['api.public_base_url'] };
+  }
+}
+
+/** notifications -> apps: tên app cho màn Hàng chờ gửi (ADR-0041). */
+export class AppsLabelLookup implements AppLabelLookup {
+  private readonly appQueries: AppQueries;
+
+  constructor(deps: { appQueries: AppQueries }) {
+    this.appQueries = deps.appQueries;
+  }
+
+  async labelOf(appId: AppId): Promise<{ name: string; slug: string } | null> {
+    try {
+      const app = await this.appQueries.get(appId);
+      return { name: app.name, slug: app.slug };
+    } catch (err) {
+      if (err instanceof NotFoundError) return null;
+      throw err;
+    }
+  }
+}
+
+/** notifications -> settings: ngưỡng chung của cửa nhận thư (ADR-0041) — đọc qua bộ đệm 30 giây của settings. */
+export class SettingsIngressLimits implements IngressLimitsLookup {
+  private readonly systemSettings: SystemSettingsQueries;
+
+  constructor(deps: { systemSettings: SystemSettingsQueries }) {
+    this.systemSettings = deps.systemSettings;
+  }
+
+  async current(): Promise<{ mailboxDailyCap: number; maxPendingPerApp: number }> {
+    const settings = await this.systemSettings.current();
+    return { mailboxDailyCap: settings['delivery.mailbox_daily_cap'], maxPendingPerApp: settings['apps.max_pending_per_app'] };
   }
 }
 

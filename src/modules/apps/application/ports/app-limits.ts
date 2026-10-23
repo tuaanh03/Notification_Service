@@ -4,4 +4,6 @@
  */
 export interface AppLimits {
   maxActiveApiKeys(): Promise<number>;
+  /** Trần thư mỗi giờ gắn sẵn cho app MỚI (ADR-0041). null = không trần (cài đặt = 0). */
+  defaultMaxSendPerHour(): Promise<number | null>;
 }

@@ -45,6 +45,11 @@ const EnvSchema = z.object({
    * độ gửi theo mailbox — đặt theo giới hạn thật của tenant (implementation_plan.md §7).
    */
   EMAIL_MAX_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(30),
+  /**
+   * Số lượt mỗi phút GIỮ RIÊNG cho tin bắt buộc (ADR-0041): thư thường dừng ở `EMAIL_MAX_PER_MINUTE - số này`,
+   * tin bắt buộc dùng được tới trần — hàng chờ thư thường dài bao nhiêu thì tin bắt buộc vẫn có lượt ngay.
+   */
+  EMAIL_PRIORITY_RESERVE_PER_MINUTE: z.coerce.number().int().min(0).max(1_000).default(5),
   /** Timeout một lần gọi Graph. Hết giờ SAU khi đã gửi request -> `outcome_unknown`, không gửi lại. */
   EMAIL_SEND_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(15_000),
   /** Azure App Registration (client credentials, quyền APPLICATION Mail.Send). Bắt buộc khi `graph`. */

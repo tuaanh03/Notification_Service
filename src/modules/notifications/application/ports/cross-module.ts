@@ -50,6 +50,29 @@ export interface SendPolicy {
 export interface SendQuota {
   takeHourly(appId: AppId, count: number, limit: number, now: Date): Promise<boolean>;
   takeRecipientDay(appId: AppId, userId: UserId, limit: number, now: Date): Promise<boolean>;
+  /** ADR-0041: một lần gọi API gửi của app trong phút hiện tại (`rate_limit_per_minute`). */
+  takeApiCall(appId: AppId, limit: number, now: Date): Promise<boolean>;
+}
+
+/**
+ * Trần thư mỗi ngày của hộp gửi chung (ADR-0041), đếm chung mọi app, mọi process. Giữ lượt lúc NHẬN thư.
+ *   - `reserve`: `count` lượt từ ngày (giờ Việt Nam) chứa `from`; ngày nào đủ `cap` thì lượt rơi sang ngày sau.
+ *     `force` (tin bắt buộc) = không xét `cap`, vẫn đếm. Trả đầu ngày của từng lượt, tăng dần.
+ *   - `used`: số lượt đã giữ cho ngày chứa `at` — màn Hàng chờ gửi.
+ */
+export interface MailboxDayQuota {
+  reserve(from: Date, count: number, cap: number, force: boolean, now: Date): Promise<Date[]>;
+  used(at: Date): Promise<number>;
+}
+
+/** -> apps: tên + slug của app cho màn Hàng chờ gửi (ADR-0041). App không còn -> null. */
+export interface AppLabelLookup {
+  labelOf(appId: AppId): Promise<{ name: string; slug: string } | null>;
+}
+
+/** -> settings: các ngưỡng chung của cửa nhận thư (ADR-0041), Super Admin chỉnh trên console. */
+export interface IngressLimitsLookup {
+  current(): Promise<{ mailboxDailyCap: number; maxPendingPerApp: number }>;
 }
 
 /** -> apps: giới hạn gửi của app. */
@@ -125,8 +148,9 @@ export interface EmailSender {
   /**
    * Chờ lượt gửi (giới hạn tốc độ của mailbox gửi). Gọi SAU gate, TRƯỚC khi nhận việc: thư bị chặn
    * không tốn lượt, và lúc đang chờ notification vẫn `queued` — worker chết thì không có outcome_unknown oan.
+   * `priority` (tin bắt buộc) được dùng cả phần lượt giữ riêng (ADR-0041).
    */
-  awaitCapacity(): Promise<void>;
+  awaitCapacity(priority: boolean): Promise<void>;
   send(email: { to: string; subject: string; html: string; text: string | null; notificationId: string }): Promise<EmailDeliveryOutcome>;
 }
 

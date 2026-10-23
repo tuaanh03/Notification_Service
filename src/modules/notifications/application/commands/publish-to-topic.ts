@@ -13,29 +13,28 @@ import { selectTopicAudience } from '../../domain/rules/topic-audience.ts';
 import { emailContent, type EmailContent } from '../../domain/types/email-content.ts';
 import type { PublicationDto } from '../dto.ts';
 import { PublicationKeyTakenError } from '../errors.ts';
-import { NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS, PUBLICATION_AGGREGATE, PUBLICATION_EVENTS } from '../events.ts';
+import { laneFlag, NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS, PUBLICATION_AGGREGATE, PUBLICATION_EVENTS } from '../events.ts';
 import type {
   EmailLookup,
   NotificationRepository,
   PublicationRepository,
   RecipientLookup,
   RenderedEmailTemplate,
-  SendPolicyLookup,
-  SendQuota,
-  SendSlotReserver,
   TemplateLabels,
   TemplateRenderer,
   TopicConsentLookup,
 } from '../ports/index.ts';
 import { describePublication } from '../queries/get-publication.ts';
 import { parseSendSource, requireActiveTopic, type SendContentInput } from './send-input.ts';
-import { planSendTimes, scheduleNote } from './send-timing.ts';
+import { planSendTimes, scheduleNote, takeApiCall, type SendTimingDeps } from './send-timing.ts';
 
 export interface PublishToTopicInput extends SendContentInput {
   appId: AppId;
   topic: string;
   /** Bắt buộc — thiếu là 422 IDEMPOTENCY_KEY_REQUIRED. Khai optional để lỗi đi đúng mã, không thành lỗi parse. */
   idempotencyKey?: string | undefined;
+  /** Gọi qua `/v1`: số lần gọi tối đa mỗi phút của app (ADR-0041). Không có = không đếm (console, incoming webhook). */
+  apiRateLimitPerMinute?: number | undefined;
 }
 
 /**
@@ -53,7 +52,7 @@ export interface PublishToTopicInput extends SendContentInput {
  * Topic bắt buộc phát được: app đã gửi lẻ tin bắt buộc được, chặn ở đây chỉ bắt app lặp gửi lẻ.
  */
 export class PublishToTopic {
-  private readonly deps: {
+  private readonly deps: SendTimingDeps & {
     uow: UnitOfWork;
     outbox: EventOutbox;
     clock: Clock;
@@ -64,9 +63,6 @@ export class PublishToTopic {
     topics: TopicConsentLookup;
     renderer: TemplateRenderer;
     templates: TemplateLabels;
-    policies: SendPolicyLookup;
-    slots: SendSlotReserver;
-    quota: SendQuota;
   };
 
   constructor(deps: PublishToTopic['deps']) {
@@ -76,6 +72,9 @@ export class PublishToTopic {
   async execute(input: PublishToTopicInput, ctx: CommandContext): Promise<{ publication: PublicationDto; created: boolean }> {
     const { uow, outbox, clock, publications, notifications, users, emails, topics } = this.deps;
     const source = parseSendSource(input);
+    if (input.apiRateLimitPerMinute !== undefined) {
+      await takeApiCall(this.deps.quota, input.appId, input.apiRateLimitPerMinute, clock.now());
+    }
     const idempotencyKey = input.idempotencyKey;
     if (!idempotencyKey) {
       throw ValidationError.of('IDEMPOTENCY_KEY_REQUIRED', 'a publication requires an idempotencyKey', 'idempotencyKey');
@@ -178,16 +177,19 @@ export class PublishToTopic {
           aggregateType: NOTIFICATION_AGGREGATE,
           aggregateId: child.id,
           eventType: child.scheduledAt ? NOTIFICATION_EVENTS.scheduled : NOTIFICATION_EVENTS.queued,
-          payload: audited(ctx, {
-            after: {
-              status: child.status,
-              ...scheduleNote(timings[i] ?? null),
-              topic: topic.key,
-              channel: 'email',
-              publicationId: publication.id,
-              ...templateLabel,
-            },
-          }),
+          payload: {
+            ...audited(ctx, {
+              after: {
+                status: child.status,
+                ...scheduleNote(timings[i] ?? null),
+                topic: topic.key,
+                channel: 'email',
+                publicationId: publication.id,
+                ...templateLabel,
+              },
+            }),
+            ...laneFlag(topic),
+          },
         })),
       ]);
       return true;

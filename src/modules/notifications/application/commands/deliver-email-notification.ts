@@ -183,7 +183,7 @@ export class DeliverEmailNotification {
     trace.openTracking = html !== content.html;
 
     // --- 2: chờ lượt gửi, rồi tx1 nhận việc ---
-    await sender.awaitCapacity();
+    await sender.awaitCapacity(topic.mandatory);
     const recipient = new NotificationRecipient({ ...recipientProps, openTracked: trace.openTracking });
     const claimed = await this.transition(notification, 'first_batch_left', null, async () => {
       notification.counters = addCounters(notification.counters, { resolved: 1 });

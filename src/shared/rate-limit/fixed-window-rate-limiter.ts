@@ -6,12 +6,27 @@ export type RateLimitDecision = { allowed: true } | { allowed: false; retryAfter
 const WINDOW_MS = 60_000;
 
 /**
+ * Lấy một lượt; quá `limit` thì HOÀN lại. Lượt bị từ chối không được tính — nếu tính, bên hỏi với mức thấp (làn
+ * thường) liên tục bị từ chối sẽ đẩy bộ đếm vượt luôn mức cao hơn của bên khác (làn ưu tiên) cùng bucket.
+ * KEYS: key. ARGV: limit, ttlMs. Trả 1 (lấy được) / 0 (hết lượt).
+ */
+const TAKE_SCRIPT = `
+local n = redis.call('INCR', KEYS[1])
+redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]))
+if n > tonumber(ARGV[1]) then
+  redis.call('DECR', KEYS[1])
+  return 0
+end
+return 1
+`;
+
+/**
  * Giới hạn tốc độ theo cửa sổ 1 phút, đếm trên Redis — DÙNG CHUNG mọi process / mọi bản worker
  * (Exchange Online giới hạn theo mailbox gửi, không theo từng worker).
  *
  * Cửa sổ cố định (INCR `bucket:<phút>`), không phải token bucket trơn: đơn giản, một round-trip, đủ
  * để không vượt trần của mỗi phút. Đầu phút có thể dồn cục — chấp nhận ở MVP.
- * Tái dùng được cho quota theo app ở tầng API (`rate_limit_per_minute`, sau MVP).
+ * Cùng một bucket hỏi được với các mức khác nhau (ADR-0041: làn thường dừng ở `trần - phần giữ`, làn ưu tiên tới trần).
  */
 export class FixedWindowRateLimiter {
   private readonly redis: Redis;
@@ -30,10 +45,8 @@ export class FixedWindowRateLimiter {
     const now = this.clock.now().getTime();
     const window = Math.floor(now / WINDOW_MS);
     const key = `${this.keyPrefix}:${bucket}:${window}`;
-    // INCR + đặt hạn trong MỘT round-trip; key tự biến mất sau 2 phút.
-    const results = await this.redis.multi().incr(key).pexpire(key, 2 * WINDOW_MS).exec();
-    const count = Number(results?.[0]?.[1] ?? Number.POSITIVE_INFINITY);
-    if (count <= limitPerMinute) return { allowed: true };
+    // Lấy + đặt hạn + hoàn lượt nếu hết, trong MỘT script; key tự biến mất sau 2 phút.
+    if ((await this.redis.eval(TAKE_SCRIPT, 1, key, limitPerMinute, 2 * WINDOW_MS)) === 1) return { allowed: true };
     return { allowed: false, retryAfterMs: (window + 1) * WINDOW_MS - now };
   }
 

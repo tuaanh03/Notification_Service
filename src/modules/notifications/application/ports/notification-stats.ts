@@ -32,4 +32,13 @@ export interface NotificationStats {
   countOpens(appId: AppId, range: TimeRange): Promise<{ tracked: number; opened: number }>;
   /** Hàng chờ NGAY LÚC NÀY (`queued` + `sending`), không giới hạn thời gian tạo. */
   backlog(appId: AppId): Promise<{ waiting: number; oldestCreatedAt: Date | null }>;
+  /** Thư chưa xong của MỌI app, theo (app, trạng thái) — màn Hàng chờ gửi của Super Admin (ADR-0041). */
+  pendingByApp(): Promise<PendingCount[]>;
+}
+
+export interface PendingCount {
+  appId: AppId;
+  status: 'scheduled' | 'queued' | 'sending';
+  count: number;
+  oldestCreatedAt: Date | null;
 }

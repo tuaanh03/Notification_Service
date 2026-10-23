@@ -12,4 +12,9 @@ export class SettingsAppLimits implements AppLimits {
   async maxActiveApiKeys(): Promise<number> {
     return (await this.queries.current())['apps.max_active_api_keys'];
   }
+
+  async defaultMaxSendPerHour(): Promise<number | null> {
+    const value = (await this.queries.current())['apps.default_max_send_per_hour'];
+    return value === 0 ? null : value;
+  }
 }

@@ -12,11 +12,11 @@ import { notifications, publications } from '../../src/modules/notifications/inf
 import { auditLog } from '../../src/modules/audit/infrastructure/db/schema.ts';
 import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
-import type { StreamConsumer } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
 import { race } from './support/race.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
+import { emailWorkers, type EmailWorkers } from './support/workers.ts';
 
 /**
  * ADR-0028 — phát tin vào topic: `POST /v1/publications` chốt người đang theo dõi topic, mỗi người một
@@ -33,7 +33,7 @@ let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
 let mail: MockEmailProvider;
-let worker: StreamConsumer;
+let worker: EmailWorkers;
 
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 12 });
@@ -46,15 +46,7 @@ beforeAll(async () => {
   api = await startApi(c, application);
   ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
-  const registration = consumerRegistry(application).find((r) => r.group === 'email-sender')!;
-  worker = c.infra.createConsumer({
-    ...registration.options,
-    stream: registration.stream,
-    group: registration.group,
-    consumer: 'w1',
-    handler: registration.handler,
-    batchSize: 10,
-  });
+  worker = emailWorkers(application, c);
   await worker.ensureGroup();
 });
 beforeEach(() => mail.reset());

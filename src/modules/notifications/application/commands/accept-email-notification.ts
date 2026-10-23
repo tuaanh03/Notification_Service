@@ -10,27 +10,26 @@ import { emailContent, type EmailContent } from '../../domain/types/email-conten
 import { toNotificationDto, type NotificationDto } from '../dto.ts';
 import { IdempotencyKeyTakenError } from '../errors.ts';
 import { templateLabelOf } from '../queries/get-notification.ts';
-import { NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS } from '../events.ts';
+import { laneFlag, NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS } from '../events.ts';
 import type {
   NotificationRepository,
   RecipientLookup,
   RecipientRepository,
-  SendPolicyLookup,
-  SendQuota,
-  SendSlotReserver,
   TemplateLabel,
   TemplateLabels,
   TemplateRenderer,
   TopicConsentLookup,
 } from '../ports/index.ts';
 import { parseSendSource, requireActiveTopic, type SendContentInput } from './send-input.ts';
-import { planSendTimes, scheduleNote } from './send-timing.ts';
+import { planSendTimes, scheduleNote, takeApiCall, type SendTimingDeps } from './send-timing.ts';
 
 export interface AcceptEmailNotificationInput extends SendContentInput {
   appId: AppId;
   externalId: string;
   topic: string;
   idempotencyKey?: string | undefined;
+  /** Gọi qua `/v1`: số lần gọi tối đa mỗi phút của app (ADR-0041). Không có = không đếm (console). */
+  apiRateLimitPerMinute?: number | undefined;
 }
 
 /**
@@ -47,7 +46,7 @@ export interface AcceptEmailNotificationInput extends SendContentInput {
  * kể cả khi hai request đua nhau (unique index quyết định).
  */
 export class AcceptEmailNotification {
-  private readonly deps: {
+  private readonly deps: SendTimingDeps & {
     uow: UnitOfWork;
     outbox: EventOutbox;
     clock: Clock;
@@ -57,9 +56,6 @@ export class AcceptEmailNotification {
     topics: TopicConsentLookup;
     renderer: TemplateRenderer;
     templates: TemplateLabels;
-    policies: SendPolicyLookup;
-    slots: SendSlotReserver;
-    quota: SendQuota;
   };
 
   constructor(deps: AcceptEmailNotification['deps']) {
@@ -72,6 +68,9 @@ export class AcceptEmailNotification {
   ): Promise<{ notification: NotificationDto; created: boolean }> {
     const { uow, outbox, clock, notifications, users, topics, renderer } = this.deps;
     const source = parseSendSource(input);
+    if (input.apiRateLimitPerMinute !== undefined) {
+      await takeApiCall(this.deps.quota, input.appId, input.apiRateLimitPerMinute, clock.now());
+    }
 
     if (input.idempotencyKey) {
       const existing = await notifications.findByIdempotencyKey(input.appId, input.idempotencyKey);
@@ -138,15 +137,18 @@ export class AcceptEmailNotification {
           aggregateType: NOTIFICATION_AGGREGATE,
           aggregateId: notification.id,
           eventType: holdUntil ? NOTIFICATION_EVENTS.scheduled : NOTIFICATION_EVENTS.queued,
-          payload: audited(ctx, {
-            after: {
-              status: notification.status,
-              ...scheduleNote(timing),
-              topic: topic.key,
-              channel: 'email',
-              ...(template ? { template: { id: template.templateId, version: template.version } } : {}),
-            },
-          }),
+          payload: {
+            ...audited(ctx, {
+              after: {
+                status: notification.status,
+                ...scheduleNote(timing),
+                topic: topic.key,
+                channel: 'email',
+                ...(template ? { template: { id: template.templateId, version: template.version } } : {}),
+              },
+            }),
+            ...laneFlag(topic),
+          },
         },
       ]);
       return {

@@ -226,6 +226,9 @@ describe('Cài đặt hệ thống', () => {
       'incoming.max_hooks_per_app': 20,
       'apps.max_active_api_keys': 20,
       'webhooks.max_endpoints_per_app': 10,
+      'delivery.mailbox_daily_cap': 9000,
+      'apps.max_pending_per_app': 5000,
+      'apps.default_max_send_per_hour': 600,
       'templates.html_check_enabled': true,
       'auth.lockout_enabled': true,
       'auth.max_failed_attempts': 5,
@@ -256,7 +259,7 @@ describe('Cài đặt hệ thống', () => {
     expect(normalizeSetting('auth.permanent_lock_after', 0)).toBe(0);
     expect(codeOf(() => normalizeSetting('auth.max_failed_attempts', 2))).toBe('SETTING_OUT_OF_RANGE');
     expect(codeOf(() => normalizeSetting('auth.ip_max_failed_attempts', 9))).toBe('SETTING_OUT_OF_RANGE');
-    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(13);
+    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(16);
   });
 });
 

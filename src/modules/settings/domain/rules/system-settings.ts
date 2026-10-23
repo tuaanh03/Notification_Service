@@ -19,6 +19,16 @@ export const SYSTEM_SETTINGS = {
   /** Số URL nhận outgoing webhook tối đa mỗi app — mỗi URL là thêm một lần gọi cho mỗi thư. */
   'webhooks.max_endpoints_per_app': { kind: 'int', default: 10, min: 1, max: 50 },
   /**
+   * Trần thư mỗi NGÀY (giờ Việt Nam) của hộp gửi chung, mọi app cộng lại (ADR-0041). Microsoft giới hạn khoảng 10 000
+   * người nhận / 24 giờ cho một hộp thư; vượt là hộp bị khoá gửi, mọi app cùng dừng. Đầy -> thư thường dời sang ngày sau,
+   * tin bắt buộc vẫn đi.
+   */
+  'delivery.mailbox_daily_cap': { kind: 'int', default: 9000, min: 100, max: 10000 },
+  /** Mỗi app có tối đa chừng này thư đang chờ (xếp hàng + đang gửi + hẹn giờ); đầy -> 429 `APP_QUEUE_FULL` (ADR-0041). */
+  'apps.max_pending_per_app': { kind: 'int', default: 5000, min: 100, max: 100000 },
+  /** Trần thư mỗi giờ gắn sẵn cho app MỚI tạo (ADR-0041) — Super Admin chỉnh từng app sau. 0 = app mới không có trần. */
+  'apps.default_max_send_per_hour': { kind: 'int', default: 600, min: 0, max: 100000 },
+  /**
    * Bộ kiểm HTML an toàn (`checkEmailHtml`, ADR-0036) chạy cả khi XUẤT BẢN template kiểu `html` (ADR-0038). Công tắc
    * an toàn: tắt = xuất bản kiểu `html` như trước (chỉ luật nội dung). Kiểu `visual` luôn kiểm lúc lưu, không theo cờ này.
    */
@@ -59,6 +69,9 @@ export interface SystemSettingsValues {
   'api.public_base_url': string | null;
   'apps.max_active_api_keys': number;
   'webhooks.max_endpoints_per_app': number;
+  'delivery.mailbox_daily_cap': number;
+  'apps.max_pending_per_app': number;
+  'apps.default_max_send_per_hour': number;
   'templates.html_check_enabled': boolean;
   'auth.lockout_enabled': boolean;
   'auth.max_failed_attempts': number;
@@ -87,6 +100,9 @@ export function effectiveSettings(stored: ReadonlyMap<string, unknown>): SystemS
     'api.public_base_url': pick('api.public_base_url'),
     'apps.max_active_api_keys': pick('apps.max_active_api_keys'),
     'webhooks.max_endpoints_per_app': pick('webhooks.max_endpoints_per_app'),
+    'delivery.mailbox_daily_cap': pick('delivery.mailbox_daily_cap'),
+    'apps.max_pending_per_app': pick('apps.max_pending_per_app'),
+    'apps.default_max_send_per_hour': pick('apps.default_max_send_per_hour'),
     'templates.html_check_enabled': pick('templates.html_check_enabled'),
     'auth.lockout_enabled': pick('auth.lockout_enabled'),
     'auth.max_failed_attempts': pick('auth.max_failed_attempts'),

@@ -220,6 +220,9 @@ Content-Type: application/json
   * **khung giờ gửi**: thư tới ngoài khung chờ tới lúc khung mở;
   * **dàn đều** (tối đa N thư / phút): thư vượt mức của phút hiện tại xếp sang lượt kế tiếp.
   Tin của chủ đề bắt buộc mặc định bỏ qua cả hai (vẫn theo trần tốc độ do quản trị hệ thống đặt).
+* Hộp thư gửi chung của công ty có **trần thư mỗi ngày** (mọi app cộng lại, đội EWS đặt). Ngày đã đủ trần thì
+  thư thường cũng thành `scheduled`, đi lúc đầu ngày hôm sau (trong khung giờ gửi của app nếu có). Tin của chủ đề
+  bắt buộc không bị dời.
 * `subject`: bắt buộc, tối đa 998 ký tự, **không xuống dòng**. `html`: bắt buộc. `text`: tuỳ chọn,
   nên có. Mỗi phần thân tối đa 256 KB.
 * Không cần tự chèn link huỷ đăng ký — MVP chưa có (xem mục 9).
@@ -597,10 +600,14 @@ Hệ thống khác cũng vậy: đặt URL, header, và body theo các trường
 Hai điều cần biết:
 
 * **EWS nhận ngay nhưng gửi dần.** Mọi app dùng chung một hộp thư gửi của công ty, và hộp thư đó
-  bị giới hạn tốc độ (mặc định **30 thư/phút**, đội EWS cấu hình). 1 000 lời gọi nhận xong trong vài
-  giây, nhưng thư cuối có thể đi sau hơn nửa giờ — lâu hơn nữa nếu app khác cũng đang gửi. Một lần
-  phát 50 người cũng mất khoảng 2 phút mới đi hết.
+  bị giới hạn tốc độ (mặc định **30 thư/phút**, đội EWS cấu hình). Thư cuối của một đợt lớn có thể đi
+  sau hơn nửa giờ — lâu hơn nữa nếu app khác cũng đang gửi. Một lần phát 50 người cũng mất khoảng
+  2 phút mới đi hết. Tin của **chủ đề bắt buộc** đi làn riêng, không phải xếp sau thư thường.
   **Đừng dùng EWS cho tin cần tới trong vài giây với số đông.**
+* **Số lần gọi gửi có giới hạn.** Mỗi app gọi `POST /v1/notifications` + `POST /v1/publications` tối đa
+  N lần / phút (mặc định 60, đội EWS nới theo nhu cầu), và có tối đa M thư chưa gửi xong cùng lúc (mặc định
+  5 000). Vượt -> `429`, chờ `Retry-After` rồi gọi tiếp (mục 8). Gửi cho nhiều người cùng một tin: dùng
+  **phát vào chủ đề** (một lời gọi, tối đa 100 người) thay vì lặp từng người.
 * **Người bị chặn không làm hỏng vòng lặp (cách 2).** Người đã tắt chủ đề vẫn cho `202`, rồi kết thúc
   `no_recipient`. Chỉ người **chưa khai** mới lỗi ngay (`RECIPIENT_NOT_FOUND`) — khai bổ sung rồi
   gọi lại cho riêng người đó.
@@ -691,7 +698,9 @@ trong `detail`** — câu chữ có thể đổi, `code` thì không.
 | 404 | `NOT_FOUND` | đọc người, preferences, ngắt email, đọc thư, đọc lần phát | Không có (hoặc thuộc app khác). |
 | 400 | `MALFORMED_JSON` | mọi `/v1` | Body không phải JSON hợp lệ. |
 | 413 | `PAYLOAD_TOO_LARGE` | mọi `/v1` | Request quá lớn (gửi thư, phát: 512 KB; còn lại: 64 KB). |
-| 429 | `APP_HOURLY_LIMIT` | gửi, phát | App chạm trần thư mỗi giờ do EWS đặt (ADR-0032 GĐ 3). **Không thư nào được nhận** (phát cả chủ đề cũng không nhận một phần). Chờ theo header `Retry-After` (giây, tới đầu giờ sau) rồi gửi lại, giữ nguyên `idempotencyKey`. |
+| 429 | `APP_HOURLY_LIMIT` | gửi, phát | App chạm trần thư mỗi giờ do EWS đặt (ADR-0032 GĐ 3; app tạo từ 2026-10 có sẵn trần mặc định). **Không thư nào được nhận** (phát cả chủ đề cũng không nhận một phần). Chờ theo header `Retry-After` (giây, tới đầu giờ sau) rồi gửi lại, giữ nguyên `idempotencyKey`. |
+| 429 | `APP_RATE_LIMITED` | gửi, phát | App gọi quá số lần mỗi phút (ADR-0041). Chờ `Retry-After` (tới đầu phút sau) rồi gọi lại, giữ nguyên `idempotencyKey`. |
+| 429 | `APP_QUEUE_FULL` | gửi, phát | App đã có quá nhiều thư chưa gửi xong (ADR-0041). Không thư nào được nhận. Chờ `Retry-After` (60 giây) rồi gửi lại — hàng chờ vơi dần theo tốc độ gửi. |
 | 500 | `INTERNAL` | mọi `/v1` | Lỗi phía EWS. |
 
 **Thử lại khi nào:**

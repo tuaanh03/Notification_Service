@@ -242,6 +242,18 @@ export class App extends BaseEntity<AppId> {
     return true;
   }
 
+  /**
+   * Số lần gọi API gửi mỗi phút (ADR-0041) — chỉ Super Admin. `/v1` vượt -> 429 `APP_RATE_LIMITED`. Trước ADR-0041 con số
+   * này chỉ đặt lúc duyệt app và không được áp. Trả false nếu không đổi gì.
+   */
+  setApiRateLimit(perMinute: number, at: Date): boolean {
+    assertRange(perMinute, API_RATE_MIN, API_RATE_MAX, 'API_RATE_LIMIT_INVALID', 'perMinute');
+    if (this.rateLimitPerMinute === perMinute) return false;
+    this.rateLimitPerMinute = perMinute;
+    this.touch(at);
+    return true;
+  }
+
   /** Giới hạn mỗi người nhận mỗi ngày (ADR-0032 GĐ 3) — người quản lý app. Trả false nếu không đổi gì. */
   setRecipientLimit(perDay: number | null, mandatoryBypass: boolean, at: Date): boolean {
     if (perDay !== null) assertRange(perDay, RECIPIENT_DAILY_MIN, RECIPIENT_DAILY_MAX, 'RECIPIENT_LIMIT_INVALID', 'perDay');
@@ -294,6 +306,9 @@ export const HOURLY_MIN = 1;
 export const HOURLY_MAX = 100_000;
 export const RECIPIENT_DAILY_MIN = 1;
 export const RECIPIENT_DAILY_MAX = 1000;
+/** Số lần gọi API gửi mỗi phút (ADR-0041). */
+export const API_RATE_MIN = 1;
+export const API_RATE_MAX = 10_000;
 
 function assertRange(value: number, min: number, max: number, code: string, path: string): void {
   if (!Number.isInteger(value) || value < min || value > max) {

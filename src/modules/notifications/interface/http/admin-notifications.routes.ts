@@ -9,6 +9,7 @@ import {
   RECIPIENT_BUCKETS,
   TEMPLATE_STATS_DAYS,
   type GetAppOverview,
+  type GetDeliveryQueue,
   type GetOpenTracking,
   type GetTemplateStats,
   type ListNotifications,
@@ -75,6 +76,7 @@ const templateRecipientsQuery = templateStatsQuery.extend({
 export function adminNotificationsRoutes(useCases: {
   list: ListNotifications;
   overview: GetAppOverview;
+  deliveryQueue: GetDeliveryQueue;
   openTracking: GetOpenTracking;
   send: SendFromConsole;
   templateStats: GetTemplateStats;
@@ -114,6 +116,9 @@ export function adminNotificationsRoutes(useCases: {
       const { limit, offset, status, topic, externalId } = parseInput(listQuery, request.query);
       return useCases.list.execute({ appId: AppId.parse(appId), limit, offset, status, topic, externalId });
     });
+
+    // Hàng chờ gửi của cả hệ thống (ADR-0041) — chỉ Super Admin: thấy tên mọi app.
+    app.get('/delivery-queue', { config: access('platform.manage') }, async () => useCases.deliveryQueue.execute());
 
     app.get('/apps/:appId/overview', { config: access('app.read') }, async (request) => {
       const { appId } = parseInput(appParams, request.params);

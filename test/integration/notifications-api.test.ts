@@ -14,11 +14,12 @@ import { notifications, notificationTransitions } from '../../src/modules/notifi
 import { subscriptions } from '../../src/modules/subscriptions/infrastructure/db/schema.ts';
 import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
-import { decodeMessage, STREAMS, type StreamConsumer } from '../../src/shared/streams/index.ts';
+import { decodeMessage, STREAMS } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin, type Json } from './support/http.ts';
 import { race } from './support/race.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
+import { emailWorkers, type EmailWorkers } from './support/workers.ts';
 
 /** Token phiên của admin test — gán trong `beforeAll` (`signInAdmin`). Không còn token dùng chung trong env. */
 let ADMIN_TOKEN: string;
@@ -29,7 +30,7 @@ let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
 let mail: MockEmailProvider;
-let worker: StreamConsumer;
+let worker: EmailWorkers;
 let shop: { appId: string; apiKey: string };
 
 beforeAll(async () => {
@@ -43,7 +44,7 @@ beforeAll(async () => {
   api = await startApi(c, application);
   ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
-  worker = emailSender('w1');
+  worker = emailWorkers(application, c, 'w1', 1);
   await worker.ensureGroup();
 
   shop = await provisionApp(api.url, ADMIN_TOKEN, 'shop');
@@ -69,11 +70,6 @@ function admin(method: string, path: string, body?: unknown) {
 const v1 = (method: string, path: string, body?: unknown, apiKey = shop.apiKey) =>
   http(method, `/v1${path}`, body === undefined ? { token: apiKey } : { token: apiKey, body });
 
-/** Consumer THẬT của worker (group email-sender, idempotency: 'handler') lấy từ registry của ứng dụng. */
-function emailSender(name: string): StreamConsumer {
-  const registration = consumerRegistry(application).find((r) => r.group === 'email-sender')!;
-  return c.infra.createConsumer({ ...registration.options, stream: registration.stream, group: registration.group, consumer: name, handler: registration.handler, batchSize: 1 });
-}
 /** scheduler relay outbox -> stream, rồi worker xử lý hết message đang chờ. */
 async function deliver(): Promise<void> {
   while ((await c.infra.outboxRelay.relayOnce()) > 0);

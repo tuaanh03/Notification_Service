@@ -20,6 +20,7 @@ describe('loadEnv — fail-fast', () => {
       EMAIL_PROVIDER: 'mock',
       EMAIL_STUCK_SENDING_AFTER_MS: 600_000,
       EMAIL_MAX_PER_MINUTE: 30,
+      EMAIL_PRIORITY_RESERVE_PER_MINUTE: 5,
       EMAIL_SEND_TIMEOUT_MS: 15_000,
     });
   });

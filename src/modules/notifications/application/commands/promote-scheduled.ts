@@ -1,8 +1,8 @@
 import type { EventOutbox, UnitOfWork } from '../../../../shared/application/index.ts';
 import { ConcurrentTransitionError, type Clock } from '../../../../shared/kernel/index.ts';
 import type { Logger } from '../../../../shared/observability/logger.ts';
-import { NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS, SEND_WINDOW_ACTOR } from '../events.ts';
-import type { NotificationRepository } from '../ports/index.ts';
+import { laneFlag, NOTIFICATION_AGGREGATE, NOTIFICATION_EVENTS, SEND_WINDOW_ACTOR } from '../events.ts';
+import type { NotificationRepository, TopicConsentLookup } from '../ports/index.ts';
 
 /**
  * Job scheduler: thư `scheduled` đã tới giờ (khung giờ gửi vừa mở — ADR-0032) -> `queued` + `NotificationQueued`,
@@ -18,6 +18,8 @@ export class PromoteScheduled {
     clock: Clock;
     logger: Logger;
     notifications: NotificationRepository;
+    /** Tin bắt buộc đi làn ưu tiên (ADR-0041) — tra `mandatory` của topic, mỗi topic một lần mỗi lượt. */
+    topics: TopicConsentLookup;
   };
 
   constructor(deps: PromoteScheduled['deps']) {
@@ -29,9 +31,14 @@ export class PromoteScheduled {
     const { uow, outbox, clock, notifications } = this.deps;
     const now = clock.now();
     const due = await notifications.listDueScheduled(now, batchSize);
+    const mandatory = new Map<string, boolean>();
 
     let promoted = 0;
     for (const notification of due) {
+      if (!mandatory.has(notification.topicId)) {
+        mandatory.set(notification.topicId, (await this.deps.topics.topicById(notification.topicId))?.mandatory ?? false);
+      }
+      const lane = laneFlag({ mandatory: mandatory.get(notification.topicId) ?? false });
       try {
         await uow.run(async () => {
           notification.apply('due', SEND_WINDOW_ACTOR, now);
@@ -41,7 +48,7 @@ export class PromoteScheduled {
               aggregateType: NOTIFICATION_AGGREGATE,
               aggregateId: notification.id,
               eventType: NOTIFICATION_EVENTS.queued,
-              payload: { actor: SEND_WINDOW_ACTOR, source: 'scheduler', after: { status: 'queued' } },
+              payload: { actor: SEND_WINDOW_ACTOR, source: 'scheduler', after: { status: 'queued' }, ...lane },
             },
           ]);
         });

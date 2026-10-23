@@ -12,10 +12,10 @@ import { MockEmailProvider } from '../../src/modules/delivery/infrastructure/ada
 import { auditLog } from '../../src/modules/audit/infrastructure/db/schema.ts';
 import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
-import type { StreamConsumer } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin } from './support/http.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
+import { emailWorkers, type EmailWorkers } from './support/workers.ts';
 
 /**
  * Khung giờ gửi (ADR-0032): thư nhận ngoài khung -> `scheduled` tới lúc khung mở, job `promote-scheduled`
@@ -34,7 +34,7 @@ let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
 let mail: MockEmailProvider;
-let worker: StreamConsumer;
+let worker: EmailWorkers;
 let shop: { appId: string; apiKey: string };
 
 const OFFICE_HOURS = { days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00' };
@@ -57,8 +57,7 @@ beforeAll(async () => {
   api = await startApi(c, application);
   ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
-  const r = consumerRegistry(application).find((x) => x.group === 'email-sender')!;
-  worker = c.infra.createConsumer({ ...r.options, stream: r.stream, group: r.group, consumer: 'w1', handler: r.handler, batchSize: 10 });
+  worker = emailWorkers(application, c, 'w1', 10);
   await worker.ensureGroup();
 
   shop = await provisionApp(api.url, ADMIN_TOKEN, 'shop');

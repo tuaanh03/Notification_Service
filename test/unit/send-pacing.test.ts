@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AppId } from '../../src/shared/kernel/index.ts';
-import { planSendTimes } from '../../src/modules/notifications/application/commands/send-timing.ts';
+import { planSendTimes, takeApiCall } from '../../src/modules/notifications/application/commands/send-timing.ts';
 import type { SendPolicy } from '../../src/modules/notifications/application/ports/index.ts';
 import { paceLimitPerMinute, paceSlotTime } from '../../src/modules/notifications/domain/rules/send-pacing.ts';
 import { hourlyLimitFor, recipientLimitFor, vnDayWindow } from '../../src/modules/notifications/domain/rules/send-limits.ts';
@@ -84,10 +84,49 @@ describe('planSendTimes', () => {
         return true;
       },
       takeRecipientDay: async () => true,
+      takeApiCall: async () => true,
     };
   };
-  const plan = (policy: Partial<SendPolicy>, topic: { mandatory: boolean }, now: Date, count: number, slots = fakeSlots(), quota = fakeQuota()) =>
-    planSendTimes({ policies: { forApp: async () => ({ ...base, ...policy }) }, slots, quota }, app, topic, now, count);
+  /** Trần ngày giả của hộp gửi — cùng luật với `DaySlotAllocator`: ngày đầy thì sang ngày sau, `force` không xét trần. */
+  const fakeMailbox = () => {
+    const used = new Map<number, number>();
+    return {
+      async reserve(from: Date, count: number, cap: number, force: boolean) {
+        const out: Date[] = [];
+        for (let d = vnDayWindow(from).startMs; out.length < count; d += 86_400_000) {
+          while ((force || (used.get(d) ?? 0) < cap) && out.length < count) {
+            used.set(d, (used.get(d) ?? 0) + 1);
+            out.push(new Date(d));
+          }
+        }
+        return out;
+      },
+      used: async (at: Date) => used.get(vnDayWindow(at).startMs) ?? 0,
+    };
+  };
+  const plan = (
+    policy: Partial<SendPolicy>,
+    topic: { mandatory: boolean },
+    now: Date,
+    count: number,
+    slots = fakeSlots(),
+    quota = fakeQuota(),
+    ingress: { mailbox?: ReturnType<typeof fakeMailbox>; dailyCap?: number; pending?: number; maxPending?: number } = {},
+  ) =>
+    planSendTimes(
+      {
+        policies: { forApp: async () => ({ ...base, ...policy }) },
+        slots,
+        quota,
+        mailbox: ingress.mailbox ?? fakeMailbox(),
+        limits: { current: async () => ({ mailboxDailyCap: ingress.dailyCap ?? 9000, maxPendingPerApp: ingress.maxPending ?? 5000 }) },
+        notifications: { countPending: async () => ingress.pending ?? 0 },
+      },
+      app,
+      topic,
+      now,
+      count,
+    );
 
   it('không giới hạn -> mọi thư gửi ngay', async () => {
     expect(await plan({}, normal, vn('2026-10-16T10:00:00'), 3)).toEqual([null, null, null]);
@@ -143,6 +182,41 @@ describe('planSendTimes', () => {
     await plan({ maxPerHour: 1 }, normal, now, 1, fakeSlots(), quota);
     await expect(plan({ maxPerHour: 1 }, mandatory, now, 1, fakeSlots(), quota)).rejects.toMatchObject({ code: 'APP_HOURLY_LIMIT' });
     expect(await plan({ maxPerHour: 1, mandatoryBypassHourly: true }, mandatory, now, 1, fakeSlots(), quota)).toEqual([null]);
+  });
+
+  it('trần ngày của hộp gửi (ADR-0041): đầy -> thư thường dời sang đầu ngày sau, tin bắt buộc vẫn đi ngay', async () => {
+    const mailbox = fakeMailbox();
+    const now = vn('2026-10-16T15:00:00');
+    const times = await plan({}, normal, now, 3, fakeSlots(), fakeQuota(), { mailbox, dailyCap: 2 });
+    expect(times).toEqual([null, null, { at: vn('2026-10-17T00:00:00'), reason: 'daily_cap' }]);
+    expect(await plan({}, mandatory, now, 1, fakeSlots(), fakeQuota(), { mailbox, dailyCap: 2 })).toEqual([null]);
+    // Tin bắt buộc vẫn được đếm: hôm nay đã 3 lượt.
+    expect(await mailbox.used(now)).toBe(3);
+  });
+
+  it('trần ngày + khung giờ: thư dời sang ngày sau đi lúc khung mở, không lúc nửa đêm', async () => {
+    const window = parseSendWindow({ days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00' });
+    const times = await plan({ window }, normal, vn('2026-10-15T15:00:00'), 2, fakeSlots(), fakeQuota(), { dailyCap: 1 });
+    expect(times).toEqual([null, { at: vn('2026-10-16T08:00:00'), reason: 'daily_cap' }]);
+  });
+
+  it('hàng chờ của app đầy (ADR-0041) -> 429 APP_QUEUE_FULL, không giữ lượt nào', async () => {
+    const quota = fakeQuota();
+    const now = vn('2026-10-16T10:00:00');
+    const full = { pending: 99, maxPending: 100 };
+    expect(await plan({ maxPerHour: 1 }, normal, now, 1, fakeSlots(), quota, full)).toEqual([null]);
+    const err = await plan({}, normal, now, 2, fakeSlots(), quota, full).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'APP_QUEUE_FULL', retryAfterSeconds: 60 });
+  });
+});
+
+describe('takeApiCall (ADR-0041)', () => {
+  it('vượt số lần gọi mỗi phút -> 429 APP_RATE_LIMITED, Retry-After tới đầu phút sau', async () => {
+    const app = AppId.create();
+    const quota = { takeHourly: async () => true, takeRecipientDay: async () => true, takeApiCall: async () => false };
+    const err = await takeApiCall(quota, app, 60, vn('2026-10-16T10:00:45')).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'APP_RATE_LIMITED', retryAfterSeconds: 15 });
+    await expect(takeApiCall({ ...quota, takeApiCall: async () => true }, app, 60, vn('2026-10-16T10:00:45'))).resolves.toBeUndefined();
   });
 });
 

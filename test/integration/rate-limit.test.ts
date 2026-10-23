@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { FixedWindowRateLimiter } from '../../src/shared/rate-limit/index.ts';
+import { DaySlotAllocator, FixedWindowRateLimiter } from '../../src/shared/rate-limit/index.ts';
 import type { RedisHandle } from '../../src/shared/streams/index.ts';
 import { createTestRedis } from './support/redis.ts';
 
@@ -73,5 +73,36 @@ describe('FixedWindowRateLimiter (Redis thật)', () => {
     const ttl = await redis.client.pttl(key ?? '');
     expect(ttl).toBeGreaterThan(0);
     expect(ttl).toBeLessThanOrEqual(120_000);
+  });
+
+  it('hai làn cùng bucket (ADR-0041): làn thường bị từ chối bao nhiêu lần cũng không ăn vào phần giữ cho làn ưu tiên', async () => {
+    const { instance } = limiter();
+    for (let i = 0; i < 3; i += 1) expect((await instance.tryAcquire('lanes', 3)).allowed).toBe(true);
+    for (let i = 0; i < 10; i += 1) expect((await instance.tryAcquire('lanes', 3)).allowed).toBe(false);
+    expect((await instance.tryAcquire('lanes', 5)).allowed).toBe(true);
+    expect((await instance.tryAcquire('lanes', 5)).allowed).toBe(true);
+    expect((await instance.tryAcquire('lanes', 5)).allowed).toBe(false);
+  });
+});
+
+describe('DaySlotAllocator (Redis thật, ADR-0041)', () => {
+  const DAY = 86_400_000;
+  const start = Date.parse('2026-10-15T17:00:00.000Z');
+
+  it('ngày đầy thì lượt rơi sang ngày sau; nhiều process đồng thời không vượt trần', async () => {
+    const days = new DaySlotAllocator({ redis: redis.client, keyPrefix: `test:${randomUUID().slice(0, 8)}` });
+    expect(await days.reserve('m', start, 2, 3, false, start)).toEqual([start, start, start + DAY]);
+    const parallel = await Promise.all(Array.from({ length: 5 }, () => days.reserve('m', start, 2, 1, false, start)));
+    expect(parallel.flat().filter((d) => d === start + DAY)).toHaveLength(1);
+    expect(await days.used('m', start)).toBe(2);
+    expect(await days.used('m', start + DAY)).toBe(2);
+  });
+
+  it('force (tin bắt buộc): không xét trần nhưng vẫn đếm', async () => {
+    const days = new DaySlotAllocator({ redis: redis.client, keyPrefix: `test:${randomUUID().slice(0, 8)}` });
+    await days.reserve('m', start, 1, 1, false, start);
+    expect(await days.reserve('m', start, 1, 2, true, start)).toEqual([start, start]);
+    expect(await days.used('m', start)).toBe(3);
+    expect(await days.reserve('m', start, 1, 1, false, start)).toEqual([start + DAY]);
   });
 });

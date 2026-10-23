@@ -40,6 +40,7 @@ export function v1PublicationsRoutes(useCases: { publish: PublishToTopic; get: G
           templateId: body.templateId === undefined ? undefined : TemplateId.parse(body.templateId),
           payload: body.payload,
           idempotencyKey: body.idempotencyKey,
+          apiRateLimitPerMinute: caller.rateLimitPerMinute,
         },
         ctx,
       );

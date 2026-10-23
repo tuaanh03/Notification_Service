@@ -17,6 +17,7 @@ import {
   RevokeAppSecret,
   SetOpenTracking,
   SetPacing,
+  SetApiRateLimit,
   SetHourlyCeiling,
   SetPacingCeiling,
   SetRecipientLimit,
@@ -99,7 +100,7 @@ export function appsModule(
       http: {
         admin: [
           adminAppsRoutes({
-            createApp: new CreateApp({ uow, outbox, clock, apps, organizations }),
+            createApp: new CreateApp({ uow, outbox, clock, apps, organizations, limits }),
             transitionApp: new TransitionApp({ uow, outbox, clock, apps }),
             approveApp: new ApproveApp({ uow, outbox, clock, apps }),
             issueAppSecret: new IssueAppSecret({ uow, outbox, clock, apps, secrets, apiKeys, limits }),
@@ -111,6 +112,7 @@ export function appsModule(
             setPacing: new SetPacing({ uow, outbox, clock, apps }),
             setPacingCeiling: new SetPacingCeiling({ uow, outbox, clock, apps }),
             setHourlyCeiling: new SetHourlyCeiling({ uow, outbox, clock, apps }),
+            setApiRateLimit: new SetApiRateLimit({ uow, outbox, clock, apps }),
             setRecipientLimit: new SetRecipientLimit({ uow, outbox, clock, apps }),
             queries,
           }),

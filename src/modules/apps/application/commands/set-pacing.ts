@@ -113,6 +113,37 @@ export class SetHourlyCeiling {
 }
 
 /**
+ * Số lần gọi API gửi mỗi phút của một app (ADR-0041) — chỉ Super Admin (`platform.manage`). `/v1/notifications` và
+ * `/v1/publications` vượt -> 429 `APP_RATE_LIMITED`. Đường gửi từ console và incoming webhook không tính.
+ */
+export class SetApiRateLimit {
+  private readonly deps: { uow: UnitOfWork; outbox: EventOutbox; clock: Clock; apps: AppRepository };
+
+  constructor(deps: SetApiRateLimit['deps']) {
+    this.deps = deps;
+  }
+
+  async execute(input: { appId: AppId; perMinute: number }, ctx: CommandContext): Promise<AppDto> {
+    const { uow, outbox, clock, apps } = this.deps;
+    return uow.run(async () => {
+      const app = await requireApp(apps, input.appId);
+      const before = app.rateLimitPerMinute;
+      if (!app.setApiRateLimit(input.perMinute, clock.now())) return toAppDto(app);
+      await apps.update(app, app.status);
+      await outbox.append([
+        {
+          aggregateType: APP_AGGREGATE,
+          aggregateId: app.id,
+          eventType: APP_EVENTS.apiRateLimitChanged,
+          payload: audited(ctx, { before: { rateLimitPerMinute: before }, after: { rateLimitPerMinute: app.rateLimitPerMinute } }),
+        },
+      ]);
+      return toAppDto(app);
+    });
+  }
+}
+
+/**
  * Giới hạn mỗi người nhận mỗi ngày của một app (ADR-0032 GĐ 3) — người quản lý app (`app.manage`). Thư vượt mức bị bỏ
  * qua lúc gửi (`no_recipient`, lý do `recipient_limit`), không dời sang hôm sau.
  */

@@ -7,7 +7,7 @@ import {
   type ExclusionReason,
   type NotificationStatus,
 } from '../../../../shared/kernel/index.ts';
-import type { HourlyStatusCount, NotificationStats, TimeRange } from '../../application/ports/index.ts';
+import type { HourlyStatusCount, NotificationStats, PendingCount, TimeRange } from '../../application/ports/index.ts';
 import { notificationRecipients, notifications } from '../db/schema.ts';
 
 const HOUR_MS = 3_600_000;
@@ -81,7 +81,25 @@ export class DrizzleNotificationStats implements NotificationStats {
       .where(and(eq(notifications.appId, appId), inArray(notifications.status, ['queued', 'sending'])));
     return { waiting: row?.waiting ?? 0, oldestCreatedAt: row?.oldest ?? null };
   }
+
+  async pendingByApp(): Promise<PendingCount[]> {
+    // Như `backlog`: `status IN (...)` để đi index có status đứng đầu, chỉ chạm thư chưa xong.
+    const rows = await this.transactions
+      .executor()
+      .select({ appId: notifications.appId, status: notifications.status, value: count(), oldest: min(notifications.createdAt) })
+      .from(notifications)
+      .where(inArray(notifications.status, PENDING_STATUSES))
+      .groupBy(notifications.appId, notifications.status);
+    return rows.map((row) => ({
+      appId: row.appId as AppId,
+      status: row.status as PendingCount['status'],
+      count: row.value,
+      oldestCreatedAt: row.oldest ?? null,
+    }));
+  }
 }
+
+const PENDING_STATUSES: PendingCount['status'][] = ['scheduled', 'queued', 'sending'];
 
 function inRange(appId: AppId, range: TimeRange) {
   return and(eq(notifications.appId, appId), gte(notifications.createdAt, range.from), lt(notifications.createdAt, range.to));

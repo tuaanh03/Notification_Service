@@ -6,6 +6,8 @@ import type { IntegrationEvent } from '../application/ports/event-outbox.ts';
  */
 export const STREAMS = {
   NOTIF_QUEUED: 'notif.queued',
+  /** Tin bắt buộc (ADR-0041) — consumer riêng, không xếp sau hàng thư thường của app khác. */
+  NOTIF_QUEUED_PRIORITY: 'notif.queued.priority',
   DELIVERY_EMAIL: 'delivery.email',
   DELIVERY_IN_APP: 'delivery.in_app',
   DELIVERY_RESULT: 'delivery.result',
@@ -38,7 +40,11 @@ export const EVENT_ROUTES: Readonly<Record<string, readonly StreamName[]>> = {
 /**
  * Mọi domain event đều vào `audit.events` (audit append-only nghe tất cả), cộng các stream
  * công việc khai trong EVENT_ROUTES. Một event -> một dòng outbox cho MỖI stream đích.
+ * Ngoại lệ duy nhất theo nội dung: `NotificationQueued` có `priority: true` (tin bắt buộc) đi làn ưu tiên (ADR-0041).
  */
 export function routeEvent(event: IntegrationEvent): readonly string[] {
+  if (event.eventType === 'NotificationQueued' && event.payload['priority'] === true) {
+    return [STREAMS.AUDIT_EVENTS, STREAMS.NOTIF_QUEUED_PRIORITY];
+  }
   return [STREAMS.AUDIT_EVENTS, ...(EVENT_ROUTES[event.eventType] ?? [])];
 }

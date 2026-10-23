@@ -188,6 +188,31 @@ export interface OpenTrackingDto {
  * Số liệu màn Tổng quan của MỘT app (`GET /admin/apps/:appId/overview`). Mọi mốc giờ là UTC —
  * console tự đổi sang giờ địa phương khi hiển thị.
  */
+/** Màn Hàng chờ gửi của Super Admin (ADR-0041). */
+export interface DeliveryQueueDto {
+  /** Hộp gửi chung: lượt đã giữ hôm nay (giờ Việt Nam, kể cả thư hẹn sẵn cho hôm nay) / trần ngày; tốc độ mỗi phút. */
+  mailbox: { usedToday: number; dailyCap: number; perMinute: number; priorityReservePerMinute: number };
+  /** Trần hàng chờ mỗi app (Cài đặt hệ thống). */
+  maxPendingPerApp: number;
+  /** `queued` + `sending` của mọi app. */
+  waiting: number;
+  /** `scheduled` của mọi app (chờ khung giờ / dàn đều / trần ngày). */
+  scheduled: number;
+  /** Thư thường xếp vào lúc này đợi khoảng chừng này phút. */
+  estimatedWaitMinutes: number;
+  /** App có thư chưa xong, nhiều nhất trước. */
+  apps: {
+    appId: string;
+    name: string;
+    slug: string;
+    scheduled: number;
+    queued: number;
+    sending: number;
+    /** Thư `queued` / `sending` cũ nhất. */
+    oldestQueuedAt: string | null;
+  }[];
+}
+
 export interface AppOverviewDto {
   generatedAt: string;
   /** 24 giờ gần nhất, trượt theo lúc gọi: `[from, to)`. */

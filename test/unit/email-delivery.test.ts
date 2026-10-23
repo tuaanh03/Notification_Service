@@ -158,6 +158,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
         findByIdempotencyKey: async () => null,
         saveTransition: async () => undefined,
         listByApp: async () => ({ rows: [], total: 0, statusCounts: {} }),
+        countPending: async () => 0,
         listStuckSending: async () => [],
         listDueScheduled: async () => [],
         listByPublication: async () => [],
@@ -209,6 +210,7 @@ describe('DeliverEmailNotification — một dòng log cho MỌI kết cục (Đ
       },
       quota: {
         takeHourly: async () => true,
+        takeApiCall: async () => true,
         takeRecipientDay: async (_app, _user, limit) => {
           quotaCalls.push(limit);
           return options.quotaLeft ?? true;

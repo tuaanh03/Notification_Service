@@ -20,6 +20,8 @@ export const APP_EVENTS = {
   pacingCeilingChanged: 'AppPacingCeilingChanged',
   hourlyCeilingChanged: 'AppHourlyCeilingChanged',
   recipientLimitChanged: 'AppRecipientLimitChanged',
+  /** ADR-0041: số lần gọi API gửi mỗi phút (`rate_limit_per_minute`) — Super Admin. */
+  apiRateLimitChanged: 'AppApiRateLimitChanged',
   roleGranted: 'AdminAppRoleGranted',
   roleRevoked: 'AdminAppRoleRevoked',
 } as const;

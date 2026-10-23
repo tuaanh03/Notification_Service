@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, lt, lte, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, lt, lte, type SQL } from 'drizzle-orm';
 import { duplicateKeyName, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AppId,
@@ -169,6 +169,16 @@ export class DrizzleNotificationRepository implements NotificationRepository {
       .orderBy(asc(notifications.scheduledAt), asc(notifications.notificationId))
       .limit(limit);
     return rows.map(toNotification);
+  }
+
+  async countPending(appId: AppIdType): Promise<number> {
+    // `status IN (...)` trước để MySQL đi index có status đứng đầu — thư chưa xong luôn ít so với lịch sử.
+    const [row] = await this.transactions
+      .executor()
+      .select({ value: count() })
+      .from(notifications)
+      .where(and(inArray(notifications.status, ['scheduled', 'queued', 'sending']), eq(notifications.appId, appId)));
+    return row?.value ?? 0;
   }
 
   async listByPublication(publicationId: PublicationIdType): Promise<Notification[]> {

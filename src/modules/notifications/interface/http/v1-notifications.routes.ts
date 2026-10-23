@@ -43,6 +43,7 @@ export function v1NotificationsRoutes(useCases: { accept: AcceptEmailNotificatio
           templateId: body.templateId === undefined ? undefined : TemplateId.parse(body.templateId),
           payload: body.payload,
           idempotencyKey: body.idempotencyKey,
+          apiRateLimitPerMinute: caller.rateLimitPerMinute,
         },
         ctx,
       );

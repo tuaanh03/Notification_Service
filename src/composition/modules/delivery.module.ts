@@ -44,6 +44,7 @@ export function deliveryModule(
       }),
       sender: env.EMAIL_SENDER_ADDRESS ?? emailProvider.name,
       maxPerMinute: env.EMAIL_MAX_PER_MINUTE,
+      reservePerMinute: env.EMAIL_PRIORITY_RESERVE_PER_MINUTE,
     }),
   };
 }

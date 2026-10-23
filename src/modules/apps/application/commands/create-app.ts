@@ -3,7 +3,7 @@ import { AppId, NotFoundError, type AppOrigin, type Clock, type OrgId } from '..
 import { App } from '../../domain/entities/app.ts';
 import { toAppDto, type AppDto } from '../dto.ts';
 import { APP_AGGREGATE, APP_EVENTS } from '../events.ts';
-import type { AppRepository, OrganizationLookup } from '../ports/index.ts';
+import type { AppLimits, AppRepository, OrganizationLookup } from '../ports/index.ts';
 
 export interface CreateAppInput {
   orgId: OrgId;
@@ -16,6 +16,9 @@ export interface CreateAppInput {
 /**
  * UC-001, bản tự phục vụ (ADR-0023): đăng ký app mới, tạo xong là `active` và gửi được email —
  * không còn bước duyệt. Người tạo tự cấp khoá API (`IssueAppSecret`).
+ *
+ * App mới nhận sẵn trần thư mỗi giờ theo Cài đặt hệ thống `apps.default_max_send_per_hour` (ADR-0041) — chia hộp gửi
+ * chung công bằng ngay từ đầu; Super Admin nới / bỏ từng app sau. App đã có không bị đổi.
  */
 export class CreateApp {
   private readonly deps: {
@@ -24,6 +27,7 @@ export class CreateApp {
     clock: Clock;
     apps: AppRepository;
     organizations: OrganizationLookup;
+    limits: AppLimits;
   };
 
   constructor(deps: CreateApp['deps']) {
@@ -31,7 +35,8 @@ export class CreateApp {
   }
 
   async execute(input: CreateAppInput, ctx: CommandContext): Promise<AppDto> {
-    const { uow, outbox, clock, apps, organizations } = this.deps;
+    const { uow, outbox, clock, apps, organizations, limits } = this.deps;
+    const maxSendPerHour = await limits.defaultMaxSendPerHour();
     return uow.run(async () => {
       const owner = await organizations.findOwner(input.orgId);
       if (!owner) throw new NotFoundError('organization', input.orgId);
@@ -44,6 +49,7 @@ export class CreateApp {
         name: input.name,
         namespace: input.namespace,
         origin: input.origin,
+        maxSendPerHour,
         createdAt: clock.now(),
       });
       await apps.insert(app);
@@ -60,6 +66,7 @@ export class CreateApp {
               namespace: app.namespace,
               status: app.status,
               grantedChannels: [...app.grantedChannels],
+              maxSendPerHour: app.maxSendPerHour,
             },
           }),
         },

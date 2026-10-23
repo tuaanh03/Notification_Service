@@ -2,7 +2,6 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import {
   buildApplication,
-  consumerRegistry,
   createContainer,
   type Application,
   type Container,
@@ -12,12 +11,12 @@ import { incomingHooks } from '../../src/modules/incoming/infrastructure/db/sche
 import { publications } from '../../src/modules/notifications/infrastructure/db/schema.ts';
 import { startApi, type RunningApi } from '../../src/entrypoints/index.ts';
 import { loadEnv } from '../../src/shared/config/index.ts';
-import type { StreamConsumer } from '../../src/shared/streams/index.ts';
 import { createTestDatabase, type TestDatabase } from './support/database.ts';
 import { httpClient, provisionApp, signInAdmin, TEST_PASSWORD, type Json } from './support/http.ts';
 import { AccountId, AppId, OrgId } from '../../src/shared/kernel/index.ts';
 import { race } from './support/race.ts';
 import { createTestRedis, testRedisUrl } from './support/redis.ts';
+import { emailWorkers, type EmailWorkers } from './support/workers.ts';
 
 /**
  * ADR-0030 — incoming webhook end-to-end: công cụ ngoài POST JSON của nó vào `/hooks/:token` -> EWS rút
@@ -32,7 +31,7 @@ let application: Application;
 let api: RunningApi;
 let http: ReturnType<typeof httpClient>;
 let mail: MockEmailProvider;
-let worker: StreamConsumer;
+let worker: EmailWorkers;
 
 beforeAll(async () => {
   t = await createTestDatabase({ poolSize: 14 });
@@ -53,8 +52,7 @@ beforeAll(async () => {
   api = await startApi(c, application);
   ADMIN_TOKEN = (await signInAdmin(application, api.url)).token;
   http = httpClient(api.url);
-  const r = consumerRegistry(application).find((x) => x.group === 'email-sender')!;
-  worker = c.infra.createConsumer({ ...r.options, stream: r.stream, group: r.group, consumer: 'w1', handler: r.handler, batchSize: 10 });
+  worker = emailWorkers(application, c, 'w1', 10);
   await worker.ensureGroup();
 });
 beforeEach(() => mail.reset());
@@ -432,7 +430,7 @@ describe('lấy lại URL bất cứ lúc nào', () => {
 describe('Cài đặt hệ thống', () => {
   it('GET đủ danh mục + mặc định; PUT ngoài khoảng / khoá lạ -> 422, không ghi gì', async () => {
     const list = (await admin('GET', '/system-settings')).body['settings'] as Json[];
-    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'incoming.max_hooks_per_app', 'api.public_base_url', 'apps.max_active_api_keys', 'webhooks.max_endpoints_per_app', 'templates.html_check_enabled', 'auth.lockout_enabled', 'auth.max_failed_attempts', 'auth.failure_window_minutes', 'auth.lockout_minutes', 'auth.ip_max_failed_attempts', 'auth.permanent_lock_after']);
+    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'incoming.max_hooks_per_app', 'api.public_base_url', 'apps.max_active_api_keys', 'webhooks.max_endpoints_per_app', 'delivery.mailbox_daily_cap', 'apps.max_pending_per_app', 'apps.default_max_send_per_hour', 'templates.html_check_enabled', 'auth.lockout_enabled', 'auth.max_failed_attempts', 'auth.failure_window_minutes', 'auth.lockout_minutes', 'auth.ip_max_failed_attempts', 'auth.permanent_lock_after']);
     expect(list[0]).toMatchObject({ value: 10, default: 10, min: 1, max: 1440, customized: false });
     expect(list.find((s) => s['key'] === 'templates.html_check_enabled')).toMatchObject({ kind: 'bool', value: true, default: true, min: null, max: null, customized: false });
     const notBool = await admin('PUT', '/system-settings', { values: { 'templates.html_check_enabled': 'no' } });

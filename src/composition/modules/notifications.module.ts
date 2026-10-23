@@ -6,6 +6,7 @@ import {
   DeliverEmailNotification,
   FailStuckSending,
   GetAppOverview,
+  GetDeliveryQueue,
   GetNotification,
   GetNotificationOutcome,
   GetPublication,
@@ -20,6 +21,7 @@ import {
   SendFromConsole,
 } from '../../modules/notifications/application/index.ts';
 import {
+  AppsLabelLookup,
   AppsOpenTrackingConfig,
   AppsSendingLookup,
   AppsSendPolicyLookup,
@@ -30,8 +32,10 @@ import {
   DrizzlePublicationRepository,
   DrizzleRecipientRepository,
   HmacOpenTrackingSigner,
+  RedisMailboxDayQuota,
   RedisSendQuota,
   RedisSendSlotReserver,
+  SettingsIngressLimits,
   SubscriptionsEmailLookup,
   TemplatesLabels,
   TemplatesVersionLookup,
@@ -53,7 +57,7 @@ import type { FindUserEmail } from '../../modules/subscriptions/application/inde
 import type { RenderTemplate, TemplateQueries } from '../../modules/templates/application/index.ts';
 import type { ConsentQueries } from '../../modules/topics/application/index.ts';
 import { STREAMS } from '../../shared/streams/index.ts';
-import { MinuteSlotAllocator, WindowQuota } from '../../shared/rate-limit/index.ts';
+import { DaySlotAllocator, MinuteSlotAllocator, WindowQuota } from '../../shared/rate-limit/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
 
@@ -63,7 +67,8 @@ import type { ModuleDefinition } from '../module-definition.ts';
  *             · GET /t/o/:notificationId/:sig.gif (công khai — ảnh đếm "đã mở", ADR-0031)
  *             · POST/GET /v1/notifications · POST/GET /v1/publications (phát vào topic, ADR-0028) · GET /admin/apps/:appId/notifications (lịch sử gửi, chỉ đọc)
  *             · GET /admin/apps/:appId/overview (màn Tổng quan, chỉ đọc) · GET /admin/apps/:appId/open-tracking
- *   worker    consumer `email-sender` (notif.queued, idempotency: 'handler')
+ *   worker    consumer `email-sender` (notif.queued) + `email-sender-priority` (notif.queued.priority — tin bắt buộc,
+ *             ADR-0041), idempotency: 'handler'
  *   scheduler job `promote-scheduled` (thư chờ khung giờ gửi tới giờ -> queued, ADR-0032) · `fail-stuck-sending`
  */
 export function notificationsModule(
@@ -98,6 +103,12 @@ export function notificationsModule(
   const slots = new RedisSendSlotReserver({ allocator: new MinuteSlotAllocator({ redis: container.infra.redis.client }), clock });
   // Hạn mức GĐ 3 (ADR-0032): trần mỗi giờ lúc nhận (api) + mỗi người / ngày lúc gửi (worker) — cùng một Redis.
   const quota = new RedisSendQuota({ quota: new WindowQuota({ redis: container.infra.redis.client, keyPrefix: 'quota' }) });
+  // ADR-0041: trần ngày của hộp gửi chung + trần hàng chờ mỗi app, ngưỡng do Super Admin chỉnh (Cài đặt hệ thống).
+  const mailbox = new RedisMailboxDayQuota({
+    allocator: new DaySlotAllocator({ redis: container.infra.redis.client, keyPrefix: 'mailbox' }),
+  });
+  const limits = new SettingsIngressLimits(dependencies);
+  const stats = new DrizzleNotificationStats({ transactions });
   const accept = new AcceptEmailNotification({
     uow,
     outbox,
@@ -111,6 +122,8 @@ export function notificationsModule(
     policies,
     slots,
     quota,
+    mailbox,
+    limits,
   });
   const signer = new HmacOpenTrackingSigner({ signingKey: container.env.WEBHOOK_SIGNING_KEY });
   const tracking = new AppsOpenTrackingConfig(dependencies);
@@ -128,6 +141,25 @@ export function notificationsModule(
     policies,
     slots,
     quota,
+    mailbox,
+    limits,
+  });
+  const sendEmail = emailSenderHandler({
+    deliver: new DeliverEmailNotification({
+      uow,
+      outbox,
+      clock,
+      logger,
+      notifications,
+      recipients,
+      emails,
+      topics,
+      sender: new DeliveryEmailSender(dependencies),
+      tracking,
+      signer,
+      policies,
+      quota,
+    }),
   });
 
   return {
@@ -140,7 +172,16 @@ export function notificationsModule(
         admin: [
           adminNotificationsRoutes({
             list: new ListNotifications({ notifications, recipients, users, topics, templates }),
-            overview: new GetAppOverview({ clock, stats: new DrizzleNotificationStats({ transactions }), users, emails, topics }),
+            overview: new GetAppOverview({ clock, stats, users, emails, topics }),
+            deliveryQueue: new GetDeliveryQueue({
+              clock,
+              stats,
+              mailbox,
+              limits,
+              apps: new AppsLabelLookup(dependencies),
+              perMinute: container.env.EMAIL_MAX_PER_MINUTE,
+              priorityReservePerMinute: container.env.EMAIL_PRIORITY_RESERVE_PER_MINUTE,
+            }),
             openTracking: new GetOpenTracking({ tracking, signer }),
             send: new SendFromConsole({ accept, publish: publishToTopic, apps: new AppsSendingLookup(dependencies) }),
             templateStats: new GetTemplateStats({ clock, stats: templateStats, versions: templateVersions }),
@@ -159,32 +200,18 @@ export function notificationsModule(
           }),
         ],
       },
+      // Hai làn (ADR-0041), cùng một use case: tin bắt buộc có stream + consumer riêng nên không xếp sau hàng thư thường.
       consumers: [
+        { group: 'email-sender', stream: STREAMS.NOTIF_QUEUED, options: { idempotency: 'handler' }, handler: sendEmail },
         {
-          group: 'email-sender',
-          stream: STREAMS.NOTIF_QUEUED,
+          group: 'email-sender-priority',
+          stream: STREAMS.NOTIF_QUEUED_PRIORITY,
           options: { idempotency: 'handler' },
-          handler: emailSenderHandler({
-            deliver: new DeliverEmailNotification({
-              uow,
-              outbox,
-              clock,
-              logger,
-              notifications,
-              recipients,
-              emails,
-              topics,
-              sender: new DeliveryEmailSender(dependencies),
-              tracking,
-              signer,
-              policies,
-              quota,
-            }),
-          }),
+          handler: sendEmail,
         },
       ],
       jobs: [
-        promoteScheduledJob({ promoteScheduled: new PromoteScheduled({ uow, outbox, clock, logger, notifications }) }),
+        promoteScheduledJob({ promoteScheduled: new PromoteScheduled({ uow, outbox, clock, logger, notifications, topics }) }),
         failStuckSendingJob({
           failStuckSending: new FailStuckSending({
             uow,

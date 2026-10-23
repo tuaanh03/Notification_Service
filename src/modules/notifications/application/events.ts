@@ -17,6 +17,12 @@ export const NOTIFICATION_EVENTS = {
   opened: 'NotificationOpened',
 } as const;
 
+/**
+ * Cờ làn của `NotificationQueued` (ADR-0041): tin bắt buộc -> `priority: true`, hạ tầng định tuyến sang
+ * `notif.queued.priority`. Gắn ở mọi chỗ phát event này (nhận thư, phát vào topic, thả thư hẹn giờ).
+ */
+export const laneFlag = (topic: { mandatory: boolean }): { priority?: true } => (topic.mandatory ? { priority: true } : {});
+
 export const PUBLICATION_AGGREGATE = 'Publication';
 
 /** Chỉ vào `audit.events` — thư con có `NotificationQueued` riêng, đi `notif.queued` như gửi lẻ. */
