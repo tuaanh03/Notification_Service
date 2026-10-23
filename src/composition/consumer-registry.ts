@@ -11,6 +11,8 @@ export interface ConsumerRegistration {
   options?:
     | Pick<ConsumerSpec, 'batchSize' | 'blockMs' | 'claimIdleMs' | 'maxDeliveries' | 'reclaimEveryMs' | 'idempotency'>
     | undefined;
+  /** false = màn quản trị không cho tạm dừng group này (ADR-0042). Mặc định true. */
+  pausable?: boolean | undefined;
 }
 
 /**

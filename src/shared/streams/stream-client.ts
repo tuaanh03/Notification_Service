@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis';
+import { pauseKeyOf } from './names.ts';
 
 /** Một entry đọc được từ stream: id + danh sách phẳng field/value. */
 export interface StreamEntry {
@@ -119,6 +120,11 @@ export class StreamClient {
   async get(stream: string, id: string): Promise<StreamEntry | null> {
     const reply = (await this.redis.call('XRANGE', stream, id, id)) as RawEntry[];
     return parseEntries(reply)[0] ?? null;
+  }
+
+  /** Group đang bị tạm dừng trên màn quản trị (ADR-0042)? Vòng lặp consumer hỏi mỗi lượt. */
+  async isPaused(group: string): Promise<boolean> {
+    return Number(await this.redis.call('EXISTS', pauseKeyOf(group))) === 1;
   }
 
   async length(stream: string): Promise<number> {

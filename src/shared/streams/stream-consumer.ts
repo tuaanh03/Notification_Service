@@ -45,6 +45,18 @@ export interface ConsumeStats {
 
 type ResolvedSpec = { [K in keyof ConsumerSpec]-?: Exclude<ConsumerSpec[K], undefined> };
 
+/** Thông số mặc định của mọi consumer (tài liệu §8.3) — màn quản trị hiện đúng con số đang áp (ADR-0042). */
+export const CONSUMER_DEFAULTS = {
+  batchSize: 32,
+  blockMs: 5_000,
+  claimIdleMs: 60_000,
+  maxDeliveries: 5,
+  reclaimEveryMs: 30_000,
+} as const;
+
+/** Group đang tạm dừng thì vòng lặp hỏi lại cờ sau chừng này (ADR-0042). */
+const PAUSED_RECHECK_MS = 2_000;
+
 const emptyStats = (): ConsumeStats => ({ processed: 0, duplicates: 0, retried: 0, deadLettered: 0 });
 
 /**
@@ -86,11 +98,11 @@ export class StreamConsumer {
       group: spec.group,
       consumer: spec.consumer,
       handler: spec.handler,
-      batchSize: spec.batchSize ?? 32,
-      blockMs: spec.blockMs ?? 5_000,
-      claimIdleMs: spec.claimIdleMs ?? 60_000,
-      maxDeliveries: spec.maxDeliveries ?? 5,
-      reclaimEveryMs: spec.reclaimEveryMs ?? 30_000,
+      batchSize: spec.batchSize ?? CONSUMER_DEFAULTS.batchSize,
+      blockMs: spec.blockMs ?? CONSUMER_DEFAULTS.blockMs,
+      claimIdleMs: spec.claimIdleMs ?? CONSUMER_DEFAULTS.claimIdleMs,
+      maxDeliveries: spec.maxDeliveries ?? CONSUMER_DEFAULTS.maxDeliveries,
+      reclaimEveryMs: spec.reclaimEveryMs ?? CONSUMER_DEFAULTS.reclaimEveryMs,
       idempotency: spec.idempotency ?? 'framework',
     };
     this.logger = deps.logger.child(`consumer:${this.spec.group}`);
@@ -135,12 +147,19 @@ export class StreamConsumer {
     return stats;
   }
 
-  /** Vòng lặp chạy tới khi `signal` bị huỷ — entrypoint worker (lượt 3) gọi hàm này. */
+  /**
+   * Vòng lặp chạy tới khi `signal` bị huỷ — entrypoint worker (lượt 3) gọi hàm này. Group bị tạm dừng trên màn quản trị
+   * (ADR-0042): không lấy message mới, không nhận lại message treo — message nằm yên trong stream tới khi chạy lại.
+   */
   async run(signal: AbortSignal): Promise<void> {
     await this.ensureGroup();
     let nextReclaimAt = 0;
     while (!signal.aborted) {
       try {
+        if (await this.streams.isPaused(this.spec.group)) {
+          await sleep(PAUSED_RECHECK_MS, signal);
+          continue;
+        }
         if (Date.now() >= nextReclaimAt) {
           await this.reclaimOnce();
           nextReclaimAt = Date.now() + this.spec.reclaimEveryMs;

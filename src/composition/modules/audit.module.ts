@@ -17,6 +17,8 @@ export function auditModule(container: Container, dependencies: { describeAdmins
       {
         group: 'audit-writer',
         stream: STREAMS.AUDIT_EVENTS,
+        // Dừng ghi nhật ký là mất dấu vết của chính thao tác dừng / chạy lại (ADR-0042).
+        pausable: false,
         handler: auditWriterHandler({ recordAuditEntry: new RecordAuditEntry({ uow: container.ports.uow, auditLog }) }),
       },
     ],

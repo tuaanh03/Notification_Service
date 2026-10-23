@@ -20,9 +20,14 @@ export const STREAMS = {
 } as const;
 export type StreamName = (typeof STREAMS)[keyof typeof STREAMS];
 
-/** Message lỗi vĩnh viễn / quá số lần giao được chuyển sang đây, hiển thị ở /admin/errors. */
+/** Message lỗi vĩnh viễn / quá số lần giao được chuyển sang đây, hiển thị ở màn Hàng chờ gửi (ADR-0042). */
 export function dlqOf(stream: string): string {
   return `${stream}.dlq`;
+}
+
+/** Cờ tạm dừng một consumer group (ADR-0042): có key = mọi bản worker của group ngừng lấy message. */
+export function pauseKeyOf(group: string): string {
+  return `consumer:paused:${group}`;
 }
 
 /**

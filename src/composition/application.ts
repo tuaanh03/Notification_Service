@@ -18,6 +18,7 @@ import { topicsModule } from './modules/topics.module.ts';
 import { webhooksModule } from './modules/webhooks.module.ts';
 import { incomingModule } from './modules/incoming.module.ts';
 import { settingsModule } from './modules/settings.module.ts';
+import { queuesModule } from './modules/queues.module.ts';
 import { tenancyModule, type AdminOps } from './modules/tenancy.module.ts';
 import type { GrantAppRole } from '../modules/apps/application/index.ts';
 
@@ -103,22 +104,25 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     systemSettings: settings.systemSettings,
   });
   const audit = auditModule(container, { describeAdmins: tenancy.describeAdmins });
+  const modules = [
+    tenancy.definition,
+    apps.definition,
+    subscriptions.definition,
+    directory.definition,
+    topics.definition,
+    templates.definition,
+    delivery.definition,
+    notifications.definition,
+    webhooks,
+    settings.definition,
+    incoming,
+    audit,
+  ];
+  // Màn quản trị hàng đợi (ADR-0042) dựng cuối: cần consumer group của mọi module khác.
+  const queues = queuesModule(container, { consumers: modules.flatMap((m) => m.consumers ?? []) });
 
   return {
-    modules: [
-      tenancy.definition,
-      apps.definition,
-      subscriptions.definition,
-      directory.definition,
-      topics.definition,
-      templates.definition,
-      delivery.definition,
-      notifications.definition,
-      webhooks,
-      settings.definition,
-      incoming,
-      audit,
-    ],
+    modules: [...modules, queues],
     authenticators: {
       apiKey: apps.apiKeyAuthenticator,
       admin: tenancy.adminAuthenticator,
