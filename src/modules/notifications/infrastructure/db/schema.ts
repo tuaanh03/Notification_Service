@@ -197,6 +197,8 @@ export const notificationRecipients = mysqlTable(
     openTracked: boolean('open_tracked').notNull().default(false),
     /** Lần đầu ảnh theo dõi được tải (ADR-0031) — ƯỚC LƯỢNG "đã mở", không phải bằng chứng đã đọc. */
     firstOpenedAt: ts('first_opened_at'),
+    /** Lần gần nhất ảnh theo dõi được tải (mọi lượt, kể cả lần đầu). Null với thư mở ≥ 2 lần trước migration 0032. */
+    lastOpenedAt: ts('last_opened_at'),
     openCount: int('open_count').notNull().default(0),
     createdAt: tsNow('created_at'),
   },

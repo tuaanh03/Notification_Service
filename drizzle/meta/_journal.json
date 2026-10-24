@@ -225,6 +225,13 @@
       "when": 1792726989786,
       "tag": "0031_template_stats_index",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1792806700853,
+      "tag": "0032_last_opened_at",
+      "breakpoints": true
     }
   ]
 }

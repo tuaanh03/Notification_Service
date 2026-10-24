@@ -86,12 +86,12 @@ export class DrizzleRecipientRepository implements RecipientRepository {
     // một lượt khớp điều kiện — chỉ một "lần đầu", chỉ một sự kiện webhook.
     const [first] = (await db
       .update(notificationRecipients)
-      .set({ openCount: sql`${notificationRecipients.openCount} + 1`, firstOpenedAt: at })
+      .set({ openCount: sql`${notificationRecipients.openCount} + 1`, firstOpenedAt: at, lastOpenedAt: at })
       .where(and(target, isNull(notificationRecipients.firstOpenedAt)))) as unknown as UpdateResult;
     if (first.affectedRows > 0) return 'first';
     const [again] = (await db
       .update(notificationRecipients)
-      .set({ openCount: sql`${notificationRecipients.openCount} + 1` })
+      .set({ openCount: sql`${notificationRecipients.openCount} + 1`, lastOpenedAt: at })
       .where(target)) as unknown as UpdateResult;
     return again.affectedRows > 0 ? 'again' : null;
   }

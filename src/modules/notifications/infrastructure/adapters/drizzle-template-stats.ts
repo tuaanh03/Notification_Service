@@ -103,6 +103,7 @@ export class DrizzleTemplateStats implements TemplateStats {
           sentAt: nr.sentAt,
           openTracked: nr.openTracked,
           firstOpenedAt: nr.firstOpenedAt,
+          lastOpenedAt: nr.lastOpenedAt,
           openCount: nr.openCount,
         })
         .from(nr)

@@ -292,6 +292,8 @@ export interface TemplateRecipientDto {
   sentAt: string | null;
   openTracked: boolean;
   firstOpenedAt: string | null;
+  /** Null khi chưa mở, hoặc thư đã mở >= 2 lần trước khi có cột này (migration 0032) — không biết lần cuối. */
+  lastOpenedAt: string | null;
   openCount: number;
 }
 

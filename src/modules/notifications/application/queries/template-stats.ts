@@ -167,6 +167,7 @@ export class ListTemplateRecipients {
         sentAt: row.sentAt?.toISOString() ?? null,
         openTracked: row.openTracked,
         firstOpenedAt: row.firstOpenedAt?.toISOString() ?? null,
+        lastOpenedAt: row.lastOpenedAt?.toISOString() ?? null,
         openCount: row.openCount,
       })),
       total: page.total,

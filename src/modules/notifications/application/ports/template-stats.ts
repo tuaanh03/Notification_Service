@@ -51,6 +51,7 @@ export interface TemplateRecipientRow {
   sentAt: Date | null;
   openTracked: boolean;
   firstOpenedAt: Date | null;
+  lastOpenedAt: Date | null;
   openCount: number;
 }
 

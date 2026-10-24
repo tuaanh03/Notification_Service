@@ -69,6 +69,7 @@ beforeAll(async () => {
   // u_one mở thư hai lần.
   const pixel = mail.delivered.find((m) => m.to === 'u_one@company.com')!.html.match(/https:\/\/ews-api\.example\.com(\/t\/o\/[^"]+)"/)![1]!;
   await fetch(`${api.url}${pixel}`);
+  await new Promise((r) => setTimeout(r, 20)); // lần cuối phải khác lần đầu (datetime(3))
   await fetch(`${api.url}${pixel}`);
 
   // Version 2: một người nữa.
@@ -159,6 +160,8 @@ describe('GET …/stats/recipients', () => {
       openTracked: true,
       openCount: 2,
     });
+    const row = rowsOf(opened)[0]!;
+    expect(Date.parse(row['lastOpenedAt'] as string)).toBeGreaterThan(Date.parse(row['firstOpenedAt'] as string));
     expect(rowsOf(await recipients('bucket=unopened')).map((r) => r['externalId']).sort()).toEqual(['u_new', 'u_two']);
     expect(rowsOf(await recipients('bucket=skipped'))[0]).toMatchObject({ externalId: 'u_off', status: 'skipped', exclusionReason: 'opted_out' });
     expect((await recipients('bucket=failed'))['total']).toBe(0);
