@@ -23,7 +23,8 @@ export interface TemplateInfo {
   name: string;
   status: 'published' | 'unpublished' | 'archived';
   version: number | null;
-  variables: { name: string; required: boolean }[];
+  /** `sample` = giá trị mẫu người soạn khai — chỉ để dựng body mẫu cho công cụ ngoài (ADR-0046), không gửi thật. */
+  variables: { name: string; required: boolean; sample?: string | null | undefined }[];
 }
 
 export interface TemplateCatalog {

@@ -1,5 +1,6 @@
 import type { AppId } from '../../../../shared/kernel/index.ts';
 import type { IncomingHook } from '../../domain/entities/incoming-hook.ts';
+import { findIntegration, integrationSetupBody } from '../../domain/rules/integrations.ts';
 import { toIncomingHookDto, type HookWarningDto, type IncomingHookDto } from '../dto.ts';
 import type { TemplateCatalog, TemplateInfo, TopicCatalog } from '../ports/index.ts';
 
@@ -25,6 +26,7 @@ export async function describeHooks(
       topic,
       template: template ? { name: template.name, status: template.status, version: template.version } : null,
       warnings: warningsOf(hook, topic, template),
+      setupBody: setupBodyOf(hook, template),
     });
   });
 }
@@ -36,13 +38,28 @@ function warningsOf(hook: IncomingHook, topic: { status: string } | null, templa
   if (!template) return [...warnings, { code: 'TEMPLATE_NOT_FOUND' }];
   if (template.status === 'archived') return [...warnings, { code: 'TEMPLATE_ARCHIVED' }];
   if (template.status === 'unpublished') return [...warnings, { code: 'TEMPLATE_NOT_PUBLISHED' }];
+  const integration = hook.integration === null ? null : findIntegration(hook.integration);
   const mapped = new Set(hook.mappings.map((m) => m.variable));
-  for (const v of template.variables) {
-    if (v.required && v.name.startsWith('payload.') && !mapped.has(v.name)) {
-      warnings.push({ code: 'REQUIRED_VARIABLE_UNMAPPED', variable: v.name });
+  // Công cụ `custom`: body mẫu (`setupBody`) đã có MỌI biến của template -> không cảnh báo "chưa ánh xạ".
+  if (integration?.payload !== 'custom') {
+    for (const v of template.variables) {
+      if (v.required && v.name.startsWith('payload.') && !mapped.has(v.name)) {
+        warnings.push({ code: 'REQUIRED_VARIABLE_UNMAPPED', variable: v.name });
+      }
     }
   }
   const declared = new Set(template.variables.map((v) => v.name));
-  for (const m of hook.mappings) if (!declared.has(m.variable)) warnings.push({ code: 'MAPPING_NOT_IN_TEMPLATE', variable: m.variable });
+  // Ánh xạ tự dựng theo danh mục mà template không khai (dựng lúc template chưa xuất bản) — vô hại, không cảnh báo.
+  const fromCatalog = new Set(integration?.fields.map((f) => `payload.${f.variable}`) ?? []);
+  for (const m of hook.mappings) {
+    if (!declared.has(m.variable) && !fromCatalog.has(m.variable)) warnings.push({ code: 'MAPPING_NOT_IN_TEMPLATE', variable: m.variable });
+  }
   return warnings;
+}
+
+/** Body mẫu dựng LẠI mỗi lần đọc — theo đúng bản template đang xuất bản, không lưu (ADR-0046 §5). */
+function setupBodyOf(hook: IncomingHook, template: TemplateInfo | null): Record<string, string> | null {
+  const integration = hook.integration === null ? null : findIntegration(hook.integration);
+  if (!integration) return null;
+  return integrationSetupBody(integration, template?.variables ?? []);
 }

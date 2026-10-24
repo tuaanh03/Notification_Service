@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from '../observability/logger.ts';
-import { adminCaller, bearerToken, type AdminAuthenticator, type AdminAuthorizer, type ApiKeyAuthenticator, type RouteTarget } from './auth.ts';
+import { access, adminCaller, bearerToken, type AdminAuthenticator, type AdminAuthorizer, type ApiKeyAuthenticator, type RouteTarget } from './auth.ts';
+import { buildOpenApiDocument, doc, type ApiSurface, type RegisteredRoute } from './openapi.ts';
 import { PROBLEM_CONTENT_TYPE, problem, toProblem } from './problem.ts';
 import { redactUrl } from './redact.ts';
-import { RateLimitedError } from '../kernel/errors.ts';
+import { PermissionDeniedError, RateLimitedError } from '../kernel/errors.ts';
 
 /** Một phụ thuộc mà `/health/ready` phải kiểm (MySQL, Redis...). Ném lỗi = chưa sẵn sàng. */
 export interface ReadinessCheck {
@@ -66,6 +67,8 @@ export async function buildHttpServer(options: {
   surfaces?: HttpSurfaces | undefined;
   /** Sau load balancer / reverse proxy: lấy IP thật từ X-Forwarded-For (cho allowlist IP). */
   trustProxy?: boolean | undefined;
+  /** OpenAPI (ADR-0045): `servers[0].url` — domain API công khai, `null` = không khai. */
+  openApi?: { serverUrl: () => Promise<string | null>; version: string } | undefined;
 }): Promise<HttpServer> {
   const log = options.logger.child('http');
   let draining = false;
@@ -162,23 +165,51 @@ export async function buildHttpServer(options: {
 
   app.decorateRequest('caller', null);
   app.decorateRequest('adminAccess', null);
+
+  // Gom mọi route của 3 bề mặt API để dựng OpenAPI (ADR-0045). Dựng lại mỗi lần gọi spec: rẻ, và luôn đúng route thật.
+  const registered: RegisteredRoute[] = [];
+  const collect = (surface: ApiSurface) => (route: { method: string | string[]; url: string; config?: unknown }) => {
+    const config = (route.config ?? {}) as { access?: RegisteredRoute['access']; doc?: RegisteredRoute['doc'] };
+    for (const method of Array.isArray(route.method) ? route.method : [route.method]) {
+      registered.push({ surface, method, url: route.url, access: config.access, doc: config.doc });
+    }
+  };
+  const openApiDocument = async () =>
+    buildOpenApiDocument(registered, {
+      serverUrl: options.openApi ? await options.openApi.serverUrl() : null,
+      version: options.openApi?.version ?? '0.0.0',
+    });
   const { apiKey, admin } = options.authenticators;
   const surfaces = options.surfaces ?? {};
 
-  for (const register of surfaces.public ?? []) await app.register(async (scope) => register(scope));
+  for (const register of surfaces.public ?? []) {
+    await app.register(async (scope) => {
+      // Bề mặt public chỉ vào spec phần `/hooks` — health, tracking, `/auth` không phải API cho dev.
+      scope.addHook('onRoute', (route) => {
+        if (route.url.startsWith('/hooks/')) collect('hooks')(route);
+      });
+      return register(scope);
+    });
+  }
 
   // Mỗi bề mặt là một scope riêng: hook xác thực chỉ áp cho route BÊN TRONG scope đó.
   // Xác thực chạy ở onRequest — trước khi body được parse, request không có credential bị chặn sớm.
   await app.register(
     async (scope) => {
       scope.addHook('onRequest', async (request) => {
-        request.caller = await admin.authenticate({ bearerToken: bearerToken(request) });
+        const caller = await admin.authenticate({ bearerToken: bearerToken(request), ip: request.ip });
+        request.caller = caller;
+        // PAT chỉ đọc (ADR-0044 §3): chặn trước khi parse body — lệnh ghi không chạm tới handler.
+        if (caller.via === 'pat' && caller.scope === 'read' && !READ_METHODS.has(request.method)) {
+          throw new PermissionDeniedError('PAT_SCOPE_INSUFFICIENT', 'this personal access token is read-only');
+        }
       });
       // Route thiếu khai báo quyền -> DỪNG KHỞI ĐỘNG, không âm thầm mở cho mọi admin (ADR-0022).
       scope.addHook('onRoute', (route) => {
         if (route.config?.access === undefined) {
           throw new Error(`admin route ${String(route.method)} ${route.url} declares no access (use { config: access(...) })`);
         }
+        collect('admin')(route);
       });
       // preHandler (không phải onRequest): body đã parse — `POST /apps` lấy org từ body.
       scope.addHook('preHandler', async (request) => {
@@ -189,6 +220,11 @@ export async function buildHttpServer(options: {
           target: rule.target ? rule.target(request) : defaultTarget(request.params),
         });
       });
+      scope.get(
+        '/openapi.json',
+        { config: { ...access('catalog.read'), ...doc({ tag: 'me', summary: 'OpenAPI 3.1 document of this API.' }) } },
+        async (_request, reply) => reply.header('cache-control', 'no-store').send(await openApiDocument()),
+      );
       for (const register of surfaces.admin ?? []) await register(scope);
     },
     { prefix: '/admin' },
@@ -198,6 +234,7 @@ export async function buildHttpServer(options: {
       scope.addHook('onRequest', async (request) => {
         request.caller = await apiKey.authenticate({ apiKey: bearerToken(request), ip: request.ip });
       });
+      scope.addHook('onRoute', collect('v1'));
       for (const register of surfaces.v1 ?? []) await register(scope);
     },
     { prefix: '/v1' },
@@ -210,6 +247,9 @@ export async function buildHttpServer(options: {
     },
   };
 }
+
+/** Phương thức PAT `read` được gọi (ADR-0044 §3). */
+const READ_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD']);
 
 /** `:appId` -> app, không có thì `:orgId` -> org, không có nữa -> việc cấp hệ thống. */
 function defaultTarget(params: unknown): RouteTarget {

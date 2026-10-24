@@ -1,10 +1,10 @@
 import { ValidationError, type AppId, type Issue } from '../../../../shared/kernel/index.ts';
-import { validateHookConfig, type IncomingHookConfig } from '../../domain/entities/incoming-hook.ts';
+import { validateHookConfig } from '../../domain/entities/incoming-hook.ts';
 import { conditionMet, extractPayload } from '../../domain/rules/index.ts';
 import type { HookPreviewDto } from '../dto.ts';
 import type { HookCrypto, IncomingSettings, TemplateCatalog, TopicCatalog } from '../ports/index.ts';
 import { dedupeKeyOf } from './dedupe-key.ts';
-import { assertTargetsBelongToApp } from './shared.ts';
+import { assertTargetsBelongToApp, resolveHookConfig, type IncomingHookInput } from './shared.ts';
 
 /**
  * "Xem trước" trên console (ADR-0030 §7): chạy cấu hình (chưa cần lưu) trên một JSON mẫu — điều kiện,
@@ -17,10 +17,11 @@ export class PreviewIncomingHook {
     this.deps = deps;
   }
 
-  async execute(input: { appId: AppId; config: IncomingHookConfig; sample: unknown; idempotencyKey: string | null }): Promise<HookPreviewDto> {
+  async execute(input: { appId: AppId; config: IncomingHookInput; sample: unknown; idempotencyKey: string | null }): Promise<HookPreviewDto> {
     const { crypto, templates, settings } = this.deps;
-    const config = validateHookConfig(input.config);
-    await assertTargetsBelongToApp(this.deps, input.appId, config);
+    await assertTargetsBelongToApp(this.deps, input.appId, input.config);
+    // Có công cụ (ADR-0046): xem trước đúng ánh xạ + điều kiện mà lệnh lưu sẽ dựng.
+    const config = validateHookConfig(await resolveHookConfig(templates, input.appId, input.config));
     const template = await templates.publishedVariables(input.appId, config.templateId);
     const variables = template?.variables ?? [];
     const extraction = extractPayload(input.sample, config.mappings, variables);

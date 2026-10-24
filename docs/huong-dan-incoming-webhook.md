@@ -44,6 +44,25 @@ curl -X POST '<URL>' -H 'Content-Type: application/json' \
 
 Giá trị là chữ, số hoặc `true` / `false`. Trường thừa bị bỏ qua.
 
+## Cắm thẳng công cụ giám sát (ADR-0046)
+
+Lúc **Thêm webhook**, chọn công cụ: **Datadog**, **Grafana**, **Prometheus Alertmanager**, **Gatus**,
+**Uptime Kuma** (hoặc **JSON** = cách ở bước 4). EWS tự nối dữ liệu của công cụ vào biến của template — dùng
+template **Cảnh báo sự cố** / **Sự cố đã khắc phục** trong thư viện mẫu (biến `incident_title`, `severity`,
+`started_at`, `detail_url`, `resolved_at`, `summary`; template tự soạn dùng đúng tên đó cũng được).
+
+- **Grafana, Alertmanager**: chỉ dán URL — EWS đọc JSON gốc của công cụ (lấy cảnh báo đầu tiên của nhóm).
+- **Datadog, Gatus, Uptime Kuma**: mở webhook → dán **body mẫu** EWS dựng sẵn (token của công cụ cho từng
+  biến + trường `alert_status`). Gatus và Uptime Kuma phải thêm header `Content-Type: application/json`.
+- **Kích hoạt**: *Đang lỗi* · *Đã khắc phục* · *Cả hai*. Nên tạo hai webhook (hai URL): "Cảnh báo sự cố" +
+  Đang lỗi và "Sự cố đã khắc phục" + Đã khắc phục. Chuyển trạng thái khác (Datadog `Warn` / `No Data`…) bị bỏ qua.
+- Ngày giờ đổ nguyên văn như công cụ gửi (Datadog `$DATE` là epoch mili-giây, Grafana là ISO). Gatus không có
+  thời điểm / mức độ — body mẫu điền giá trị mẫu, sửa tay nếu cần.
+- Link chi tiết (`detail_url`) phải là `https://` — Grafana / Alertmanager chạy `http://` nội bộ thì thư bị
+  từ chối (`LINK_SCHEME_NOT_ALLOWED`); khi đó bỏ biến link khỏi template hoặc đặt `root_url` / `--web.external-url` https.
+- Đổi template: lưu lại webhook để EWS nối lại theo biến của template mới. Danh mục công cụ:
+  `GET /admin/incoming-integrations`.
+
 ## Bước 5 — Kiểm tra
 
 Webhook → **Nhật ký**: mỗi lần gọi ghi một dòng ("Đã gửi cho 2 người", "Thiếu trường bắt buộc: name_issue"…).

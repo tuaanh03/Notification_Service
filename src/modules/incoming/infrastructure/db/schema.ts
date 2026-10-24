@@ -30,6 +30,10 @@ export const incomingHooks = mysqlTable(
     mappings: json('mappings').$type<VariableMapping[]>().notNull(),
     dedupePath: varchar('dedupe_path', { length: 200 }),
     condition: json('publish_condition').$type<PublishCondition | null>(),
+    /** Công cụ giám sát đã chọn (ADR-0046): `datadog`, `grafana`… — null = cấu hình tay / hook cũ. */
+    integration: varchar('integration', { length: 32 }),
+    /** `firing` · `resolved` · `all` — điều kiện phát đã dựng từ đây; null khi công cụ không có trạng thái. */
+    alertTrigger: varchar('alert_trigger', { length: 16 }),
     /** SHA-256 hex của token. */
     tokenHash: varchar('token_hash', { length: 64 }).notNull(),
     tokenHint: varchar('token_hint', { length: 32 }).notNull(),

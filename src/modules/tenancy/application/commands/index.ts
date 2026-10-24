@@ -15,3 +15,4 @@ export * from './set-member-listed.ts';
 export * from './login-throttle.ts';
 export * from './unlock-login.ts';
 export * from './manage-organization.ts';
+export * from './manage-personal-access-tokens.ts';

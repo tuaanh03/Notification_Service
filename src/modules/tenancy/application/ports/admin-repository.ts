@@ -10,6 +10,8 @@ export interface AdminPage {
 
 export interface AdminRepository {
   findById(id: AdminId): Promise<Admin | null>;
+  /** Khoá dòng admin (`FOR UPDATE`) trước khi đếm thứ "tối đa N mỗi người" (ADR-0009). `false` = không có admin đó. */
+  lockForUpdate(id: AdminId): Promise<boolean>;
   /** Email đã chuẩn hoá — `uq_admins_account_email` duy nhất theo (account, email). */
   findByEmail(email: NormalizedEmail): Promise<Admin | null>;
   /** Admin đã gắn tài khoản Microsoft này (ADR-0021). */

@@ -41,7 +41,8 @@ export class TemplateQueries {
     name: string;
     status: 'published' | 'unpublished' | 'archived';
     version: number | null;
-    variables: { name: string; required: boolean }[];
+    /** `sample` chỉ để incoming dựng body mẫu cho công cụ ngoài (ADR-0046) — không bao giờ dùng lúc gửi. */
+    variables: { name: string; required: boolean; sample: string | null }[];
   } | null> {
     const template = await this.templates.findById(appId, id);
     if (!template) return null;
@@ -51,7 +52,7 @@ export class TemplateQueries {
       name: template.name,
       status: template.status === 'archived' ? 'archived' : version ? 'published' : 'unpublished',
       version: version?.version ?? null,
-      variables: version ? version.schema.map((v) => ({ name: v.name, required: v.required })) : [],
+      variables: version ? version.schema.map((v) => ({ name: v.name, required: v.required, sample: v.sample ?? null })) : [],
     };
   }
 

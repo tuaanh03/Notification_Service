@@ -385,6 +385,127 @@ describe('quản lý hook', () => {
   });
 });
 
+describe('công cụ giám sát (ADR-0046)', () => {
+  /** Template alert như mẫu "Cảnh báo sự cố" (ADR-0035): 4 biến bắt buộc, có giá trị mẫu. */
+  async function alertTemplate(appId: string, name: string, keys: readonly string[]) {
+    const created = (
+      await admin('POST', `/apps/${appId}/templates`, {
+        name,
+        subject: '[Sự cố] {{ payload.incident_title }}',
+        html: `<p>${keys.map((k) => `{{ payload.${k} }}`).join(' · ')}</p>`,
+        text: keys.map((k) => `{{ payload.${k} }}`).join(' · '),
+        variables: keys.map((k) => ({ name: `payload.${k}`, source: 'payload', required: true, sample: `mẫu ${k}` })),
+      })
+    ).body;
+    expect((await admin('POST', `/apps/${appId}/templates/${created['id']}/publish`)).status).toBe(200);
+    return created['id'] as string;
+  }
+  const grafanaBody = (status: 'firing' | 'resolved') => ({
+    receiver: 'ews',
+    status,
+    alerts: [
+      {
+        status,
+        labels: { alertname: 'High CPU', severity: 'critical' },
+        annotations: { summary: 'CPU > 95%' },
+        startsAt: '2026-10-23T08:30:00Z',
+        endsAt: status === 'resolved' ? '2026-10-23T09:15:00Z' : '0001-01-01T00:00:00Z',
+        generatorURL: 'https://grafana.example.com/alerting/abc/view',
+        fingerprint: 'c6eadffa33fcdf37',
+      },
+    ],
+    commonLabels: { alertname: 'High CPU' },
+    externalURL: 'https://grafana.example.com/',
+    version: '1',
+  });
+
+  it('GET danh mục: 6 công cụ, ai đăng nhập cũng xem được', async () => {
+    const res = await admin('GET', '/incoming-integrations');
+    expect(res.status).toBe(200);
+    const list = res.body['integrations'] as Json[];
+    expect(list.map((i) => i['id'])).toEqual(['generic', 'datadog', 'grafana', 'alertmanager', 'gatus', 'uptime-kuma']);
+    expect(list.find((i) => i['id'] === 'datadog')).toMatchObject({ payload: 'custom', status: { source: '$ALERT_TRANSITION' } });
+  });
+
+  it('Grafana: không gửi mappings -> tự dựng theo bản đang xuất bản; firing phát, resolved bỏ qua', async () => {
+    const app = await freshApp('in-grafana');
+    const templateId = await alertTemplate(app.appId, 'Cảnh báo', ['incident_title', 'severity', 'started_at', 'detail_url']);
+    const issued = await createHook(app.appId, { name: 'Grafana', topicId: app.topicId, templateId, integration: 'grafana', trigger: 'firing' });
+    expect(issued.hook).toMatchObject({
+      integration: 'grafana',
+      trigger: 'firing',
+      setupBody: null,
+      condition: { path: 'status', values: ['firing'] },
+      warnings: [],
+    });
+    expect((issued.hook['mappings'] as Json[]).map((m) => [m['variable'], m['path']])).toEqual([
+      ['payload.incident_title', 'alerts[0].labels.alertname'],
+      ['payload.severity', 'alerts[0].labels.severity'],
+      ['payload.started_at', 'alerts[0].startsAt'],
+      ['payload.detail_url', 'alerts[0].generatorURL'],
+    ]);
+
+    const fired = await call(issued.path, grafanaBody('firing'));
+    expect([fired.status, fired.body['status'], fired.body['recipientCount']]).toEqual([202, 'published', 2]);
+    await deliver();
+    expect(mail.delivered.find((m) => m.to === 'nv01@company.com')).toMatchObject({
+      subject: '[Sự cố] High CPU',
+      html: '<p>High CPU · critical · 2026-10-23T08:30:00Z · https://grafana.example.com/alerting/abc/view</p>',
+    });
+    expect((await call(issued.path, grafanaBody('resolved'))).body).toEqual({ status: 'skipped', reason: 'condition_not_met' });
+  });
+
+  it('Datadog: setupBody theo biến của template; dán vào Datadog là phát; đổi template -> dựng lại', async () => {
+    const app = await freshApp('in-datadog');
+    const templateId = await alertTemplate(app.appId, 'Cảnh báo', ['incident_title', 'severity', 'detail_url', 'owner']);
+    const issued = await createHook(app.appId, { name: 'Datadog', topicId: app.topicId, templateId, integration: 'datadog' });
+    expect(issued.hook['trigger']).toBe('all');
+    expect(issued.hook['setupBody']).toEqual({
+      incident_title: '$EVENT_TITLE',
+      severity: '$ALERT_TYPE',
+      detail_url: '$LINK',
+      owner: 'mẫu owner',
+      alert_status: '$ALERT_TRANSITION',
+    });
+    const sent = {
+      incident_title: '[Triggered] High CPU',
+      severity: 'error',
+      detail_url: 'https://app.datadoghq.com/event/jump_to?event_id=1',
+      owner: 'ops',
+      alert_status: 'Triggered',
+    };
+    expect((await call(issued.path, sent)).status).toBe(202);
+    expect((await call(issued.path, { ...sent, alert_status: 'Warn' })).body).toMatchObject({ status: 'skipped' });
+
+    const resolvedTemplate = await alertTemplate(app.appId, 'Đã khắc phục', ['incident_title', 'resolved_at', 'summary']);
+    const updated = await admin('PATCH', `/apps/${app.appId}/incoming-webhooks/${issued.hook['id']}`, {
+      config: { name: 'Datadog', topicId: app.topicId, templateId: resolvedTemplate, integration: 'datadog', trigger: 'resolved' },
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({
+      trigger: 'resolved',
+      condition: { path: 'alert_status', values: ['Recovered'] },
+      setupBody: { incident_title: '$EVENT_TITLE', resolved_at: '$DATE', summary: '$TEXT_ONLY_MSG', alert_status: '$ALERT_TRANSITION' },
+    });
+    expect((updated.body['mappings'] as Json[]).map((m) => m['variable'])).toEqual(['payload.incident_title', 'payload.resolved_at', 'payload.summary']);
+  });
+
+  it('công cụ lạ -> 422 INTEGRATION_UNKNOWN; xem trước nhận integration / trigger', async () => {
+    const app = await freshApp('in-integ-bad');
+    const templateId = await alertTemplate(app.appId, 'Cảnh báo', ['incident_title', 'severity', 'started_at', 'detail_url']);
+    const bad = await admin('POST', `/apps/${app.appId}/incoming-webhooks`, { name: 'x', topicId: app.topicId, templateId, integration: 'zabbix' });
+    expect(bad.status).toBe(422);
+    expect(((bad.body['issues'] as Json[])[0])).toMatchObject({ code: 'INTEGRATION_UNKNOWN', path: 'config.integration' });
+
+    const preview = await admin('POST', `/apps/${app.appId}/incoming-webhooks/preview`, {
+      config: { topicId: app.topicId, templateId, integration: 'alertmanager', trigger: 'resolved' },
+      sample: grafanaBody('firing'),
+    });
+    expect(preview.status).toBe(200);
+    expect(preview.body).toMatchObject({ conditionMet: false, rendered: { subject: '[Sự cố] High CPU' } });
+  });
+});
+
 describe('lấy lại URL bất cứ lúc nào', () => {
   it('URL lấy lại = URL lúc tạo và gọi được; đổi URL -> URL cũ 404, lấy lại ra URL mới; App Viewer 403', async () => {
     const app = await freshApp('in-reveal');
@@ -430,7 +551,7 @@ describe('lấy lại URL bất cứ lúc nào', () => {
 describe('Cài đặt hệ thống', () => {
   it('GET đủ danh mục + mặc định; PUT ngoài khoảng / khoá lạ -> 422, không ghi gì', async () => {
     const list = (await admin('GET', '/system-settings')).body['settings'] as Json[];
-    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'incoming.max_hooks_per_app', 'api.public_base_url', 'apps.max_active_api_keys', 'webhooks.max_endpoints_per_app', 'delivery.mailbox_daily_cap', 'apps.max_pending_per_app', 'apps.default_max_send_per_hour', 'templates.html_check_enabled', 'auth.lockout_enabled', 'auth.max_failed_attempts', 'auth.failure_window_minutes', 'auth.lockout_minutes', 'auth.ip_max_failed_attempts', 'auth.permanent_lock_after']);
+    expect(list.map((s) => s['key'])).toEqual(['incoming.dedupe_window_minutes', 'incoming.max_publications_per_minute', 'incoming.max_hooks_per_app', 'api.public_base_url', 'apps.max_active_api_keys', 'webhooks.max_endpoints_per_app', 'delivery.mailbox_daily_cap', 'apps.max_pending_per_app', 'apps.default_max_send_per_hour', 'templates.html_check_enabled', 'auth.lockout_enabled', 'auth.max_failed_attempts', 'auth.failure_window_minutes', 'auth.lockout_minutes', 'auth.ip_max_failed_attempts', 'auth.permanent_lock_after', 'pat.max_per_admin', 'pat.max_lifetime_days']);
     expect(list[0]).toMatchObject({ value: 10, default: 10, min: 1, max: 1440, customized: false });
     expect(list.find((s) => s['key'] === 'templates.html_check_enabled')).toMatchObject({ kind: 'bool', value: true, default: true, min: null, max: null, customized: false });
     const notBool = await admin('PUT', '/system-settings', { values: { 'templates.html_check_enabled': 'no' } });

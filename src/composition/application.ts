@@ -30,6 +30,8 @@ export interface Application {
   readonly adminAuthorizer: AdminAuthorizer;
   /** Việc quản trị KHÔNG có route HTTP — chỉ `entrypoints/admin-cli` gọi (tạo admin đầu tiên). */
   readonly adminOps: AdminOps & { grantAppRole: GrantAppRole; scanHtmlTemplates: ScanHtmlTemplates };
+  /** Domain API công khai (cài đặt `api.public_base_url`) — `servers` của OpenAPI (ADR-0045). */
+  readonly publicBaseUrl: () => Promise<string | null>;
 }
 
 /**
@@ -129,6 +131,7 @@ export function buildApplication(container: Container, overrides: ApplicationOve
     },
     adminAuthorizer: apps.adminAuthorizer,
     adminOps: { ...tenancy.adminOps, grantAppRole: apps.grantAppRole, scanHtmlTemplates: templates.scanHtmlTemplates },
+    publicBaseUrl: async () => (await settings.systemSettings.current())['api.public_base_url'],
   };
 }
 

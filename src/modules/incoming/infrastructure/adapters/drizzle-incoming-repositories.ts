@@ -14,6 +14,7 @@ import { IncomingSlotTakenError } from '../../application/errors.ts';
 import type { IncomingCallRepository, IncomingHookRepository } from '../../application/ports/index.ts';
 import type { IncomingCall } from '../../domain/entities/incoming-call.ts';
 import { IncomingHook } from '../../domain/entities/incoming-hook.ts';
+import { isAlertTrigger, isIncomingIntegrationId } from '../../domain/rules/integrations.ts';
 import { incomingCalls, incomingHooks } from '../db/schema.ts';
 
 type HookRow = typeof incomingHooks.$inferSelect;
@@ -37,6 +38,8 @@ export class DrizzleIncomingHookRepository implements IncomingHookRepository {
         mappings: [...h.mappings],
         dedupePath: h.dedupePath,
         condition: h.condition,
+        integration: h.integration,
+        alertTrigger: h.trigger,
         tokenHash: h.tokenHash,
         tokenHint: h.tokenHint,
         tokenVersion: h.tokenVersion,
@@ -82,6 +85,8 @@ export class DrizzleIncomingHookRepository implements IncomingHookRepository {
         mappings: [...h.mappings],
         dedupePath: h.dedupePath,
         condition: h.condition,
+        integration: h.integration,
+        alertTrigger: h.trigger,
         tokenHash: h.tokenHash,
         tokenHint: h.tokenHint,
         tokenVersion: h.tokenVersion,
@@ -164,6 +169,9 @@ function toHook(row: HookRow): IncomingHook {
     mappings: row.mappings,
     dedupePath: row.dedupePath,
     condition: row.condition ?? null,
+    // Giá trị lạ trong DB (công cụ đã gỡ khỏi danh mục) -> null: hook vẫn chạy theo ánh xạ đã lưu.
+    integration: isIncomingIntegrationId(row.integration) ? row.integration : null,
+    trigger: isAlertTrigger(row.alertTrigger) ? row.alertTrigger : null,
     tokenHash: row.tokenHash,
     tokenHint: row.tokenHint,
     tokenVersion: row.tokenVersion,

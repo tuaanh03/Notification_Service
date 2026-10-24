@@ -35,6 +35,7 @@ sẵn: **có** (bước 5, cách 2).
 | **Địa chỉ API** | `https://api-ews-astrolink.eonsr.net` — dưới đây viết là `$EWS`. Mọi đường dẫn bắt đầu bằng `/v1`. |
 | **Khoá API** | Dạng `ews_<32 hex>_<43 ký tự>`. **Chỉ hiện một lần** lúc cấp — mất là phải cấp khoá mới. |
 | **Danh sách chủ đề** | Đội EWS tạo và kích hoạt. App không tạo được chủ đề. Đọc lại bằng `GET /v1/topics`. |
+| **Đặc tả OpenAPI** | Trang **Developer** của console (phải đăng nhập) — mọi route `/v1`, `/hooks` và `/admin`, kèm mã lỗi từng route, có nút tải `openapi.json` (OpenAPI 3.1). Muốn tự động hoá phần quản trị (tạo chủ đề, template, webhook…) bằng script: tạo personal access token ở menu tài khoản của console. |
 
 **Địa chỉ API:**
 

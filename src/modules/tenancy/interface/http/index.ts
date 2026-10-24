@@ -3,3 +3,4 @@ export * from './auth.routes.ts';
 export * from './session-admin-authenticator.ts';
 export * from './client-ip.ts';
 export * from './login-security.routes.ts';
+export * from './personal-access-tokens.routes.ts';

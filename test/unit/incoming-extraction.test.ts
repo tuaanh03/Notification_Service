@@ -236,6 +236,8 @@ describe('Cài đặt hệ thống', () => {
       'auth.lockout_minutes': 15,
       'auth.ip_max_failed_attempts': 30,
       'auth.permanent_lock_after': 0,
+      'pat.max_per_admin': 10,
+      'pat.max_lifetime_days': 365,
     });
     expect(effectiveSettings(new Map([['templates.html_check_enabled', false]]))['templates.html_check_enabled']).toBe(false);
     expect(effectiveSettings(new Map([['templates.html_check_enabled', 'no']]))['templates.html_check_enabled']).toBe(true);
@@ -259,7 +261,7 @@ describe('Cài đặt hệ thống', () => {
     expect(normalizeSetting('auth.permanent_lock_after', 0)).toBe(0);
     expect(codeOf(() => normalizeSetting('auth.max_failed_attempts', 2))).toBe('SETTING_OUT_OF_RANGE');
     expect(codeOf(() => normalizeSetting('auth.ip_max_failed_attempts', 9))).toBe('SETTING_OUT_OF_RANGE');
-    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(16);
+    expect(Object.keys(SYSTEM_SETTINGS)).toHaveLength(18);
   });
 });
 

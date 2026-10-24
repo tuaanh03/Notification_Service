@@ -7,3 +7,4 @@ export * from './list-member-candidates.ts';
 export * from './list-directory-people.ts';
 export * from './list-login-locks.ts';
 export * from './describe-admins.ts';
+export * from './personal-access-tokens.ts';

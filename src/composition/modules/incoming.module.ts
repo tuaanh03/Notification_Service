@@ -3,6 +3,7 @@ import {
   CreateIncomingHook,
   DeleteIncomingHook,
   IncomingHookQueries,
+  IncomingIntegrationQueries,
   PreviewIncomingHook,
   PurgeIncomingCalls,
   ReceiveIncomingCall,
@@ -33,7 +34,7 @@ import type { ModuleDefinition } from '../module-definition.ts';
 
 /**
  * Ghép module incoming (incoming webhook — ADR-0030):
- *   api       POST /hooks/:token (công khai) · /admin/apps/:appId/incoming-webhooks/*
+ *   api       POST /hooks/:token (công khai) · /admin/apps/:appId/incoming-webhooks/* · /admin/incoming-integrations (ADR-0046)
  *   scheduler job `purge-incoming-calls`
  */
 export function incomingModule(
@@ -87,6 +88,7 @@ export function incomingModule(
       admin: [
         adminIncomingHooksRoutes({
           queries: new IncomingHookQueries({ hooks, calls, crypto, templates, topics, settings }),
+          integrations: new IncomingIntegrationQueries(),
           create: new CreateIncomingHook(manage),
           update: new UpdateIncomingHook(manage),
           rotateToken: new RotateIncomingHookToken(manage),

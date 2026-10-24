@@ -36,7 +36,7 @@ function server(admin: HttpRoutes, authorizer: AdminAuthorizer) {
     readiness: [],
     authenticators: {
       apiKey: { authenticate: () => Promise.reject(new Error('unused')) },
-      admin: { authenticate: async () => ({ kind: 'admin', adminId: 'a', role: 'user' }) },
+      admin: { authenticate: async () => ({ kind: 'admin', adminId: 'a', role: 'user', via: 'session', tokenId: null, scope: null }) },
     },
     adminAuthorizer: authorizer,
     surfaces: { admin: [admin] },

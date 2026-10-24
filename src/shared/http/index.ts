@@ -3,3 +3,4 @@ export * from './problem.ts';
 export * from './redact.ts';
 export * from './server.ts';
 export * from './validation.ts';
+export * from './openapi.ts';

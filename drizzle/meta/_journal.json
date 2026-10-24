@@ -232,6 +232,13 @@
       "when": 1792806700853,
       "tag": "0032_last_opened_at",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1794212461309,
+      "tag": "0033_pat_incoming_integrations",
+      "breakpoints": true
     }
   ]
 }

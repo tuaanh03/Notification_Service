@@ -1,12 +1,15 @@
 import type { FastifyRequest } from 'fastify';
+import type { CommandContext } from '../application/command-context.ts';
 import {
   AuthenticationError,
+  PermissionDeniedError,
   type AccountId,
   type AdminAccess,
   type AdminRole,
   type AppId,
   type Channel,
   type OrgId,
+  type PatScope,
   type Permission,
 } from '../kernel/index.ts';
 
@@ -32,6 +35,11 @@ export interface AdminCaller {
   kind: 'admin';
   adminId: string;
   role: AdminRole;
+  /** Phiên đăng nhập console hay personal access token (ADR-0044). Quyền như nhau — RBAC theo `adminId`. */
+  via: 'session' | 'pat';
+  /** Chỉ có khi `via = 'pat'`. */
+  tokenId: string | null;
+  scope: PatScope | null;
 }
 
 export type Caller = AppCaller | AdminCaller;
@@ -41,9 +49,10 @@ export interface ApiKeyAuthenticator {
   authenticate(input: { apiKey: string | null; ip: string }): Promise<AppCaller>;
 }
 
-/** Xác thực `/admin/*` — tạm thời là bootstrap token; session + RBAC thay thế sau. */
+/** Xác thực `/admin/*` — phiên đăng nhập hoặc personal access token (ADR-0019, ADR-0044). */
 export interface AdminAuthenticator {
-  authenticate(input: { bearerToken: string | null }): Promise<AdminCaller>;
+  /** `ip` chỉ để ghi "dùng lần cuối" của PAT — không dùng để chặn. */
+  authenticate(input: { bearerToken: string | null; ip: string | null }): Promise<AdminCaller>;
 }
 
 /**
@@ -110,4 +119,20 @@ export function adminCaller(request: FastifyRequest): AdminCaller {
 export function adminAccess(request: FastifyRequest): AdminAccess {
   if (request.adminAccess === null) throw new AuthenticationError('ADMIN_CALLER_REQUIRED', 'admin credentials required');
   return request.adminAccess;
+}
+
+/**
+ * Route chỉ nhận PHIÊN đăng nhập, không nhận PAT (ADR-0044 §6) — quản lý chính PAT. Gọi ĐẦU handler: lộ một PAT
+ * không được phép đẻ ra PAT mới sống lâu hơn nó.
+ */
+export function requireSession(request: FastifyRequest): AdminCaller {
+  const caller = adminCaller(request);
+  if (caller.via !== 'session') throw new PermissionDeniedError('SESSION_REQUIRED', 'this route requires a console session, not a personal access token');
+  return caller;
+}
+
+/** `CommandContext` của lệnh ghi qua `/admin`: người làm là admin, nguồn audit tách phiên (`admin_api`) với PAT (`admin_pat`). */
+export function adminContext(request: FastifyRequest): CommandContext {
+  const caller = adminCaller(request);
+  return { actor: { id: caller.adminId, type: 'admin' }, source: caller.via === 'pat' ? 'admin_pat' : 'admin_api' };
 }

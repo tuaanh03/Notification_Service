@@ -8,3 +8,4 @@ export * from './microsoft-identity.ts';
 export * from './org-member-repository.ts';
 export * from './tenant-directory.ts';
 export * from './login-attempt-store.ts';
+export * from './personal-access-token-repository.ts';

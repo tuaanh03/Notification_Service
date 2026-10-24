@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { access, adminCaller, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, adminCaller, doc, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
 import {
   MAX_DEAD_LETTERS,
   MAX_DISCARD_REASON,
@@ -37,29 +37,102 @@ export function adminQueuesRoutes(useCases: {
   setPaused: SetGroupPaused;
 }): HttpRoutes {
   return (app) => {
-    app.get('/queues', { config: access('platform.manage') }, async () => useCases.queries.overview());
+    const tag = 'queues';
+    const manage = access('platform.manage');
 
-    app.get('/queues/dead-letters', { config: access('platform.manage') }, async (request) => {
-      const query = parseInput(deadLettersQuery, request.query);
-      return { items: await useCases.queries.deadLetters(query) };
-    });
+    app.get(
+      '/queues',
+      {
+        config: {
+          ...manage,
+          ...doc({ tag, summary: 'Get every processing group: pending, in flight, dead letters, running workers, paused or not (Super Admin only).', responseDto: 'QueuesDto' }),
+        },
+      },
+      async () => useCases.queries.overview(),
+    );
 
-    app.post('/queues/dead-letters/:stream/:id/requeue', { config: access('platform.manage') }, async (request) => {
-      const params = parseInput(letterParams, request.params);
-      return useCases.requeue.execute(params, ctx(request));
-    });
+    app.get(
+      '/queues/dead-letters',
+      {
+        config: {
+          ...manage,
+          ...doc({
+            tag,
+            summary: 'List dead-lettered messages, newest first, optionally of one stream (Super Admin only).',
+            description: 'Only the kind of work and the first characters of the target id — never the message content.',
+            query: deadLettersQuery,
+            responseDto: 'DeadLetterDto',
+          }),
+        },
+      },
+      async (request) => {
+        const query = parseInput(deadLettersQuery, request.query);
+        return { items: await useCases.queries.deadLetters(query) };
+      },
+    );
 
-    app.post('/queues/dead-letters/:stream/:id/discard', { config: access('platform.manage') }, async (request, reply) => {
-      const params = parseInput(letterParams, request.params);
-      const body = parseInput(discardBody, request.body);
-      await useCases.discard.execute({ ...params, reason: body.reason }, ctx(request));
-      return reply.status(204).send();
-    });
+    app.post(
+      '/queues/dead-letters/:stream/:id/requeue',
+      {
+        config: {
+          ...manage,
+          ...doc({ tag, summary: 'Put one dead-lettered message back on its stream to be processed again (Super Admin only).', params: letterParams, errors: [{ status: 404, code: 'NOT_FOUND' }] }),
+        },
+      },
+      async (request) => {
+        const params = parseInput(letterParams, request.params);
+        return useCases.requeue.execute(params, ctx(request));
+      },
+    );
 
-    app.put('/queues/groups/:group/pause', { config: access('platform.manage') }, async (request) => {
-      const { group } = parseInput(groupParams, request.params);
-      const body = parseInput(pauseBody, request.body);
-      return useCases.setPaused.execute({ group, paused: body.paused }, ctx(request));
-    });
+    app.post(
+      '/queues/dead-letters/:stream/:id/discard',
+      {
+        config: {
+          ...manage,
+          ...doc({
+            tag,
+            summary: 'Drop one dead-lettered message for good, with a reason that goes to the audit log (Super Admin only).',
+            params: letterParams,
+            body: discardBody,
+            example: { reason: 'Recipient deleted; message no longer applies.' },
+            status: 204,
+            errors: [
+              { status: 404, code: 'NOT_FOUND' },
+              { status: 422, code: 'DISCARD_REASON_REQUIRED' },
+              { status: 422, code: 'DISCARD_REASON_TOO_LONG' },
+            ],
+          }),
+        },
+      },
+      async (request, reply) => {
+        const params = parseInput(letterParams, request.params);
+        const body = parseInput(discardBody, request.body);
+        await useCases.discard.execute({ ...params, reason: body.reason }, ctx(request));
+        return reply.status(204).send();
+      },
+    );
+
+    app.put(
+      '/queues/groups/:group/pause',
+      {
+        config: {
+          ...manage,
+          ...doc({
+            tag,
+            summary: 'Pause or resume one processing group; a paused group stops taking new messages (Super Admin only).',
+            params: groupParams,
+            body: pauseBody,
+            example: { paused: true },
+            errors: [{ status: 422, code: 'CONSUMER_NOT_PAUSABLE' }],
+          }),
+        },
+      },
+      async (request) => {
+        const { group } = parseInput(groupParams, request.params);
+        const body = parseInput(pauseBody, request.body);
+        return useCases.setPaused.execute({ group, paused: body.paused }, ctx(request));
+      },
+    );
   };
 }

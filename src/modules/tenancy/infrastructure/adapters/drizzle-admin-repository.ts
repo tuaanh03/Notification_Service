@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, like, or, sql, type SQL } from 'drizzle-orm';
-import { isDuplicateKeyError, type TransactionContext } from '../../../../shared/db/index.ts';
+import { isDuplicateKeyError, lockParentRow, type TransactionContext } from '../../../../shared/db/index.ts';
 import {
   AccountId,
   AdminId,
@@ -23,6 +23,10 @@ export class DrizzleAdminRepository implements AdminRepository {
   async findById(id: AdminIdType): Promise<Admin | null> {
     const [row] = await this.transactions.executor().select().from(admins).where(eq(admins.adminId, id));
     return row ? toEntity(row) : null;
+  }
+
+  async lockForUpdate(id: AdminIdType): Promise<boolean> {
+    return lockParentRow(this.transactions.require('AdminRepository.lockForUpdate'), admins, admins.adminId, id);
   }
 
   async findByEmail(email: NormalizedEmail): Promise<Admin | null> {

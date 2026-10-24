@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { access, parseInput, type HttpRoutes, type RouteTarget } from '../../../../shared/http/index.ts';
+import { access, doc, parseInput, type HttpRoutes, type RouteTarget } from '../../../../shared/http/index.ts';
 import { parseAuditCursor, type AuditQueries } from '../../application/index.ts';
 
 const query = z.object({
@@ -43,25 +43,57 @@ const auditAccess = access(
  */
 export function adminAuditRoutes(useCases: { queries: AuditQueries }): HttpRoutes {
   return (app) => {
-    app.get('/audit', { config: auditAccess }, async (request) => {
-      const { targetType, targetId, limit } = parseInput(query, request.query);
-      return useCases.queries.listByTarget(targetType, targetId, limit);
-    });
+    app.get(
+      '/audit',
+      {
+        config: {
+          ...auditAccess,
+          ...doc({
+            tag: 'audit',
+            summary: 'List the audit history of one object, newest first.',
+            description: '`targetType=App` needs read access to that app; any other target type is Super Admin only.',
+            query,
+            responseDto: 'Array<AuditEntryDto & { actorEmail: string | null; actorName: string | null }>',
+            errors: [{ status: 404, code: 'NOT_FOUND' }],
+          }),
+        },
+      },
+      async (request) => {
+        const { targetType, targetId, limit } = parseInput(query, request.query);
+        return useCases.queries.listByTarget(targetType, targetId, limit);
+      },
+    );
 
     // Nhật ký chung của cả hệ thống — chỉ Super Admin (màn Quản trị EWS -> Nhật ký hoạt động).
-    app.get('/audit/events', { config: access('platform.manage') }, async (request, reply) => {
-      const q = parseInput(eventsQuery, request.query);
-      const page = await useCases.queries.search({
-        actions: q.action,
-        actor: q.actor,
-        targetType: q.targetType,
-        targetId: q.targetId,
-        from: q.from ? new Date(q.from) : undefined,
-        to: q.to ? new Date(q.to) : undefined,
-        before: parseAuditCursor(q.cursor),
-        limit: q.limit,
-      });
-      return reply.header('cache-control', 'no-store').send(page);
-    });
+    app.get(
+      '/audit/events',
+      {
+        config: {
+          ...access('platform.manage'),
+          ...doc({
+            tag: 'audit',
+            summary: 'Super Admin: search the system-wide audit log, newest first.',
+            description:
+              '`action` takes several event types separated by commas (at most 30). For the next page, pass the `nextCursor` of the previous response as `cursor`; `total` counts every match.',
+            query: eventsQuery,
+            responseDto: 'AuditEventPageDto',
+          }),
+        },
+      },
+      async (request, reply) => {
+        const q = parseInput(eventsQuery, request.query);
+        const page = await useCases.queries.search({
+          actions: q.action,
+          actor: q.actor,
+          targetType: q.targetType,
+          targetId: q.targetId,
+          from: q.from ? new Date(q.from) : undefined,
+          to: q.to ? new Date(q.to) : undefined,
+          before: parseAuditCursor(q.cursor),
+          limit: q.limit,
+        });
+        return reply.header('cache-control', 'no-store').send(page);
+      },
+    );
   };
 }

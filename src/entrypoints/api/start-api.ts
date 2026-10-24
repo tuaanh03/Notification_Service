@@ -34,6 +34,8 @@ export async function startApi(
     ],
     authenticators: application.authenticators,
     adminAuthorizer: application.adminAuthorizer,
+    // Phiên bản HỢP ĐỒNG API trên spec, không phải bản build — đổi khi route / body đổi không tương thích.
+    openApi: { serverUrl: application.publicBaseUrl, version: '1.0.0' },
     surfaces: {
       public: [...surfaces.public, ...(extra.public ?? [])],
       admin: [...surfaces.admin, ...(extra.admin ?? [])],

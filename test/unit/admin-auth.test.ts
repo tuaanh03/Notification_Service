@@ -55,6 +55,10 @@ class FakeAdmins implements AdminRepository {
   constructor(rows: Admin[] = []) {
     this.rows = rows;
   }
+  async lockForUpdate(id: string) {
+    return this.rows.some((a) => a.id === id);
+  }
+
   async findById(id: string): Promise<Admin | null> {
     return this.rows.find((a) => a.id === id) ?? null;
   }

@@ -10,6 +10,7 @@ import {
   type TimestampInput,
   type TopicId,
 } from '../../../../shared/kernel/index.ts';
+import { isAlertTrigger, isIncomingIntegrationId, type AlertTrigger, type IncomingIntegrationId } from '../rules/integrations.ts';
 import { parseJsonPath } from '../rules/json-path.ts';
 import type { PublishCondition, VariableMapping } from '../types/hook-config.ts';
 
@@ -26,6 +27,10 @@ export interface IncomingHookConfig {
   mappings: readonly VariableMapping[];
   dedupePath: string | null;
   condition: PublishCondition | null;
+  /** Công cụ đã chọn lúc tạo (ADR-0046); null = cấu hình tay / hook cũ. */
+  integration?: IncomingIntegrationId | null | undefined;
+  /** Phát khi đang lỗi / đã khắc phục / cả hai — null khi công cụ không phân biệt trạng thái. */
+  trigger?: AlertTrigger | null | undefined;
 }
 
 export interface IncomingHookProps extends TimestampInput, IncomingHookConfig {
@@ -56,6 +61,8 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
   mappings: readonly VariableMapping[];
   dedupePath: string | null;
   condition: PublishCondition | null;
+  integration: IncomingIntegrationId | null;
+  trigger: AlertTrigger | null;
   tokenHash: string;
   tokenHint: string;
   tokenVersion: number;
@@ -76,6 +83,8 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
     this.mappings = config.mappings;
     this.dedupePath = config.dedupePath;
     this.condition = config.condition;
+    this.integration = config.integration ?? null;
+    this.trigger = config.trigger ?? null;
     this.tokenHash = props.tokenHash;
     this.tokenHint = props.tokenHint;
     this.tokenVersion = props.tokenVersion ?? 1;
@@ -107,6 +116,8 @@ export class IncomingHook extends BaseEntity<IncomingHookId> {
     this.mappings = valid.mappings;
     this.dedupePath = valid.dedupePath;
     this.condition = valid.condition;
+    this.integration = valid.integration ?? null;
+    this.trigger = valid.trigger ?? null;
     this.touch(at);
   }
 
@@ -168,8 +179,26 @@ export function validateHookConfig(config: IncomingHookConfig): IncomingHookConf
     condition = { path, values };
   }
 
+  const integration = config.integration ?? null;
+  const trigger = config.trigger ?? null;
+  if (integration !== null && !isIncomingIntegrationId(integration)) {
+    issues.push(issue('INTEGRATION_UNKNOWN', `unknown integration "${String(integration)}"`, 'config.integration'));
+  }
+  if (trigger !== null && !isAlertTrigger(trigger)) {
+    issues.push(issue('INCOMING_CONDITION_INVALID', 'trigger must be firing, resolved or all', 'config.trigger'));
+  }
+
   if (issues.length > 0) throw new ValidationError(issues);
-  return { name, topicId: config.topicId, templateId: config.templateId, mappings, dedupePath, condition };
+  return {
+    name,
+    topicId: config.topicId,
+    templateId: config.templateId,
+    mappings,
+    dedupePath,
+    condition,
+    integration,
+    trigger,
+  };
 }
 
 function collect(issues: Issue[], check: () => unknown): void {

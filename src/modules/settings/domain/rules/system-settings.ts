@@ -51,6 +51,10 @@ export const SYSTEM_SETTINGS = {
    * mở. 0 = không bao giờ khoá hẳn — mặc định, vì ai biết email cũng cố tình nhập sai để khoá được người khác.
    */
   'auth.permanent_lock_after': { kind: 'int', default: 0, min: 0, max: 10 },
+  /** Số personal access token CÒN HIỆU LỰC tối đa mỗi người (ADR-0044). */
+  'pat.max_per_admin': { kind: 'int', default: 10, min: 1, max: 50 },
+  /** Hạn dài nhất của một PAT, tính bằng ngày — không có PAT vĩnh viễn (ADR-0044). */
+  'pat.max_lifetime_days': { kind: 'int', default: 365, min: 1, max: 3650 },
 } as const satisfies Record<string, SettingSpec>;
 
 type SettingSpec =
@@ -79,6 +83,8 @@ export interface SystemSettingsValues {
   'auth.lockout_minutes': number;
   'auth.ip_max_failed_attempts': number;
   'auth.permanent_lock_after': number;
+  'pat.max_per_admin': number;
+  'pat.max_lifetime_days': number;
 }
 
 export const isSystemSettingKey = (key: string): key is SystemSettingKey => Object.hasOwn(SYSTEM_SETTINGS, key);
@@ -110,6 +116,8 @@ export function effectiveSettings(stored: ReadonlyMap<string, unknown>): SystemS
     'auth.lockout_minutes': pick('auth.lockout_minutes'),
     'auth.ip_max_failed_attempts': pick('auth.ip_max_failed_attempts'),
     'auth.permanent_lock_after': pick('auth.permanent_lock_after'),
+    'pat.max_per_admin': pick('pat.max_per_admin'),
+    'pat.max_lifetime_days': pick('pat.max_lifetime_days'),
   };
 }
 

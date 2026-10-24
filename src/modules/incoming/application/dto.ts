@@ -1,5 +1,6 @@
 import type { IncomingCall } from '../domain/entities/incoming-call.ts';
 import type { IncomingHook } from '../domain/entities/incoming-hook.ts';
+import type { AlertTrigger, IncomingIntegration, IncomingIntegrationId, IntegrationPayload } from '../domain/rules/integrations.ts';
 import type { ExtractedVariable } from '../domain/rules/payload-extraction.ts';
 import type { PublishCondition, VariableMapping } from '../domain/types/hook-config.ts';
 import type { Issue } from '../../../shared/kernel/index.ts';
@@ -22,6 +23,11 @@ export interface IncomingHookDto {
   mappings: VariableMapping[];
   dedupePath: string | null;
   condition: PublishCondition | null;
+  /** Công cụ giám sát đã chọn (ADR-0046); null = cấu hình tay / hook cũ. */
+  integration: IncomingIntegrationId | null;
+  trigger: AlertTrigger | null;
+  /** Body để dán vào công cụ `custom` (Datadog, Gatus, Uptime Kuma) — dựng theo bản template đang xuất bản; công cụ khác -> null. */
+  setupBody: Record<string, string> | null;
   /** active | disabled */
   status: string;
   tokenHint: string;
@@ -89,6 +95,7 @@ export function toIncomingHookDto(
     topic: { key: string } | null;
     template: { name: string; status: string; version: number | null } | null;
     warnings: HookWarningDto[];
+    setupBody: Record<string, string> | null;
   },
 ): IncomingHookDto {
   return {
@@ -104,6 +111,9 @@ export function toIncomingHookDto(
     mappings: [...hook.mappings],
     dedupePath: hook.dedupePath,
     condition: hook.condition,
+    integration: hook.integration,
+    trigger: hook.trigger,
+    setupBody: extra.setupBody,
     status: hook.status,
     tokenHint: hook.tokenHint,
     warnings: extra.warnings,
@@ -111,6 +121,32 @@ export function toIncomingHookDto(
     updatedAt: iso(hook.updatedAt),
   };
 }
+
+/** Một công cụ trong danh mục (ADR-0046) — `GET /admin/incoming-integrations`. */
+export interface IncomingIntegrationDto {
+  id: IncomingIntegrationId;
+  name: string;
+  payload: IntegrationPayload;
+  /** Trang hướng dẫn webhook của công cụ. */
+  docsUrl: string | null;
+  /** Biến (không có tiền tố `payload.`) -> token (custom) hoặc đường dẫn JSON (fixed). */
+  fields: Array<{ variable: string; source: string }>;
+  /** custom = tên trường thêm vào body + token · fixed = đường dẫn. null = không phân biệt. */
+  status: { field: string; source: string; firing: string[]; resolved: string[] } | null;
+  /** Các bước cài trên công cụ — chữ ngắn, đã dịch. */
+  steps: { vi: string[]; en: string[] };
+}
+
+/** Không lộ `fallbacks` — đó là chi tiết của ánh xạ tự dựng, đã nằm trong `mappings` của hook. */
+export const toIncomingIntegrationDto = (i: IncomingIntegration): IncomingIntegrationDto => ({
+  id: i.id,
+  name: i.name,
+  payload: i.payload,
+  docsUrl: i.docsUrl,
+  fields: i.fields.map((f) => ({ variable: f.variable, source: f.source })),
+  status: i.status === null ? null : { ...i.status, firing: [...i.status.firing], resolved: [...i.status.resolved] },
+  steps: { vi: [...i.steps.vi], en: [...i.steps.en] },
+});
 
 export const toIncomingCallDto = (c: IncomingCall): IncomingCallDto => ({
   id: c.id,

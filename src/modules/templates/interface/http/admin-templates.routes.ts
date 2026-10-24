@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { access, adminCaller, EXTERNAL_ID, LARGE_BODY_LIMIT_BYTES, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, adminCaller, adminContext, doc, EXTERNAL_ID, type HttpRoutes, LARGE_BODY_LIMIT_BYTES, parseInput } from '../../../../shared/http/index.ts';
 import { AppId, TEMPLATE_CATEGORIES, TemplateId, VARIABLE_SOURCES } from '../../../../shared/kernel/index.ts';
 import type {
   ArchiveTemplate,
@@ -141,105 +141,368 @@ export function adminTemplatesRoutes(useCases: {
   presets: TemplatePresetQueries;
 }): HttpRoutes {
   return (app) => {
-    const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
-      actor: { id: adminCaller(request).adminId, type: 'admin' },
-      source: 'admin_api',
-    });
+    // Nguồn audit theo cách xác thực: phiên -> `admin_api`, PAT -> `admin_pat` (ADR-0044).
+    const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => adminContext(request);
     const ids = (params: { appId: string; templateId: string }) => ({
       appId: AppId.parse(params.appId),
       templateId: TemplateId.parse(params.templateId),
     });
 
-    app.post('/apps/:appId/templates', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
-      const { appId } = parseInput(appParams, request.params);
-      const body = parseInput(createBody, request.body);
-      const created = await useCases.createTemplate.execute(
-        {
-          appId: AppId.parse(appId),
-          name: body.name,
-          category: body.category,
-          editor: body.editor,
-          ...toCreateContent(body),
+    const tag = 'templates';
+    const archived = { status: 409, code: 'TEMPLATE_ARCHIVED' } as const;
+    const nameTaken = { status: 409, code: 'TEMPLATE_NAME_TAKEN' } as const;
+    // Bộ kiểm HTML an toàn + cỡ dự án của kiểu `visual` (ADR-0036 / 0038) — cùng mã khi xuất bản kiểu `html`.
+    const htmlIssues = [
+      'HTML_TAG_NOT_ALLOWED',
+      'HTML_ATTRIBUTE_NOT_ALLOWED',
+      'HTML_URL_NOT_ALLOWED',
+      'HTML_STYLE_NOT_ALLOWED',
+      'IMAGE_URL_NOT_ALLOWED',
+      'HTML_MALFORMED',
+      'HTML_TOO_LARGE',
+    ].map((code) => ({ status: 422, code }));
+    const visualIssues = [...htmlIssues, { status: 422, code: 'DESIGN_TOO_LARGE' }];
+    // Ví dụ một template kiểu `html` hai biến — dùng cho body mẫu của tạo + lưu nháp.
+    const exampleVariables = [
+      { name: 'vm_name', source: 'payload', required: true, description: 'VM name' },
+      { name: 'cpu', source: 'payload', required: true, description: 'CPU load (%)' },
+    ];
+
+    app.post(
+      '/apps/:appId/templates',
+      {
+        bodyLimit: LARGE_BODY_LIMIT_BYTES,
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Create a template with draft v1 (editor `html` by default, or `visual`).',
+            description:
+              'The draft is not checked against the publish rules until you publish. `visual`: send `html` and `design` together, or neither for an empty email; the HTML is checked for safety now. Names are unique per app (case- and accent-insensitive).',
+            params: appParams,
+            body: createBody,
+            example: {
+              name: 'VM alert',
+              category: 'alert',
+              subject: 'VM {{ payload.vm_name }} is overloaded',
+              html: '<p>CPU at {{ payload.cpu }}%.</p>',
+              variables: exampleVariables,
+            },
+            status: 201,
+            responseDto: 'TemplateDetailDto',
+            errors: [nameTaken, ...visualIssues],
+          }),
         },
-        ctx(request),
-      );
-      return reply.status(201).send(created);
-    });
+      },
+      async (request, reply) => {
+        const { appId } = parseInput(appParams, request.params);
+        const body = parseInput(createBody, request.body);
+        const created = await useCases.createTemplate.execute(
+          {
+            appId: AppId.parse(appId),
+            name: body.name,
+            category: body.category,
+            editor: body.editor,
+            ...toCreateContent(body),
+          },
+          ctx(request),
+        );
+        return reply.status(201).send(created);
+      },
+    );
 
     // Thư viện mẫu không thuộc app / org nào — ai đăng nhập console cũng xem được (ADR-0035).
-    app.get('/template-presets', { config: access('catalog.read') }, async (request) => {
-      const { category, locale } = parseInput(presetListQuery, request.query);
-      return useCases.presets.list({ category, locale });
-    });
+    app.get(
+      '/template-presets',
+      {
+        config: {
+          ...access('catalog.read'),
+          ...doc({ tag, summary: 'List the built-in template presets in one locale (not tied to any app).', query: presetListQuery, responseDto: 'TemplatePresetDto[]' }),
+        },
+      },
+      async (request) => {
+        const { category, locale } = parseInput(presetListQuery, request.query);
+        return useCases.presets.list({ category, locale });
+      },
+    );
 
     // "Dùng mẫu": template MỚI của app, nháp v1 kiểu visual (HTML biên dịch ở trình duyệt) — quyền như lệnh tạo.
-    app.post('/apps/:appId/templates/from-preset', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request, reply) => {
-      const { appId } = parseInput(appParams, request.params);
-      const body = parseInput(fromPresetBody, request.body);
-      const created = await useCases.createTemplateFromPreset.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
-      return reply.status(201).send(created);
-    });
+    app.post(
+      '/apps/:appId/templates/from-preset',
+      {
+        bodyLimit: LARGE_BODY_LIMIT_BYTES,
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Create a new visual template from a preset.',
+            description: '`html` + `design` are the preset MJML compiled by the console (GrapesJS + grapesjs-mjml); the HTML is checked like a visual draft save. The new template does not follow later preset changes.',
+            params: appParams,
+            body: fromPresetBody,
+            status: 201,
+            responseDto: 'TemplateDetailDto',
+            errors: [{ status: 404, code: 'NOT_FOUND' }, nameTaken, ...visualIssues],
+          }),
+        },
+      },
+      async (request, reply) => {
+        const { appId } = parseInput(appParams, request.params);
+        const body = parseInput(fromPresetBody, request.body);
+        const created = await useCases.createTemplateFromPreset.execute({ appId: AppId.parse(appId), ...body }, ctx(request));
+        return reply.status(201).send(created);
+      },
+    );
 
-    app.get('/apps/:appId/templates', { config: access('app.read') }, async (request) => {
-      const { appId } = parseInput(appParams, request.params);
-      const { category, q } = parseInput(listQuery, request.query);
-      return useCases.queries.list(AppId.parse(appId), { category, search: q });
-    });
+    app.get(
+      '/apps/:appId/templates',
+      {
+        config: {
+          ...access('app.read'),
+          ...doc({
+            tag,
+            summary: 'List templates of an app, optionally filtered by category and name.',
+            description: '`q` matches part of the name, case- and accent-insensitive ("canh bao" finds "Cảnh báo").',
+            params: appParams,
+            query: listQuery,
+            responseDto: 'TemplateSummaryDto[]',
+          }),
+        },
+      },
+      async (request) => {
+        const { appId } = parseInput(appParams, request.params);
+        const { category, q } = parseInput(listQuery, request.query);
+        return useCases.queries.list(AppId.parse(appId), { category, search: q });
+      },
+    );
 
     // Đổ biến vào bản ĐANG XUẤT BẢN — đúng hàm lúc gửi dùng, nên xem trước thế nào thì thư đi thế ấy.
     // Không ghi gì. Lỗi template (MISSING_VARIABLE, TEMPLATE_NOT_PUBLISHED…) là 422 như lúc gửi.
-    app.post('/apps/:appId/templates/:templateId/render', { config: access('app.read') }, async (request) => {
-      const params = ids(parseInput(templateParams, request.params));
-      const { payload, externalId } = parseInput(renderBody, request.body ?? {});
-      return useCases.renderTemplate.execute({ ...params, payload, externalId: externalId ?? 'preview' });
-    });
+    app.post(
+      '/apps/:appId/templates/:templateId/render',
+      {
+        config: {
+          ...access('app.read'),
+          ...doc({
+            tag,
+            summary: 'Render the published version with a payload, exactly as a send would. Writes nothing.',
+            description: 'Template errors are 422, the same as when sending. `externalId` fills `{{ user.external_id }}` (default `preview`).',
+            params: templateParams,
+            body: renderBody,
+            example: { payload: { vm_name: 'ai-gateway', cpu: 92 }, externalId: 'NV-0123' },
+            responseDto: 'RenderedTemplateDto',
+            errors: ['TEMPLATE_NOT_FOUND', 'TEMPLATE_NOT_PUBLISHED', 'TEMPLATE_ARCHIVED', 'MISSING_VARIABLE', 'INVALID_PAYLOAD_VALUE', 'LINK_SCHEME_NOT_ALLOWED'].map((code) => ({ status: 422, code })),
+          }),
+        },
+      },
+      async (request) => {
+        const params = ids(parseInput(templateParams, request.params));
+        const { payload, externalId } = parseInput(renderBody, request.body ?? {});
+        return useCases.renderTemplate.execute({ ...params, payload, externalId: externalId ?? 'preview' });
+      },
+    );
 
-    app.get('/apps/:appId/templates/:templateId', { config: access('app.read') }, async (request) => {
-      const { appId, templateId } = ids(parseInput(templateParams, request.params));
-      return useCases.queries.get(appId, templateId);
-    });
+    app.get(
+      '/apps/:appId/templates/:templateId',
+      {
+        config: {
+          ...access('app.read'),
+          ...doc({ tag, summary: 'Get a template with all its versions (newest first).', params: templateParams, responseDto: 'TemplateDetailDto' }),
+        },
+      },
+      async (request) => {
+        const { appId, templateId } = ids(parseInput(templateParams, request.params));
+        return useCases.queries.get(appId, templateId);
+      },
+    );
 
-    app.patch('/apps/:appId/templates/:templateId', { config: access('app.manage') }, async (request) => {
-      const params = ids(parseInput(templateParams, request.params));
-      const { name, category } = parseInput(updateBody, request.body);
-      return useCases.updateTemplate.execute({ ...params, name, category }, ctx(request));
-    });
+    app.patch(
+      '/apps/:appId/templates/:templateId',
+      {
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Rename a template or change its category. Content is not touched.',
+            params: templateParams,
+            body: updateBody,
+            responseDto: 'TemplateDetailDto',
+            errors: [archived, nameTaken],
+          }),
+        },
+      },
+      async (request) => {
+        const params = ids(parseInput(templateParams, request.params));
+        const { name, category } = parseInput(updateBody, request.body);
+        return useCases.updateTemplate.execute({ ...params, name, category }, ctx(request));
+      },
+    );
 
     // Bản sao là template MỚI (id mới) của cùng app — quyền như lệnh tạo.
-    app.post('/apps/:appId/templates/:templateId/duplicate', { config: access('app.manage') }, async (request, reply) => {
-      const params = ids(parseInput(templateParams, request.params));
-      const { name } = parseInput(duplicateBody, request.body);
-      const created = await useCases.duplicateTemplate.execute({ ...params, name }, ctx(request));
-      return reply.status(201).send(created);
-    });
+    app.post(
+      '/apps/:appId/templates/:templateId/duplicate',
+      {
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Duplicate a template into a new one (new id, draft v1 only). Archived templates can be duplicated.',
+            params: templateParams,
+            body: duplicateBody,
+            status: 201,
+            responseDto: 'TemplateDetailDto',
+            errors: [nameTaken],
+          }),
+        },
+      },
+      async (request, reply) => {
+        const params = ids(parseInput(templateParams, request.params));
+        const { name } = parseInput(duplicateBody, request.body);
+        const created = await useCases.duplicateTemplate.execute({ ...params, name }, ctx(request));
+        return reply.status(201).send(created);
+      },
+    );
 
-    app.put('/apps/:appId/templates/:templateId/draft', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
-      const params = ids(parseInput(templateParams, request.params));
-      const body = parseInput(draftBody, request.body);
-      return useCases.saveDraft.execute({ ...params, draft: toDraft(body) }, ctx(request));
-    });
+    app.put(
+      '/apps/:appId/templates/:templateId/draft',
+      {
+        bodyLimit: LARGE_BODY_LIMIT_BYTES,
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Save the draft (creates one if there is none). Does not publish.',
+            description:
+              'One draft per template. The editor type is fixed per version: saving a `visual` body onto an `html` draft is `EDITOR_MISMATCH`. `visual` sends `html` + `design`, never `text` (generated by EWS); its HTML is checked for safety now. Publish rules are checked only on publish.',
+            params: templateParams,
+            body: draftBody,
+            example: {
+              editor: 'html',
+              subject: 'VM {{ payload.vm_name }} is overloaded',
+              html: '<p>CPU at {{ payload.cpu }}%.</p>',
+              text: 'CPU at {{ payload.cpu }}%.',
+              variables: exampleVariables,
+            },
+            responseDto: 'TemplateDetailDto',
+            errors: [archived, { status: 409, code: 'EDITOR_MISMATCH' }, ...visualIssues],
+          }),
+        },
+      },
+      async (request) => {
+        const params = ids(parseInput(templateParams, request.params));
+        const body = parseInput(draftBody, request.body);
+        return useCases.saveDraft.execute({ ...params, draft: toDraft(body) }, ctx(request));
+      },
+    );
 
-    app.post('/apps/:appId/templates/:templateId/draft/from/:version', { config: access('app.manage') }, async (request, reply) => {
-      const { version, ...rest } = parseInput(versionParams, request.params);
-      const created = await useCases.draftFromVersion.execute({ ...ids(rest), version }, ctx(request));
-      return reply.status(201).send(created);
-    });
+    app.post(
+      '/apps/:appId/templates/:templateId/draft/from/:version',
+      {
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Create a draft copied from an existing version (the way to roll back: then publish it).',
+            params: versionParams,
+            status: 201,
+            responseDto: 'TemplateDetailDto',
+            errors: [archived, { status: 409, code: 'DRAFT_EXISTS' }],
+          }),
+        },
+      },
+      async (request, reply) => {
+        const { version, ...rest } = parseInput(versionParams, request.params);
+        const created = await useCases.draftFromVersion.execute({ ...ids(rest), version }, ctx(request));
+        return reply.status(201).send(created);
+      },
+    );
 
-    app.post('/apps/:appId/templates/:templateId/publish', { config: access('app.manage') }, async (request) => {
-      const params = ids(parseInput(templateParams, request.params));
-      return useCases.publishVersion.execute(params, ctx(request));
-    });
+    app.post(
+      '/apps/:appId/templates/:templateId/publish',
+      {
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Publish the draft stored on the server. It replaces the published version for every later send.',
+            description:
+              'Publishes what was last SAVED — save the draft first. 422 lists every violation in `issues[]` (code + path). Adding a required variable means every app send without it fails with `MISSING_VARIABLE`. `html` templates also go through the HTML safety check when `templates.html_check_enabled` is on.',
+            params: templateParams,
+            responseDto: 'TemplateDetailDto',
+            errors: [
+              archived,
+              { status: 409, code: 'NO_DRAFT' },
+              ...[
+                'SUBJECT_REQUIRED',
+                'HTML_REQUIRED',
+                'VARIABLE_NOT_IN_SCHEMA',
+                'VARIABLE_MISSING_SOURCE',
+                'OPTIONAL_VARIABLE_WITHOUT_DEFAULT',
+                'INVALID_VARIABLE_NAME',
+                'DUPLICATE_VARIABLE',
+                'USER_VARIABLE_NOT_SUPPORTED',
+                'LINK_SCHEME_NOT_ALLOWED',
+                'VERSION_SUPERSEDED',
+              ].map((code) => ({ status: 422, code })),
+              ...htmlIssues,
+            ],
+          }),
+        },
+      },
+      async (request) => {
+        const params = ids(parseInput(templateParams, request.params));
+        return useCases.publishVersion.execute(params, ctx(request));
+      },
+    );
 
     // Trả ĐỀ XUẤT của AI, không ghi gì (ADR-0020 §7). Có thể mất vài chục giây — chờ nhà cung cấp.
-    app.post('/apps/:appId/templates/:templateId/ai-compose', { bodyLimit: LARGE_BODY_LIMIT_BYTES, config: access('app.manage') }, async (request) => {
-      const params = ids(parseInput(templateParams, request.params));
-      const body = parseInput(aiComposeBody, request.body);
-      return useCases.composeTemplateDraft.execute({ ...params, ...body }, ctx(request));
-    });
+    app.post(
+      '/apps/:appId/templates/:templateId/ai-compose',
+      {
+        bodyLimit: LARGE_BODY_LIMIT_BYTES,
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Ask AI for a subject + HTML suggestion. Writes nothing; can take up to ~60 s.',
+            description:
+              '`mode: revise` needs `current` (what is being edited, may be unsaved). Sample values are never sent to the AI. The answer carries its own publish-rule `issues` and `suggestedVariables` the AI used but you did not declare.',
+            params: templateParams,
+            body: aiComposeBody,
+            responseDto: 'AiComposeResultDto',
+            errors: [
+              archived,
+              { status: 429, code: 'AI_RATE_LIMITED' },
+              { status: 502, code: 'AI_PROVIDER_ERROR' },
+              { status: 503, code: 'AI_NOT_CONFIGURED' },
+            ],
+          }),
+        },
+      },
+      async (request) => {
+        const params = ids(parseInput(templateParams, request.params));
+        const body = parseInput(aiComposeBody, request.body);
+        return useCases.composeTemplateDraft.execute({ ...params, ...body }, ctx(request));
+      },
+    );
 
-    app.post('/apps/:appId/templates/:templateId/archive', { config: access('app.manage') }, async (request) => {
-      const params = ids(parseInput(templateParams, request.params));
-      return useCases.archiveTemplate.execute(params, ctx(request));
-    });
+    app.post(
+      '/apps/:appId/templates/:templateId/archive',
+      {
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Archive a template. No way back: sends using it fail with `TEMPLATE_ARCHIVED`.',
+            description: 'Archiving twice is a no-op. An archived template can still be read and duplicated.',
+            params: templateParams,
+            responseDto: 'TemplateDetailDto',
+          }),
+        },
+      },
+      async (request) => {
+        const params = ids(parseInput(templateParams, request.params));
+        return useCases.archiveTemplate.execute(params, ctx(request));
+      },
+    );
   };
 }

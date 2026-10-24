@@ -19,7 +19,7 @@ import type {
   TopicCatalog,
 } from '../ports/index.ts';
 import { describeHooks } from '../queries/describe-hooks.ts';
-import { assertTargetsBelongToApp, hookUrl, requireConfigured, requireHook } from './shared.ts';
+import { assertTargetsBelongToApp, hookUrl, requireConfigured, requireHook, resolveHookConfig, type IncomingHookInput } from './shared.ts';
 
 interface Deps {
   uow: UnitOfWork;
@@ -48,6 +48,8 @@ const configOf = (hook: IncomingHook) => ({
   mappings: hook.mappings,
   dedupePath: hook.dedupePath,
   condition: hook.condition,
+  integration: hook.integration,
+  trigger: hook.trigger,
 });
 
 async function describe(deps: Deps, hook: IncomingHook): Promise<IncomingHookDto> {
@@ -70,10 +72,11 @@ export class CreateIncomingHook {
     this.deps = deps;
   }
 
-  async execute(input: { appId: AppId; config: IncomingHookConfig }, ctx: CommandContext): Promise<IssuedHookUrlDto> {
-    const { uow, outbox, clock, hooks, crypto, settings } = this.deps;
+  async execute(input: { appId: AppId; config: IncomingHookInput }, ctx: CommandContext): Promise<IssuedHookUrlDto> {
+    const { uow, outbox, clock, hooks, crypto, settings, templates } = this.deps;
     requireConfigured(crypto);
     await assertTargetsBelongToApp(this.deps, input.appId, input.config);
+    const config = await resolveHookConfig(templates, input.appId, input.config);
     const max = (await settings.current()).maxHooksPerApp;
     const id = IncomingHookId.create();
     const token = crypto.tokenFor(id, 1);
@@ -86,7 +89,7 @@ export class CreateIncomingHook {
             id,
             appId: input.appId,
             slot,
-            ...input.config,
+            ...config,
             tokenHash: token.hash,
             tokenHint: token.hint,
             tokenVersion: 1,
@@ -114,15 +117,19 @@ export class UpdateIncomingHook {
   }
 
   async execute(
-    input: { appId: AppId; hookId: IncomingHookId; config?: IncomingHookConfig | undefined; status?: IncomingHookStatus | undefined },
+    input: { appId: AppId; hookId: IncomingHookId; config?: IncomingHookInput | undefined; status?: IncomingHookStatus | undefined },
     ctx: CommandContext,
   ): Promise<IncomingHookDto> {
-    const { uow, outbox, clock, hooks } = this.deps;
-    if (input.config) await assertTargetsBelongToApp(this.deps, input.appId, input.config);
+    const { uow, outbox, clock, hooks, templates } = this.deps;
+    let config: IncomingHookConfig | undefined;
+    if (input.config) {
+      await assertTargetsBelongToApp(this.deps, input.appId, input.config);
+      config = await resolveHookConfig(templates, input.appId, input.config);
+    }
     const hook = await uow.run(async () => {
       const found = await requireHook(hooks, input.appId, input.hookId);
       const now = clock.now();
-      if (input.config) found.reconfigure(input.config, now);
+      if (config) found.reconfigure(config, now);
       if (input.status) found.setStatus(input.status, now);
       await hooks.update(found);
       await outbox.append([auditEvent(found, INCOMING_HOOK_EVENTS.updated, ctx, { ...configOf(found), status: found.status })]);

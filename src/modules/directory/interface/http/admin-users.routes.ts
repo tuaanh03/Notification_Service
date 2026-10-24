@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CommandContext } from '../../../../shared/application/index.ts';
-import { access, adminCaller, EXTERNAL_ID, parseInput, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { access, adminCaller, adminContext, doc, EXTERNAL_ID, type HttpRoutes, parseInput } from '../../../../shared/http/index.ts';
 import { AppId } from '../../../../shared/kernel/index.ts';
 import { MAX_USER_PAGE, type CreateUser, type DeleteUser, type FindUserByExternalId, type ListUsers } from '../../application/index.ts';
 
@@ -31,36 +31,88 @@ export function adminUsersRoutes(useCases: {
   deleteUser: DeleteUser;
 }): HttpRoutes {
   return (app) => {
-    const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => ({
-      actor: { id: adminCaller(request).adminId, type: 'admin' },
-      source: 'admin_api',
-    });
+    // Nguồn audit theo cách xác thực: phiên -> `admin_api`, PAT -> `admin_pat` (ADR-0044).
+    const ctx = (request: Parameters<typeof adminCaller>[0]): CommandContext => adminContext(request);
+    const tag = 'users';
 
-    app.post('/apps/:appId/users', { config: access('app.manage') }, async (request, reply) => {
-      const { appId } = parseInput(appParams, request.params);
-      const { externalId, email } = parseInput(createBody, request.body);
-      const created = await useCases.createUser.execute({ appId: AppId.parse(appId), externalId, email }, ctx(request));
-      return reply.status(201).send(created);
-    });
+    app.post(
+      '/apps/:appId/users',
+      {
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Add a recipient to an app by hand.',
+            description:
+              'Unlike `PUT /v1/users/{externalId}`, an existing id is never overwritten (409 `USER_ALREADY_EXISTS`). The id of a soft-deleted recipient restores that recipient. User and email are written in one transaction.',
+            params: appParams,
+            body: createBody,
+            example: { externalId: 'NV-0123', email: 'an.nguyen@company.com' },
+            status: 201,
+            responseDto: 'UserDto',
+            errors: [
+              { status: 409, code: 'EMAIL_TAKEN' },
+              { status: 409, code: 'USER_ALREADY_EXISTS' },
+              { status: 422, code: 'EMAIL_INVALID' },
+            ],
+          }),
+        },
+      },
+      async (request, reply) => {
+        const { appId } = parseInput(appParams, request.params);
+        const { externalId, email } = parseInput(createBody, request.body);
+        const created = await useCases.createUser.execute({ appId: AppId.parse(appId), externalId, email }, ctx(request));
+        return reply.status(201).send(created);
+      },
+    );
 
     // Xoá MỀM (giữ lịch sử gửi). App khai lại cùng mã qua `/v1` -> khôi phục.
-    app.delete('/apps/:appId/users/:externalId', { config: access('app.manage') }, async (request, reply) => {
-      const { appId, externalId } = parseInput(userParams, request.params);
-      await useCases.deleteUser.execute({ appId: AppId.parse(appId), externalId }, ctx(request));
-      return reply.status(204).send();
-    });
+    app.delete(
+      '/apps/:appId/users/:externalId',
+      {
+        config: {
+          ...access('app.manage'),
+          ...doc({
+            tag,
+            summary: 'Soft-delete a recipient.',
+            description:
+              'Hidden from lists, lookups (404) and sends (`RECIPIENT_NOT_FOUND`); send history and email state are kept. Emails already queued still go out. The app declaring the same id again via `PUT /v1/users/{externalId}` restores the recipient.',
+            params: userParams,
+            status: 204,
+          }),
+        },
+      },
+      async (request, reply) => {
+        const { appId, externalId } = parseInput(userParams, request.params);
+        await useCases.deleteUser.execute({ appId: AppId.parse(appId), externalId }, ctx(request));
+        return reply.status(204).send();
+      },
+    );
 
-    app.get('/apps/:appId/users', { config: access('app.read') }, async (request) => {
-      const { appId } = parseInput(appParams, request.params);
-      const { limit, offset, q } = parseInput(listQuery, request.query);
-      return useCases.listUsers.execute({ appId: AppId.parse(appId), limit, offset, search: q });
-    });
+    app.get(
+      '/apps/:appId/users',
+      {
+        config: {
+          ...access('app.read'),
+          ...doc({ tag, summary: 'List the recipients of an app, paged; `q` matches part of the external id.', params: appParams, query: listQuery, responseDto: 'UserPageDto' }),
+        },
+      },
+      async (request) => {
+        const { appId } = parseInput(appParams, request.params);
+        const { limit, offset, q } = parseInput(listQuery, request.query);
+        return useCases.listUsers.execute({ appId: AppId.parse(appId), limit, offset, search: q });
+      },
+    );
 
     // Đúng MỘT người, khớp đủ mã — cho trang chi tiết mở thẳng bằng link. Không tái dùng `?q=` của
     // danh sách: ô tìm đó khớp một phần. Cùng use case với `GET /v1/users/:externalId`, không có -> 404.
-    app.get('/apps/:appId/users/:externalId', { config: access('app.read') }, async (request) => {
-      const { appId, externalId } = parseInput(userParams, request.params);
-      return useCases.findUser.get({ appId: AppId.parse(appId), externalId });
-    });
+    app.get(
+      '/apps/:appId/users/:externalId',
+      { config: { ...access('app.read'), ...doc({ tag, summary: 'Get one recipient by exact external id.', params: userParams, responseDto: 'UserDto' }) } },
+      async (request) => {
+        const { appId, externalId } = parseInput(userParams, request.params);
+        return useCases.findUser.get({ appId: AppId.parse(appId), externalId });
+      },
+    );
   };
 }

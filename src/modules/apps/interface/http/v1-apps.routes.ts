@@ -1,4 +1,4 @@
-import { appCaller, type HttpRoutes } from '../../../../shared/http/index.ts';
+import { appCaller, doc, type HttpRoutes } from '../../../../shared/http/index.ts';
 import type { AppQueries } from '../../application/index.ts';
 
 /**
@@ -7,19 +7,30 @@ import type { AppQueries } from '../../application/index.ts';
  */
 export function v1AppsRoutes(useCases: { queries: AppQueries }): HttpRoutes {
   return (app) => {
-    app.get('/me', async (request) => {
-      const caller = appCaller(request);
-      const current = await useCases.queries.get(caller.appId);
-      return {
-        appId: current.id,
-        orgId: current.orgId,
-        slug: current.slug,
-        name: current.name,
-        status: current.status,
-        grantedChannels: current.grantedChannels,
-        rateLimitPerMinute: current.rateLimitPerMinute,
-        maxRecipientsPerEvent: current.maxRecipientsPerEvent,
-      };
-    });
+    app.get(
+      '/me',
+      {
+        config: doc({
+          tag: 'v1',
+          summary: 'Check that your API key works and see what the app is granted.',
+          responseDto:
+            '{ appId: string; orgId: string; slug: string; name: string; status: AppStatus; grantedChannels: Channel[]; rateLimitPerMinute: number; maxRecipientsPerEvent: number }',
+        }),
+      },
+      async (request) => {
+        const caller = appCaller(request);
+        const current = await useCases.queries.get(caller.appId);
+        return {
+          appId: current.id,
+          orgId: current.orgId,
+          slug: current.slug,
+          name: current.name,
+          status: current.status,
+          grantedChannels: current.grantedChannels,
+          rateLimitPerMinute: current.rateLimitPerMinute,
+          maxRecipientsPerEvent: current.maxRecipientsPerEvent,
+        };
+      },
+    );
   };
 }

@@ -10,3 +10,6 @@ export * from './drizzle-org-member-repository.ts';
 export * from './graph-tenant-directory.ts';
 export * from './redis-login-attempt-store.ts';
 export * from './settings-login-throttle-policy.ts';
+export * from './drizzle-personal-access-token-repository.ts';
+export * from './random-personal-access-token-factory.ts';
+export * from './settings-pat-policy.ts';

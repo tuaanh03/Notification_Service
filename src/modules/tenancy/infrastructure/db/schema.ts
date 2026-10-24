@@ -1,5 +1,5 @@
 import { boolean, foreignKey, index, mysqlEnum, mysqlTable, primaryKey, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
-import { ADMIN_ROLES, ORG_ROLES } from '../../../../shared/kernel/enums.ts';
+import { ADMIN_ROLES, ORG_ROLES, PAT_SCOPES } from '../../../../shared/kernel/enums.ts';
 import { ts, tsNow, uuid, uuidPk } from '../../../../shared/db/columns.ts';
 
 export const accounts = mysqlTable('accounts', {
@@ -141,5 +141,40 @@ export const adminSessions = mysqlTable(
     index('idx_admin_sessions_admin').on(t.adminId),
     // Dọn phiên hết hạn.
     index('idx_admin_sessions_expires').on(t.expiresAt),
+  ],
+);
+
+/**
+ * Personal access token (ADR-0044): cách xác thực thứ hai của `/admin/*`, mang quyền của CHÍNH admin tạo ra nó.
+ * Chỉ lưu băm — token gốc hiện một lần lúc tạo. Không xoá dòng khi thu hồi / hết hạn: danh sách còn cần
+ * hiện "đã thu hồi lúc …", và audit trỏ tới `token_id`.
+ */
+export const personalAccessTokens = mysqlTable(
+  'personal_access_tokens',
+  {
+    tokenId: uuidPk('token_id'),
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => admins.adminId),
+    name: varchar('name', { length: 100 }).notNull(),
+    /** sha256 hex — tra lời gọi vào. */
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    /** `ewspat_…a1b2` — để người dùng nhận ra token nào, không đủ để dò. */
+    hint: varchar('hint', { length: 32 }).notNull(),
+    scope: mysqlEnum('scope', PAT_SCOPES).notNull(),
+    expiresAt: ts('expires_at').notNull(),
+    /** Ghi tối đa một lần mỗi phút mỗi token — không ghi ở mọi request. */
+    lastUsedAt: ts('last_used_at'),
+    lastUsedIp: varchar('last_used_ip', { length: 45 }),
+    revokedAt: ts('revoked_at'),
+    createdAt: tsNow('created_at'),
+    updatedAt: tsNow('updated_at'),
+  },
+  (t) => [
+    uniqueIndex('uq_pat_token_hash').on(t.tokenHash),
+    // Danh sách của một người + đếm số token còn hiệu lực khi tạo.
+    index('idx_pat_admin').on(t.adminId, t.createdAt),
+    // Màn của Super Admin: token còn hiệu lực của mọi người.
+    index('idx_pat_expires').on(t.expiresAt),
   ],
 );

@@ -1,6 +1,7 @@
 import type { Account } from '../domain/entities/account.ts';
 import type { Admin } from '../domain/entities/admin.ts';
 import type { Organization } from '../domain/entities/organization.ts';
+import type { PersonalAccessToken } from '../domain/entities/personal-access-token.ts';
 
 /** Hình dạng trả ra ngoài module — route và module khác chỉ thấy DTO, không thấy entity. */
 export interface AccountDto {
@@ -44,3 +45,43 @@ export interface SignInDto {
   expiresAt: string;
   admin: AdminDto;
 }
+
+/** Personal access token (ADR-0044) — KHÔNG bao giờ kèm băm hay token gốc. */
+export interface PersonalAccessTokenDto {
+  tokenId: string;
+  name: string;
+  scope: 'read' | 'write';
+  hint: string;
+  status: 'active' | 'expired' | 'revoked';
+  createdAt: string;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  revokedAt: string | null;
+}
+
+/** Màn của Super Admin: kèm người sở hữu. */
+export interface AdminPersonalAccessTokenDto extends PersonalAccessTokenDto {
+  adminId: string;
+  adminEmail: string;
+  adminName: string | null;
+}
+
+/** Kết quả tạo PAT: `secret` là token GỐC, xuất hiện đúng một lần ở đây. */
+export interface IssuedPersonalAccessTokenDto {
+  token: PersonalAccessTokenDto;
+  secret: string;
+}
+
+export const toPersonalAccessTokenDto = (t: PersonalAccessToken, at: Date): PersonalAccessTokenDto => ({
+  tokenId: t.id,
+  name: t.name,
+  scope: t.scope,
+  hint: t.hint,
+  status: t.statusAt(at),
+  createdAt: t.createdAt.toISOString(),
+  expiresAt: t.expiresAt.toISOString(),
+  lastUsedAt: t.lastUsedAt?.toISOString() ?? null,
+  lastUsedIp: t.lastUsedIp,
+  revokedAt: t.revokedAt?.toISOString() ?? null,
+});

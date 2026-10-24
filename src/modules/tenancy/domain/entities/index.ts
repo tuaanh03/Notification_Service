@@ -3,3 +3,4 @@ export * from './admin-session.ts';
 export * from './admin.ts';
 export * from './organization.ts';
 export * from './org-member.ts';
+export * from './personal-access-token.ts';

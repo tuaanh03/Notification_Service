@@ -89,6 +89,10 @@ export type OrgRole = (typeof ORG_ROLES)[number];
 export const APP_ROLES = ['app_admin', 'app_viewer'] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
+/** Phạm vi của personal access token (ADR-0044): `read` chỉ GET / HEAD, `write` mọi phương thức. Quyền thật vẫn là RBAC. */
+export const PAT_SCOPES = ['read', 'write'] as const;
+export type PatScope = (typeof PAT_SCOPES)[number];
+
 /** `console` = người quản lý app thêm tay trên console; `api` = app đẩy vào qua `/v1`. */
 export const USER_SOURCES = ['directory', 'import', 'self', 'api', 'console'] as const;
 export type UserSource = (typeof USER_SOURCES)[number];

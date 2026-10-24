@@ -1,7 +1,12 @@
 import { assertPasswordAllowed } from '../../modules/tenancy/domain/index.ts';
 import {
   AuthenticateAdminSession,
+  AuthenticatePersonalAccessToken,
   CreateAccount,
+  CreatePersonalAccessToken,
+  ListAllPersonalAccessTokens,
+  ListPersonalAccessTokens,
+  RevokePersonalAccessToken,
   CreateAdmin,
   CreateOrganization,
   CreateOwnOrganization,
@@ -37,17 +42,20 @@ import {
   DrizzleAdminSessionRepository,
   DrizzleOrganizationRepository,
   DrizzleOrgMemberRepository,
+  DrizzlePersonalAccessTokenRepository,
   DisabledMicrosoftIdentity,
   DisabledTenantDirectory,
   EntraIdMicrosoftIdentity,
   GraphTenantDirectory,
+  RandomPersonalAccessTokenFactory,
   RandomSessionTokenFactory,
   RedisLoginAttemptStore,
   RedisLoginStateStore,
   ScryptPasswordHasher,
   SettingsLoginThrottlePolicy,
+  SettingsPatPolicy,
 } from '../../modules/tenancy/infrastructure/adapters/index.ts';
-import { adminTenancyRoutes, authRoutes, loginSecurityRoutes, SessionAdminAuthenticator } from '../../modules/tenancy/interface/index.ts';
+import { adminTenancyRoutes, authRoutes, loginSecurityRoutes, personalAccessTokenRoutes, SessionAdminAuthenticator } from '../../modules/tenancy/interface/index.ts';
 import type { SystemSettingsQueries } from '../../modules/settings/application/index.ts';
 import type { Container } from '../container.ts';
 import type { ModuleDefinition } from '../module-definition.ts';
@@ -129,6 +137,10 @@ export function tenancyModule(
   const dummyHash = passwords.hash(DUMMY_PASSWORD);
 
   const authenticateAdminSession = new AuthenticateAdminSession({ clock, admins, sessions, tokens });
+  // Personal access token (ADR-0044): cách xác thực thứ hai của `/admin/*`.
+  const pats = new DrizzlePersonalAccessTokenRepository({ transactions });
+  const patFactory = new RandomPersonalAccessTokenFactory();
+  const authenticatePersonalAccessToken = new AuthenticatePersonalAccessToken({ clock, admins, tokens: pats, factory: patFactory });
   const createAccount = new CreateAccount({ uow, outbox, clock, accounts });
   const sessionDeps = { uow, outbox, clock, sessions, tokens, sessionTtlMs: SESSION_TTL_MS };
   const microsoftIdentity = dependencies.microsoftIdentity ?? selectMicrosoftIdentity(container);
@@ -153,7 +165,7 @@ export function tenancyModule(
     deleteOrganization: new DeleteOrganization({ uow, outbox, clock, organizations, members }),
     removeOrgMember: new RemoveOrgMember({ uow, outbox, organizations, members }),
     findOrgMemberships: new FindOrgMemberships({ members, admins }),
-    adminAuthenticator: new SessionAdminAuthenticator({ authenticateAdminSession }),
+    adminAuthenticator: new SessionAdminAuthenticator({ authenticateAdminSession, authenticatePersonalAccessToken }),
     adminOps: {
       assertPasswordAllowed,
       createAccount,
@@ -189,6 +201,20 @@ export function tenancyModule(
           }),
         ],
         admin: [
+          personalAccessTokenRoutes({
+            create: new CreatePersonalAccessToken({
+              uow,
+              outbox,
+              clock,
+              admins,
+              tokens: pats,
+              factory: patFactory,
+              policy: new SettingsPatPolicy(dependencies),
+            }),
+            revoke: new RevokePersonalAccessToken({ uow, outbox, clock, tokens: pats }),
+            listOwn: new ListPersonalAccessTokens({ clock, tokens: pats }),
+            listAll: new ListAllPersonalAccessTokens({ clock, admins, tokens: pats }),
+          }),
           loginSecurityRoutes({ listLoginLocks: new ListLoginLocks({ clock, admins, attempts }), unlockLogin }),
           adminTenancyRoutes({
             createAccount,
